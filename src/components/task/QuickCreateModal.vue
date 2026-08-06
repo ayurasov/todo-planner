@@ -17,6 +17,7 @@ const titleEl = ref(null)
 const title = ref('')
 const listId = ref(props.context.listId || null)
 const parentTaskId = ref(props.context.parentTaskId || null)
+const meetingId = ref(props.context.meetingId || null)
 const priority = ref(props.context.priority || TaskPriority.MEDIUM)
 const assigneeId = ref(props.context.assigneeId || usersStore.currentUser?.id || null)
 const dueDate = ref(props.context.dueDate ? props.context.dueDate.slice(0, 10) : '')
@@ -35,6 +36,7 @@ async function submit() {
     parentTaskId: parentTaskId.value || null,
     assigneeId: assigneeId.value || null,
     dueDate: dueDate.value ? new Date(dueDate.value).toISOString() : null,
+    meetingId: meetingId.value || null,
   })
   if (createMore.value) {
     title.value = ''
@@ -106,7 +108,7 @@ function quickDue(days) {
           <span class="field-caption">Срок</span>
           <div class="due-row">
             <button class="chip" @click="quickDue(0)">Сегодня</button>
-            <button class="chip" @click="quickDue(1)">Завтра</button>
+            <button class="chip" @click="quickDue(1)">завтра</button>
             <button class="chip" @click="quickDue(7)">+Неделя</button>
             <input v-model="dueDate" type="date" class="date-input" />
           </div>
