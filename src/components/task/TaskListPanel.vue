@@ -10,22 +10,17 @@ import { useListsStore } from '../../stores/listsStore'
 import { useMeetingsStore } from '../../stores/meetingsStore'
 import { useFiltersStore } from '../../stores/filtersStore'
 import { PRIORITY_LABEL } from '../../domain/entities/enums'
-import { splitIntoBubbles, BUBBLE_TIER_LABEL } from '../../domain/ranking/bubbleSort'
+import { splitIntoBubbles } from '../../domain/ranking/bubbleSort'
 import { formatDateTime } from '../../utils/formatters'
 
 const props = defineProps({
   tasks: { type: Array, required: true },
   emptyText: { type: String, default: 'Нет задач, соответствующих текущему фильтру' },
   showToolbar: { type: Boolean, default: true },
-  // Разбиение "Встреча / Без встречи" (Промпт 5) — это ВЕРХНИЙ уровень
-  // структуры экрана (My Tasks), который не заменяет группировку, выбранную
-  // пользователем в QuickToolbar (prefs.groupBy), а дополняет её: выбор из
-  // тулбара применяется КАК ВЛОЖЕННАЯ подгруппа внутри каждого блока встречи
-  // (см. groups/buildSubgroups ниже). Оформление заголовков «Встреча: ...» /
-  // «Без встречи» всегда стабильное (meeting-group-header) и не зависит от того,
-  // выбрана ли вложенная группировка внутри него (раньше group.bubble = !subgroups
-  // заставлял шрифт/стиль заголовка меняться при включении группировки).
   groupByMeeting: { type: Boolean, default: false },
+  // Экран встречи требует отдельной UX-настройки: в обычном режиме
+  // («Группировка») показываем только сортировку «Обновлено».
+  meetingMode: { type: Boolean, default: false },
 })
 
 const prefs = usePreferencesStore()
@@ -37,20 +32,11 @@ const uiStore = useUiStore()
 const router = useRouter()
 
 function openTask(task) { uiStore.openTask(task.id) }
-
-function goToMeeting(meetingId) {
-  router.push(`/meetings/${meetingId}`)
-}
+function goToMeeting(meetingId) { router.push(`/meetings/${meetingId}`) }
 
 const visibleTasks = computed(() => {
-  // Быстрые фильтры (QuickFiltersBar / filtersStore) применяются здесь —
-  // централизованно, на уровне TaskListPanel — чтобы работать одинаково
-  // во ВСЕХ представлениях и списках (Мои задачи, Команда, конкретный
-  // список, встреча), а не только там, где явно вызван filtersStore.apply().
   let list = filtersStore.apply(props.tasks)
   const usingBubble = prefs.groupBy === 'bubble'
-  // В режиме "Пузырьки" блок "Выполнено" — часть основного макета, поэтому
-  // выполненные задачи не отфильтровываются флагом showCompleted.
   if (!prefs.showCompleted && !usingBubble) {
     list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
   }
@@ -61,9 +47,6 @@ const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 }
 
 function sortTasks(tasks) {
   const dir = prefs.sortDir === 'asc' ? 1 : -1
-  // pinned-задачи всегда идут первыми независимо от выбранного поля
-  // сортировки — это отдельный, явный сигнал пользователя (📌), который
-  // не должен «тонуть» среди обычных полей.
   return [...tasks].sort((a, b) => {
     if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
     switch (prefs.sortField) {
@@ -85,10 +68,18 @@ function sortTasks(tasks) {
 
 function buildBubbleBlocks(tasks) {
   const { notDone, done } = splitIntoBubbles(tasks)
-  return [
-    { key: 'not_done', label: `Не выполнено (${notDone.length})`, tasks: notDone, bubble: true },
-    { key: 'done', label: `Выполнено (${done.length})`, tasks: done, bubble: true },
-  ]
+  const blocks = []
+  // Если быстрый фильтр статуса уже сузил выборку до «Выполнено» или
+  // «Не выполнено», пустой/невозможный блок не рендерим вообще — так UX
+  // соответствует ожиданию: при фильтре «Выполнено» пользователь не видит
+  // пустой раздел «Не выполнено» и наоборот.
+  if (filtersStore.status !== 'done' && notDone.length) {
+    blocks.push({ key: 'not_done', label: `Не выполнено (${notDone.length})`, tasks: notDone, bubble: true })
+  }
+  if (filtersStore.status !== 'not_done' && done.length) {
+    blocks.push({ key: 'done', label: `Выполнено (${done.length})`, tasks: done, bubble: true })
+  }
+  return blocks
 }
 
 const GROUP_KEY_LABEL = {
@@ -129,35 +120,12 @@ function buildExplicitGroups(tasks) {
   return order.map((k) => buckets[k])
 }
 
-/**
- * Применяет выбранную в QuickToolbar группировку (prefs.groupBy) к набору
- * задач конкретного блока (встречи/без встречи, либо всего списка, если
- * groupByMeeting выключен). Возвращает либо массив подгрупп ({key,label,tasks}),
- * либо null, если группировка не выбрана (тогда рендерится плоский список).
- */
 function buildSubgroups(tasks) {
   if (prefs.groupBy === 'bubble') return buildBubbleBlocks(tasks)
   if (prefs.groupBy && prefs.groupBy !== 'none') return buildExplicitGroups(tasks)
   return null
 }
 
-/**
- * Верхний уровень "Встреча / Без встречи" (Промпт 5). Задача принадлежит
- * группе своей встречи (task.meetingId), задачи без meetingId попадают в
- * отдельный блок "Без встречи", который всегда идёт последним. Порядок
- * групп-встреч — по дате встречи (более ранние/близкие — выше). Внутри
- * каждой группы дополнительно применяется подгруппировка из тулбара
- * (buildSubgroups) — если она не выбрана, задачи внутри блока встречи просто
- * сортируются (sortTasks), без дублирующего пузырькового порядка.
- *
- * верхний заголовок (label + кнопка "Перейти к встрече") всегда
- * рендерится с bubble: false — это не стиль внутреннего содержимого, а стабильный
- * визуальный якорь блока встречи/«Без встречи» (meeting-group-header), который не
- * должен менять шрифт/стиль в зависимости от того, включена ли вложенная
- * группировка внутри. Раньше bubble выставлялся как !subgroups, из-за чего заголовок
- * переключался между двумя разными стилями (bubble-header vs обычный) при
- * включении/выключении группировки.
- */
 const meetingTopGroups = computed(() => {
   const byMeeting = {}
   const noMeeting = []
@@ -207,10 +175,6 @@ const meetingTopGroups = computed(() => {
 })
 
 const groups = computed(() => {
-  // Разбиение "Встреча / Без встречи" — верхний уровень, если экран его
-  // поддерживает (groupByMeeting). Выбор группировки из QuickToolbar
-  // (prefs.groupBy) применяется ВНУТРИ каждого такого блока как подгруппа,
-  // а не заменяет разбиение по встречам целиком.
   if (props.groupByMeeting) return meetingTopGroups.value
   const subgroups = buildSubgroups(visibleTasks.value)
   if (subgroups) return subgroups
@@ -219,7 +183,7 @@ const groups = computed(() => {
 </script>
 
 <template>
-  <QuickToolbar v-if="showToolbar" :task-count="visibleTasks.length" />
+  <QuickToolbar v-if="showToolbar" :task-count="visibleTasks.length" :meeting-mode="meetingMode" />
 
   <div v-for="group in groups" :key="group.key || 'all'" class="group-block" :class="{ 'bubble-block': group.bubble, 'bubble-block-done': group.key === 'done' }">
     <div v-if="group.label" class="group-header" :class="{ 'bubble-header': group.bubble, 'meeting-group-header': group.isMeetingGroup }">
@@ -249,7 +213,6 @@ const groups = computed(() => {
       </TransitionGroup>
     </div>
   </div>
-
 </template>
 
 <style scoped>
