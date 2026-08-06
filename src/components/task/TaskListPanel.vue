@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import TaskRow from './TaskRow.vue'
-import QuickToolbar from '../common/QuickToolbar.vue'
 import { usePreferencesStore } from '../../stores/preferencesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useUsersStore } from '../../stores/usersStore'
@@ -69,10 +68,6 @@ function sortTasks(tasks) {
 function buildBubbleBlocks(tasks) {
   const { notDone, done } = splitIntoBubbles(tasks)
   const blocks = []
-  // Если быстрый фильтр статуса уже сузил выборку до «Выполнено» или
-  // «Не выполнено», пустой/невозможный блок не рендерим вообще — так UX
-  // соответствует ожиданию: при фильтре «Выполнено» пользователь не видит
-  // пустой раздел «Не выполнено» и наоборот.
   if (filtersStore.status !== 'done' && notDone.length) {
     blocks.push({ key: 'not_done', label: `Не выполнено (${notDone.length})`, tasks: notDone, bubble: true })
   }
@@ -183,8 +178,6 @@ const groups = computed(() => {
 </script>
 
 <template>
-  <QuickToolbar v-if="showToolbar" :task-count="visibleTasks.length" :meeting-mode="meetingMode" />
-
   <div v-for="group in groups" :key="group.key || 'all'" class="group-block" :class="{ 'bubble-block': group.bubble, 'bubble-block-done': group.key === 'done' }">
     <div v-if="group.label" class="group-header" :class="{ 'bubble-header': group.bubble, 'meeting-group-header': group.isMeetingGroup }">
       <span class="group-header-text">{{ group.label }}</span>
