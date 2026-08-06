@@ -10,6 +10,7 @@ import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import { formatDateTime } from '../utils/formatters'
+import { meetingSummaryParser, MATCHED_PATTERN_LABEL } from '../services/MeetingSummaryParser'
 
 const props = defineProps({ id: { type: String, required: true } })
 const router = useRouter()
@@ -21,6 +22,11 @@ const isAdmin = useIsAdmin()
 
 const editing = ref(false)
 const editDraft = ref({ title: '', date: '', time: '', description: '' })
+
+const showSummaryParser = ref(false)
+const summaryText = ref('')
+const parsedCandidates = ref([])
+const parseAttempted = ref(false)
 
 onMounted(async () => {
   if (!meetingsStore.loaded) await meetingsStore.load()
@@ -53,6 +59,41 @@ const canManageMeeting = computed(() => {
 })
 
 const defaultListId = computed(() => listsStore.lists[0]?.id)
+
+function openSummaryParser() {
+  summaryText.value = meeting.value?.description || ''
+  parsedCandidates.value = []
+  parseAttempted.value = false
+  showSummaryParser.value = true
+}
+
+/**
+ * Разбор резюме — эвристика на regex (MockRegexSummaryParser), без
+ * реального NLP (см. раздел 3.7 ТЗ и комментарий в MeetingSummaryParser.js).
+ * Результат — предварительный список кандидатов, ничего не сохраняется
+ * до явного подтверждения пользователем в форме ниже.
+ */
+function runParse() {
+  parsedCandidates.value = meetingSummaryParser.parse(summaryText.value, { knownUsers: usersStore.users })
+  parseAttempted.value = true
+}
+
+function removeCandidate(idx) {
+  parsedCandidates.value.splice(idx, 1)
+}
+
+async function confirmCreateTasks() {
+  const toCreate = parsedCandidates.value.filter((c) => c.accepted && c.title.trim())
+  for (const c of toCreate) {
+    await tasksStore.createTask({
+      listId: defaultListId.value,
+      meetingId: props.id,
+      title: c.title.trim(),
+      assigneeId: c.assigneeGuess || null,
+    })
+  }
+  showSummaryParser.value = false
+}
 
 function startEdit() {
   if (!meeting.value) return
@@ -96,6 +137,7 @@ async function removeMeeting() {
         <button class="btn btn-ghost btn-sm back-btn" @click="router.push('/meetings')">← Встречи</button>
       </div>
       <div v-if="canManageMeeting" class="header-actions">
+        <button class="btn btn-sm" @click="openSummaryParser">🧩 Разбор резюме в задачи</button>
         <button class="btn btn-sm" @click="startEdit">✎ Редактировать</button>
         <button class="btn btn-sm btn-danger" @click="removeMeeting">🗑 Удалить</button>
       </div>
@@ -119,6 +161,59 @@ async function removeMeeting() {
       placeholder="Добавить задачу по итогам встречи..."
     />
     <TaskListPanel :tasks="meetingTasks" empty-text="К этой встрече пока не привязано ни одной задачи" />
+
+    <div v-if="showSummaryParser" class="modal-overlay" @click.self="showSummaryParser = false">
+      <div class="modal modal-wide card scroll-thin">
+        <div class="modal-header">
+          <h3>Разбор резюме встречи в задачи</h3>
+          <button class="btn btn-ghost btn-sm" @click="showSummaryParser = false">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="hint-text">
+            Вставьте текстовое резюме встречи. Кандидатами в задачи считаются строки,
+            начинающиеся с "-", "•", номера пункта, либо в формате "Имя: сделать...".
+            Это эвристика на основе regex, не NLP — ничего не создаётся без вашего подтверждения.
+          </p>
+          <div class="field-group">
+            <label>Текст резюме</label>
+            <textarea v-model="summaryText" rows="8" placeholder="- Согласовать бюджет до пятницы&#10;Иван: подготовить презентацию&#10;1. Отправить письмо клиенту" />
+          </div>
+          <button class="btn btn-primary btn-sm" @click="runParse">Разобрать на задачи</button>
+
+          <div v-if="parseAttempted" class="parse-results">
+            <div v-if="!parsedCandidates.length" class="empty-state-inline">
+              Не найдено ни одной строки, соответствующей эвристикам разбора.
+            </div>
+            <template v-else>
+              <div class="section-title">Найдено кандидатов: {{ parsedCandidates.length }} — подтвердите перед сохранением</div>
+              <div v-for="(c, idx) in parsedCandidates" :key="idx" class="candidate-row">
+                <input type="checkbox" v-model="c.accepted" />
+                <div class="candidate-main">
+                  <input v-model="c.title" class="candidate-title-input" />
+                  <div class="candidate-meta">
+                    <span class="tag">{{ MATCHED_PATTERN_LABEL[c.matchedPattern] }}</span>
+                    <span v-if="c.assigneeNameRaw" class="tag">
+                      Имя в тексте: "{{ c.assigneeNameRaw }}"
+                      <template v-if="c.assigneeGuess">→ сопоставлено: {{ usersStore.byId(c.assigneeGuess)?.name }}</template>
+                      <template v-else>→ исполнитель не найден</template>
+                    </span>
+                  </div>
+                </div>
+                <button class="btn btn-ghost btn-sm" @click="removeCandidate(idx)">✕</button>
+              </div>
+            </template>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" @click="showSummaryParser = false">Отмена</button>
+          <button
+            class="btn btn-primary"
+            :disabled="!parsedCandidates.some((c) => c.accepted && c.title.trim())"
+            @click="confirmCreateTasks"
+          >Создать задачи ({{ parsedCandidates.filter((c) => c.accepted && c.title.trim()).length }})</button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="editing" class="modal-overlay" @click.self="editing = false">
       <div class="modal card scroll-thin">
@@ -179,4 +274,14 @@ async function removeMeeting() {
 .field-row { display: flex; gap: 12px; }
 .field-row .field-group { flex: 1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-border); }
+
+.modal-wide { width: 560px; }
+.hint-text { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; margin: 0 0 4px; }
+.parse-results { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }
+.section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted); border-top: 1px solid var(--color-border); padding-top: 10px; }
+.candidate-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--color-border); }
+.candidate-main { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.candidate-title-input { border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 13px; width: 100%; }
+.candidate-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; }
 </style>
