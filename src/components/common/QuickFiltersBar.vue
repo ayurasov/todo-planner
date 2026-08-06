@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import QuickToolbar from './QuickToolbar.vue'
+import AppIcon from './AppIcon.vue'
 import { useFiltersStore } from '../../stores/filtersStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
@@ -59,55 +60,63 @@ function toggleDatePreset(preset) {
 
 <template>
   <div class="quick-filters-bar card">
-    <QuickToolbar class="embedded-toolbar" :task-count="taskCount" :meeting-mode="meetingMode" compact />
-
-    <div class="filter-divider" />
-
-    <div class="filter-group" role="group" aria-label="Статус">
-      <button
-        v-for="opt in STATUS_OPTIONS" :key="opt.value"
-        class="filter-btn" :class="{ active: filtersStore.status === opt.value }"
-        @click="setStatus(opt.value)"
-      >{{ opt.label }}</button>
+    <div class="row row-toolbar">
+      <QuickToolbar class="embedded-toolbar" :task-count="taskCount" :meeting-mode="meetingMode" compact />
     </div>
 
-    <div class="filter-divider" />
-
-    <div class="assignee-picker">
-      <button class="filter-btn dropdown-trigger" :class="{ active: filtersStore.assigneeIds.length }" @click="assigneePickerOpen = !assigneePickerOpen">
-        👤 {{ assigneeSummary }} <span class="caret">▾</span>
-      </button>
-      <div v-if="assigneePickerOpen" class="assignee-dropdown card" @click.self="assigneePickerOpen = false">
-        <label v-for="u in usersStore.users" :key="u.id" class="assignee-option">
-          <input type="checkbox" :checked="filtersStore.assigneeIds.includes(u.id)" @change="toggleAssignee(u.id)" />
-          {{ u.name }}
-        </label>
-        <div v-if="!usersStore.users.length" class="assignee-empty">Нет пользователей</div>
+    <div class="row row-filters">
+      <div class="filter-group" role="group" aria-label="Статус">
+        <button
+          v-for="opt in STATUS_OPTIONS" :key="opt.value"
+          class="filter-btn" :class="{ active: filtersStore.status === opt.value }"
+          @click="setStatus(opt.value)"
+        >{{ opt.label }}</button>
       </div>
+
+      <div class="filter-divider" />
+
+      <div class="assignee-picker">
+        <button class="filter-btn dropdown-trigger" :class="{ active: filtersStore.assigneeIds.length }" @click="assigneePickerOpen = !assigneePickerOpen">
+          <AppIcon name="users" :size="13" /> {{ assigneeSummary }} <AppIcon name="chevronDown" :size="11" class="caret" />
+        </button>
+        <div v-if="assigneePickerOpen" class="assignee-dropdown card" @click.self="assigneePickerOpen = false">
+          <label v-for="u in usersStore.users" :key="u.id" class="assignee-option">
+            <input type="checkbox" :checked="filtersStore.assigneeIds.includes(u.id)" @change="toggleAssignee(u.id)" />
+            {{ u.name }}
+          </label>
+          <div v-if="!usersStore.users.length" class="assignee-empty">Нет пользователей</div>
+        </div>
+      </div>
+
+      <div class="filter-divider" />
+
+      <div class="filter-group" role="group" aria-label="Диапазон дат">
+        <button
+          v-for="p in DATE_PRESETS" :key="p.value"
+          class="filter-btn" :class="{ active: filtersStore.datePreset === p.value }"
+          @click="toggleDatePreset(p.value)"
+        >{{ p.label }}</button>
+      </div>
+
+      <button v-if="filtersStore.isActive" class="btn btn-ghost btn-sm reset-btn" @click="filtersStore.resetAll(); assigneePickerOpen = false">
+        Сбросить все
+      </button>
     </div>
-
-    <div class="filter-divider" />
-
-    <div class="filter-group" role="group" aria-label="Диапазон дат">
-      <button
-        v-for="p in DATE_PRESETS" :key="p.value"
-        class="filter-btn" :class="{ active: filtersStore.datePreset === p.value }"
-        @click="toggleDatePreset(p.value)"
-      >{{ p.label }}</button>
-    </div>
-
-    <button v-if="filtersStore.isActive" class="btn btn-ghost btn-sm reset-btn" @click="filtersStore.resetAll(); assigneePickerOpen = false">
-      Сбросить все
-    </button>
   </div>
 </template>
 
 <style scoped>
 .quick-filters-bar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  display: flex; flex-direction: column; gap: 8px;
   padding: 8px 10px; margin-bottom: 12px;
 }
-.embedded-toolbar { flex: 1 1 auto; min-width: 520px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Вторая строка выровнена по левому краю с первым элементом верхней строки
+   (блок «Группировка/Пузырьки»), поскольку quick-toolbar и filter-group используют
+   одинаковый внешний padding у карточки. */
+.row-toolbar { padding: 0 2px; }
+.row-filters { padding: 0 2px; }
+.embedded-toolbar { flex: 1 1 auto; min-width: 100%; }
 .filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
 .filter-btn {
   border: none; background: transparent; padding: 5px 10px; border-radius: 6px;
@@ -120,10 +129,10 @@ function toggleDatePreset(preset) {
 .assignee-picker { position: relative; }
 .dropdown-trigger {
   border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface);
-  padding: 5px 10px; font-size: 12.5px; color: var(--color-text-muted); cursor: pointer; display: flex; align-items: center; gap: 4px;
+  padding: 5px 10px; font-size: 12.5px; color: var(--color-text-muted); cursor: pointer; display: flex; align-items: center; gap: 5px;
 }
 .dropdown-trigger.active { color: var(--color-text); font-weight: 600; border-color: var(--color-primary); }
-.caret { font-size: 10px; }
+.caret { opacity: 0.7; }
 .assignee-dropdown {
   position: absolute; top: calc(100% + 6px); left: 0; z-index: 20; min-width: 200px;
   padding: 8px; display: flex; flex-direction: column; gap: 4px; max-height: 260px; overflow-y: auto;
@@ -133,9 +142,4 @@ function toggleDatePreset(preset) {
 .assignee-empty { font-size: 12.5px; color: var(--color-text-muted); padding: 6px; }
 
 .reset-btn { margin-left: auto; }
-
-@media (max-width: 1200px) {
-  .embedded-toolbar { min-width: 100%; }
-  .filter-divider:first-of-type { display: none; }
-}
 </style>
