@@ -12,6 +12,7 @@ const viewStore = useViewStore()
     <nav class="sidebar-nav">
       <router-link to="/my-tasks" class="nav-item">🟢 Мои задачи</router-link>
       <router-link to="/team-tasks" class="nav-item">👥 Задачи команды</router-link>
+      <router-link to="/meetings" class="nav-item">📅 Встречи</router-link>
       <router-link to="/recurring" class="nav-item">🔁 Повторяющиеся</router-link>
       <router-link to="/history" class="nav-item">🕘 История</router-link>
     </nav>

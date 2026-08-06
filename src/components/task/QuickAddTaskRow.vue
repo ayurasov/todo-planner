@@ -5,6 +5,7 @@ import { useUsersStore } from '../../stores/usersStore'
 
 const props = defineProps({
   listId: { type: String, required: true },
+  meetingId: { type: String, default: null },
   placeholder: { type: String, default: 'Добавить задачу — Enter, чтобы продолжить' },
 })
 
@@ -22,7 +23,7 @@ function activate() {
 async function commit(keepOpen = true) {
   const title = draft.value.trim()
   if (title) {
-    await tasksStore.createTask({ listId: props.listId, title, assigneeId: usersStore.currentUser?.id || null })
+    await tasksStore.createTask({ listId: props.listId, title, meetingId: props.meetingId, assigneeId: usersStore.currentUser?.id || null })
   }
   draft.value = ''
   if (keepOpen && title) {
