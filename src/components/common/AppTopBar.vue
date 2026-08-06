@@ -50,7 +50,7 @@ function pickResult(task) {
 function contextForCreate() {
   if (route.name === 'list-view' && route.params.id) return { listId: route.params.id }
   if (route.name === 'meeting-detail' && route.params.id) {
-    const meeting = meetingsStore.byId ? meetingsStore.byId(route.params.id) : null
+    const meeting = meetingsStore.meetingById(route.params.id)
     return { meetingId: route.params.id, listId: meeting?.listId || null }
   }
   return {}
