@@ -1,8 +1,14 @@
 <script setup>
 import { ref, computed } from 'vue'
+import QuickToolbar from './QuickToolbar.vue'
 import { useFiltersStore } from '../../stores/filtersStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
+
+const props = defineProps({
+  taskCount: { type: Number, default: null },
+  meetingMode: { type: Boolean, default: false },
+})
 
 const filtersStore = useFiltersStore()
 const usersStore = useUsersStore()
@@ -53,6 +59,10 @@ function toggleDatePreset(preset) {
 
 <template>
   <div class="quick-filters-bar card">
+    <QuickToolbar class="embedded-toolbar" :task-count="taskCount" :meeting-mode="meetingMode" compact />
+
+    <div class="filter-divider" />
+
     <div class="filter-group" role="group" aria-label="Статус">
       <button
         v-for="opt in STATUS_OPTIONS" :key="opt.value"
@@ -97,6 +107,7 @@ function toggleDatePreset(preset) {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 8px 10px; margin-bottom: 12px;
 }
+.embedded-toolbar { flex: 1 1 auto; min-width: 520px; }
 .filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
 .filter-btn {
   border: none; background: transparent; padding: 5px 10px; border-radius: 6px;
@@ -122,4 +133,9 @@ function toggleDatePreset(preset) {
 .assignee-empty { font-size: 12.5px; color: var(--color-text-muted); padding: 6px; }
 
 .reset-btn { margin-left: auto; }
+
+@media (max-width: 1200px) {
+  .embedded-toolbar { min-width: 100%; }
+  .filter-divider:first-of-type { display: none; }
+}
 </style>
