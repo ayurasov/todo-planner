@@ -73,7 +73,7 @@ function quickDue(days) {
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('close')">
+  <div class="modal-overlay">
     <Transition name="modal-pop" appear>
       <div class="modal card">
         <div class="modal-head">
