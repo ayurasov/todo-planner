@@ -2,9 +2,11 @@
 import { ref, computed } from 'vue'
 import { useFiltersStore } from '../../stores/filtersStore'
 import { useUsersStore } from '../../stores/usersStore'
+import { usePreferencesStore } from '../../stores/preferencesStore'
 
 const filtersStore = useFiltersStore()
 const usersStore = useUsersStore()
+const prefs = usePreferencesStore()
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Все' },
@@ -17,6 +19,21 @@ const DATE_PRESETS = [
   { value: 'week', label: '7 дней' },
   { value: 'month', label: 'Месяц' },
 ]
+
+// Быстрая сортировка — тот же state (preferencesStore.sortField/sortDir),
+// что и раньше использовался в QuickToolbar. Перенесена сюда, чтобы
+// сортировка и фильтрация были в одном месте, над QuickAddTaskRow.
+const QUICK_SORTS = [
+  { field: 'score', label: 'Актуальность' },
+  { field: 'due_date', label: 'Срок' },
+  { field: 'priority', label: 'Приоритет' },
+  { field: 'updated_at', label: 'Обновлено' },
+]
+
+function setSort(field) {
+  if (prefs.sortField === field) prefs.set('sortDir', prefs.sortDir === 'asc' ? 'desc' : 'asc')
+  else { prefs.set('sortField', field); prefs.set('sortDir', 'desc') }
+}
 
 const assigneePickerOpen = ref(false)
 
@@ -69,6 +86,20 @@ function toggleDatePreset(preset) {
       >{{ p.label }}</button>
     </div>
 
+    <div class="filter-divider" />
+
+    <div class="filter-group sort-group" role="group" aria-label="Сортировка">
+      <button
+        v-for="s in QUICK_SORTS" :key="s.field"
+        class="filter-btn" :class="{ active: prefs.sortField === s.field }"
+        @click="setSort(s.field)"
+        :title="`Сортировать по: ${s.label}`"
+      >
+        {{ s.label }}
+        <span v-if="prefs.sortField === s.field" class="dir-arrow">{{ prefs.sortDir === 'asc' ? '↑' : '↓' }}</span>
+      </button>
+    </div>
+
     <button v-if="filtersStore.isActive" class="btn btn-ghost btn-sm reset-btn" @click="filtersStore.resetAll(); assigneePickerOpen = false">
       Сбросить все
     </button>
@@ -84,8 +115,10 @@ function toggleDatePreset(preset) {
 .filter-btn {
   border: none; background: transparent; padding: 5px 10px; border-radius: 6px;
   font-size: 12.5px; color: var(--color-text-muted); cursor: pointer; white-space: nowrap;
+  display: flex; align-items: center; gap: 3px;
 }
 .filter-btn.active { background: var(--color-surface); color: var(--color-text); font-weight: 600; box-shadow: var(--shadow-1); }
+.dir-arrow { font-size: 11px; }
 .filter-divider { width: 1px; height: 20px; background: var(--color-border); }
 
 .assignee-picker { position: relative; }
