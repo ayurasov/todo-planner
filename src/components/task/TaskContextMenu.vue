@@ -218,7 +218,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
         <div v-if="canDeleteThisTask" class="ctx-divider" />
         <div v-if="canDeleteThisTask" class="ctx-section">
           <button class="ctx-item ctx-item-danger" @click="remove">
-            <span class="ctx-icon icon-danger">🗑</span> Удалить
+            <span class="ctx-icon icon-danger">✖</span> Удалить
           </button>
         </div>
       </div>
