@@ -25,7 +25,7 @@ const rankedRoots = computed(() => tasksStore.rankedTasksForList(props.id).filte
     <button class="btn btn-sm" @click="showSettings = true">⚙️ Настроить список</button>
   </div>
   <p v-if="list?.description" class="list-description">{{ list.description }}</p>
-  <QuickFiltersBar />
+  <QuickFiltersBar :task-count="rankedRoots.length" />
   <QuickAddTaskRow :list-id="id" />
   <TaskListPanel :tasks="rankedRoots" empty-text="В этом списке пока нет задач" />
   <ListSettingsModal v-if="showSettings && list" :list="list" @close="showSettings = false" />
