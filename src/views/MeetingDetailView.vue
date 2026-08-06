@@ -190,7 +190,7 @@ async function removeMeeting() {
     />
     <TaskListPanel :tasks="meetingTasks" :meeting-mode="true" empty-text="К этой встрече пока не привязано ни одной задачи" />
 
-    <div v-if="showSummaryParser" class="modal-overlay" @click.self="showSummaryParser = false">
+    <div v-if="showSummaryParser" class="modal-overlay">
       <div class="modal modal-wide card scroll-thin">
         <div class="modal-header">
           <h3>Разбор резюме встречи в задачи</h3>
@@ -243,7 +243,7 @@ async function removeMeeting() {
       </div>
     </div>
 
-    <div v-if="editing" class="modal-overlay" @click.self="editing = false">
+    <div v-if="editing" class="modal-overlay">
       <div class="modal card scroll-thin">
         <div class="modal-header">
           <h3>Редактировать встречу</h3>
