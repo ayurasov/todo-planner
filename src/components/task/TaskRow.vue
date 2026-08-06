@@ -5,6 +5,7 @@ import { useUsersStore } from '../../stores/usersStore'
 import { useListsStore } from '../../stores/listsStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
 import { relativeDay, isOverdue } from '../../utils/formatters'
+import { useTaskPermissions } from '../../composables/usePermissions'
 import PriorityBadge from './PriorityBadge.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
 
@@ -43,6 +44,8 @@ const checklistItems = computed(() => tasksStore.checklistByTask[props.task.id])
 const checklistCount = checklistItems
 const commentsCount = computed(() => tasksStore.commentsByTask[props.task.id]?.length)
 
+const { canEditThisTask, canToggleStatus, reason: permissionReason } = useTaskPermissions(() => props.task)
+
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
 
 const rowAccentColor = computed(() => {
@@ -54,6 +57,7 @@ const rowAccentColor = computed(() => {
 })
 
 function toggleComplete() {
+  if (!canToggleStatus.value) return
   if (isDone.value) tasksStore.reopenTask(props.task.id)
   else tasksStore.completeTask(props.task.id)
 }
@@ -164,7 +168,12 @@ function closeContextMenu() {
       </button>
       <span v-else class="expand-spacer" />
 
-      <input type="checkbox" :checked="isDone" class="task-checkbox" @change="toggleComplete" />
+      <input
+        type="checkbox" :checked="isDone" class="task-checkbox"
+        :disabled="!canToggleStatus"
+        :title="canToggleStatus ? '' : permissionReason"
+        @change="toggleComplete"
+      />
 
       <div class="task-main">
         <input
@@ -204,9 +213,9 @@ function closeContextMenu() {
       </div>
 
       <div class="task-quick-actions">
-        <button class="btn btn-ghost btn-sm" title="Добавить подзадачу" @click.stop="startAddSubtask">＋</button>
-        <button class="btn btn-ghost btn-sm" title="Закрепить" @click.stop="togglePin">📌</button>
-        <button class="btn btn-ghost btn-sm" title="Отложить на день" @click.stop="snooze">⏰</button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить подзадачу" @click.stop="startAddSubtask">＋</button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Закрепить" @click.stop="togglePin">📌</button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Отложить на день" @click.stop="snooze">⏰</button>
         <button class="btn btn-ghost btn-sm" title="Ещё" @click.stop="openContextMenu($event)">⋯</button>
       </div>
     </div>
@@ -271,6 +280,7 @@ function closeContextMenu() {
 .expand-btn { border: none; background: none; cursor: pointer; width: 16px; color: var(--color-text-muted); font-size: 12px; }
 .expand-spacer { width: 16px; display: inline-block; }
 .task-checkbox { accent-color: var(--color-primary); cursor: pointer; }
+.task-checkbox:disabled { cursor: not-allowed; opacity: 0.45; }
 .task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .task-title { font-size: 13.5px; font-weight: 500; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; cursor: pointer; }
 .truncate-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

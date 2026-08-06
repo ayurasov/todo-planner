@@ -6,6 +6,7 @@ import { useHistoryStore } from '../../stores/historyStore'
 import { useListsStore } from '../../stores/listsStore'
 import { TaskPriority, TaskStatus, PRIORITY_LABEL } from '../../domain/entities/enums'
 import { formatDateTime } from '../../utils/formatters'
+import { useTaskPermissions } from '../../composables/usePermissions'
 
 const props = defineProps({ task: { type: Object, required: true } })
 const emit = defineEmits(['close'])
@@ -25,6 +26,7 @@ const titleInputEl = ref(null)
 const assigneeMenuOpen = ref(false)
 
 const liveTask = computed(() => tasksStore.byId(props.task.id) || props.task)
+const { canEditThisTask, canToggleStatus, reason: permissionReason } = useTaskPermissions(liveTask)
 const checklist = computed(() => tasksStore.checklistByTask[props.task.id] || [])
 const notes = computed(() => tasksStore.notesByTask[props.task.id] || [])
 const timeline = computed(() => historyStore.timelineByTask[props.task.id] || [])
@@ -135,9 +137,10 @@ const HISTORY_ICON = {
             @keyup.enter="commitTitle"
             @keyup.escape="cancelEditTitle"
           />
-          <h2 v-else class="title-display" @click="startEditTitle">
+          <h2 v-else class="title-display" :class="{ 'title-readonly': !canEditThisTask }" @click="canEditThisTask && startEditTitle()">
             <span v-if="liveTask.pinned" class="pin-icon">📌</span>{{ liveTask.title }}
           </h2>
+          <p v-if="!canEditThisTask" class="readonly-banner">👁 Только просмотр — {{ permissionReason }}</p>
         </div>
 
         <div class="field-row">
@@ -147,6 +150,7 @@ const HISTORY_ICON = {
               <button
                 v-for="s in Object.values(TaskStatus)" :key="s"
                 class="pill" :class="{ active: liveTask.status === s }"
+                :disabled="!canToggleStatus"
                 :style="liveTask.status === s ? { background: STATUS_META[s].bg, color: STATUS_META[s].color } : {}"
                 @click="setStatus(s)"
               >{{ STATUS_META[s].label }}</button>
@@ -159,6 +163,7 @@ const HISTORY_ICON = {
               <button
                 v-for="p in Object.values(TaskPriority)" :key="p"
                 class="pill pill-dot" :class="{ active: liveTask.priority === p }"
+                :disabled="!canEditThisTask"
                 :style="liveTask.priority === p ? { background: PRIORITY_COLOR[p], color: '#fff', borderColor: PRIORITY_COLOR[p] } : {}"
                 @click="setPriority(p)"
               >
@@ -172,7 +177,7 @@ const HISTORY_ICON = {
             <div class="field-block">
               <span class="field-caption">Исполнитель</span>
               <div class="assignee-picker">
-                <button class="assignee-trigger" @click="assigneeMenuOpen = !assigneeMenuOpen">
+                <button class="assignee-trigger" :disabled="!canEditThisTask" @click="canEditThisTask && (assigneeMenuOpen = !assigneeMenuOpen)">
                   <span class="assignee-avatar" :class="{ empty: !currentAssignee }">
                     {{ currentAssignee ? currentAssignee.name.charAt(0) : '—' }}
                   </span>
@@ -190,7 +195,7 @@ const HISTORY_ICON = {
 
             <div class="field-block">
               <span class="field-caption">Срок</span>
-              <input type="date" class="date-input" :value="liveTask.dueDate ? liveTask.dueDate.slice(0,10) : ''"
+              <input type="date" class="date-input" :disabled="!canEditThisTask" :value="liveTask.dueDate ? liveTask.dueDate.slice(0,10) : ''"
                 @change="tasksStore.rescheduleTask(liveTask.id, $event.target.value ? new Date($event.target.value).toISOString() : null)" />
             </div>
           </div>
@@ -211,7 +216,7 @@ const HISTORY_ICON = {
         <div class="tab-content scroll-thin">
           <Transition name="fade-tab" mode="out-in">
           <div v-if="tab === 'overview'" key="overview">
-            <textarea class="description-input" :value="liveTask.description" placeholder="Добавьте описание задачи..."
+            <textarea class="description-input" :disabled="!canEditThisTask" :value="liveTask.description" placeholder="Добавьте описание задачи..."
               @change="updateField('description', $event.target.value)" />
           </div>
 
@@ -220,11 +225,11 @@ const HISTORY_ICON = {
               <div class="progress-bar-fill" :style="{ width: checklistPercent + '%' }" />
             </div>
             <div v-for="item in checklist" :key="item.id" class="checklist-item">
-              <input type="checkbox" :checked="item.done" @change="tasksStore.toggleChecklistItem(liveTask.id, item.id)" />
+              <input type="checkbox" :checked="item.done" :disabled="!canEditThisTask" @change="tasksStore.toggleChecklistItem(liveTask.id, item.id)" />
               <span :class="{ done: item.done }">{{ item.title }}</span>
-              <button class="btn btn-ghost btn-sm remove-btn" @click="tasksStore.removeChecklistItem(liveTask.id, item.id)">✕</button>
+              <button v-if="canEditThisTask" class="btn btn-ghost btn-sm remove-btn" @click="tasksStore.removeChecklistItem(liveTask.id, item.id)">✕</button>
             </div>
-            <div class="checklist-add">
+            <div v-if="canEditThisTask" class="checklist-add">
               <input v-model="newChecklistTitle" placeholder="Новый пункт чек-листа" @keyup.enter="addChecklistItem" />
               <button class="btn btn-primary btn-sm" @click="addChecklistItem">Добавить</button>
             </div>
@@ -284,6 +289,9 @@ const HISTORY_ICON = {
 .close-btn { border-radius: 8px; width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; }
 .title-display { margin: 4px 0 12px; font-size: 18px; font-weight: 650; cursor: text; padding: 4px 6px; border-radius: 8px; display: flex; align-items: center; gap: 6px; }
 .title-display:hover { background: #f6f7fb; }
+.title-readonly { cursor: default; }
+.title-readonly:hover { background: none; }
+.readonly-banner { font-size: 12px; color: var(--color-text-muted); background: #f1f3f9; border-radius: 8px; padding: 6px 10px; margin: 0 0 12px; }
 .title-edit-input { width: 100%; font-size: 18px; font-weight: 650; border: 1.5px solid var(--color-primary); border-radius: 8px; padding: 6px 8px; margin: 4px 0 12px; outline: none; }
 
 .field-row { display: flex; flex-direction: column; gap: 12px; padding: 4px 20px 16px; border-bottom: 1px solid var(--color-border); }

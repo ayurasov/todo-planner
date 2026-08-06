@@ -4,6 +4,7 @@ import { useClickOutside } from '../../composables/useClickOutside'
 import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
+import { useTaskPermissions } from '../../composables/usePermissions'
 import { TaskPriority, PRIORITY_LABEL } from '../../domain/entities/enums'
 
 const props = defineProps({
@@ -24,6 +25,7 @@ onMounted(() => { mounted.value = true })
 
 const isDone = computed(() => props.task.status === 'done')
 const isSubtask = computed(() => !!props.task.parentTaskId)
+const { canEditThisTask, canToggleStatus } = useTaskPermissions(() => props.task)
 
 const style = computed(() => {
   const menuW = 264
@@ -38,6 +40,7 @@ const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urg
 function close() { emit('close') }
 
 function toggleComplete() {
+  if (!canToggleStatus.value) return
   if (isDone.value) tasksStore.reopenTask(props.task.id)
   else tasksStore.completeTask(props.task.id)
   close()
@@ -113,26 +116,28 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
         </div>
 
         <div class="ctx-section">
-          <button class="ctx-item ctx-item-primary" @click="toggleComplete">
+          <button v-if="canToggleStatus" class="ctx-item ctx-item-primary" @click="toggleComplete">
             <span class="ctx-icon" :class="isDone ? 'icon-neutral' : 'icon-success'">{{ isDone ? '↺' : '✓' }}</span>
             {{ isDone ? 'Вернуть в работу' : 'Завершить' }}
           </button>
-          <button class="ctx-item" @click="addSubtask">
+          <button v-if="canEditThisTask" class="ctx-item" @click="addSubtask">
             <span class="ctx-icon icon-neutral">＋</span> Добавить подзадачу
           </button>
           <button class="ctx-item" @click="openDetail">
             <span class="ctx-icon icon-neutral">☰</span> Открыть детали
           </button>
-          <button class="ctx-item" @click="togglePin">
+          <button v-if="canEditThisTask" class="ctx-item" @click="togglePin">
             <span class="ctx-icon" :class="task.pinned ? 'icon-warning' : 'icon-neutral'">📌</span>
             {{ task.pinned ? 'Открепить' : 'Закрепить' }}
           </button>
-          <button v-if="isSubtask" class="ctx-item" @click="toggleStandalone">
+          <button v-if="canEditThisTask && isSubtask" class="ctx-item" @click="toggleStandalone">
             <span class="ctx-icon icon-neutral">{{ task.displayStandalone ? '⊟' : '⊞' }}</span>
             {{ task.displayStandalone ? 'Скрыть из общих списков' : 'Показывать отдельно' }}
           </button>
+          <p v-if="!canEditThisTask" class="ctx-readonly-hint">Только просмотр — недостаточно прав для этой задачи</p>
         </div>
 
+        <template v-if="canEditThisTask">
         <div class="ctx-divider" />
 
         <div class="ctx-section">
@@ -191,6 +196,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
             <span class="ctx-icon icon-danger">🗑</span> Удалить
           </button>
         </div>
+        </template>
       </div>
     </Transition>
   </Teleport>
@@ -225,6 +231,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
 .ctx-item.active { background: #eef2ff; color: var(--color-primary-dark); font-weight: 600; }
 .ctx-item-danger { color: var(--color-danger); }
 .ctx-item-danger:hover { background: #fdeeee; }
+.ctx-readonly-hint { font-size: 11px; color: var(--color-text-muted); padding: 4px 10px 6px; margin: 0; }
 
 .ctx-icon {
   width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center;

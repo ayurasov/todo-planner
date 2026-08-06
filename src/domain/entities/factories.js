@@ -6,8 +6,8 @@ export function nextId(prefix = 'id') {
   return `${prefix}_${idCounter}_${Date.now().toString(36)}`
 }
 
-export function createUser({ id, name, email, timezone = 'Europe/Moscow', avatarUrl = null }) {
-  return { id: id || nextId('user'), name, email, timezone, avatarUrl }
+export function createUser({ id, name, email, timezone = 'Europe/Moscow', avatarUrl = null, globalRole = 'user', isActive = true }) {
+  return { id: id || nextId('user'), name, email, timezone, avatarUrl, globalRole, isActive }
 }
 
 export function createList({

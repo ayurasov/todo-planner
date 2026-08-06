@@ -12,10 +12,10 @@ const iso = (offsetDays = 0, hours = 0) => {
 export const CURRENT_USER_ID = 'user_1'
 
 export const seedUsers = [
-  createUser({ id: 'user_1', name: 'Александр Юрасов', email: 'a.yurasov@example.com' }),
-  createUser({ id: 'user_2', name: 'Мария Соколова', email: 'm.sokolova@example.com' }),
-  createUser({ id: 'user_3', name: 'Дмитрий Ким', email: 'd.kim@example.com' }),
-  createUser({ id: 'user_4', name: 'Елена Волкова', email: 'e.volkova@example.com' }),
+  createUser({ id: 'user_1', name: 'Александр Юрасов', email: 'a.yurasov@example.com', globalRole: 'admin' }),
+  createUser({ id: 'user_2', name: 'Мария Соколова', email: 'm.sokolova@example.com', globalRole: 'user' }),
+  createUser({ id: 'user_3', name: 'Дмитрий Ким', email: 'd.kim@example.com', globalRole: 'user' }),
+  createUser({ id: 'user_4', name: 'Елена Волкова', email: 'e.volkova@example.com', globalRole: 'user' }),
 ]
 
 export const seedLists = [
