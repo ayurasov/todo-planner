@@ -14,7 +14,7 @@ const filteredTasks = computed(() => tasksStore.teamTasksRanked)
   <div class="view-header">
     <h2>Задачи команды</h2>
   </div>
-  <QuickFiltersBar />
+  <QuickFiltersBar :task-count="filteredTasks.length" />
   <WorkloadChart />
   <TaskListPanel :tasks="filteredTasks" empty-text="Нет задач у команды по текущим фильтрам" />
 </template>
