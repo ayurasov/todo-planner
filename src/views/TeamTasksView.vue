@@ -1,35 +1,27 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import { useTasksStore } from '../stores/tasksStore'
-import { useUsersStore } from '../stores/usersStore'
+import { useFiltersStore } from '../stores/filtersStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
+import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import WorkloadChart from '../components/charts/WorkloadChart.vue'
 
 const tasksStore = useTasksStore()
-const usersStore = useUsersStore()
-const filterAssignee = ref(null)
+const filtersStore = useFiltersStore()
 
-const filteredTasks = computed(() => {
-  let tasks = tasksStore.teamTasksRanked
-  if (filterAssignee.value) tasks = tasks.filter((t) => t.assigneeId === filterAssignee.value)
-  return tasks
-})
+const filteredTasks = computed(() => filtersStore.apply(tasksStore.teamTasksRanked))
 </script>
 
 <template>
   <div class="view-header">
     <h2>Задачи команды</h2>
-    <select v-model="filterAssignee" class="assignee-filter">
-      <option :value="null">Все исполнители</option>
-      <option v-for="u in usersStore.users" :key="u.id" :value="u.id">{{ u.name }}</option>
-    </select>
   </div>
+  <QuickFiltersBar />
   <WorkloadChart />
-  <TaskListPanel :tasks="filteredTasks" empty-text="Нет задач у команды по текущему фильтру" />
+  <TaskListPanel :tasks="filteredTasks" empty-text="Нет задач у команды по текущим фильтрам" />
 </template>
 
 <style scoped>
 .view-header { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; }
 .view-header h2 { margin: 0; font-size: 19px; }
-.assignee-filter { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 10px; }
 </style>
