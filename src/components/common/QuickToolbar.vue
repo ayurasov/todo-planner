@@ -10,6 +10,7 @@ const props = defineProps({
   // дублировать смысл пузырькового режима, где уже есть прозрачная логика
   // «Не выполнено / Выполнено».
   meetingMode: { type: Boolean, default: false },
+  compact: { type: Boolean, default: false },
 })
 const prefs = usePreferencesStore()
 
@@ -34,15 +35,6 @@ function cycleDensity() {
   prefs.set('density', next)
 }
 
-/**
- * Два взаимоисключающих режима списка:
- * - «Группировка» — обычный режим списка: пользователь выбирает способ
- *   группировки (none/status/priority/assignee/...) и, при необходимости,
- *   сортировку внутри групп.
- * - «Пузырьки» — фиксированное разбиение на «Не выполнено / Выполнено» со
- *   своей встроенной сортировкой (bubbleSort.js), без обычного select
- *   группировки и без конкурирующих правил сортировки.
- */
 const viewMode = computed(() => (prefs.groupBy === 'bubble' ? 'bubble' : 'grouping'))
 let lastNonBubbleGroupBy = prefs.groupBy === 'bubble' ? 'none' : prefs.groupBy
 function setViewMode(mode) {
@@ -58,7 +50,7 @@ const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
 </script>
 
 <template>
-  <div class="quick-toolbar">
+  <div class="quick-toolbar" :class="{ compact }">
     <span v-if="taskCount !== null" class="task-count">{{ taskCount }} задач</span>
 
     <div class="quick-group" role="group" aria-label="Режим отображения">
@@ -97,6 +89,8 @@ const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
       </label>
     </template>
 
+    <div class="quick-toolbar-spacer" />
+
     <button class="quick-icon-btn" title="Плотность строк" @click="cycleDensity">{{ DENSITY_ICON[prefs.density] }}</button>
 
     <router-link to="/settings" class="quick-icon-btn" title="Все настройки отображения">⋯</router-link>
@@ -108,6 +102,7 @@ const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 6px 2px 12px; font-size: 12.5px;
 }
+.quick-toolbar.compact { padding: 0; gap: 8px; flex: 1; }
 .task-count { color: var(--color-text-muted); margin-right: 4px; }
 .quick-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
 .quick-btn {
@@ -120,6 +115,7 @@ const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
   border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 12.5px; background: var(--color-surface);
 }
 .quick-toggle { display: flex; align-items: center; gap: 5px; cursor: pointer; color: var(--color-text-muted); }
+.quick-toolbar-spacer { flex: 1; min-width: 0; }
 .quick-icon-btn {
   border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 6px;
   width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
