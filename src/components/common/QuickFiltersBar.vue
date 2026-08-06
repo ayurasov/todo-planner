@@ -2,9 +2,11 @@
 import { ref, computed } from 'vue'
 import { useFiltersStore } from '../../stores/filtersStore'
 import { useUsersStore } from '../../stores/usersStore'
+import { usePreferencesStore } from '../../stores/preferencesStore'
 
 const filtersStore = useFiltersStore()
 const usersStore = useUsersStore()
+const prefs = usePreferencesStore()
 
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Все' },
@@ -28,9 +30,24 @@ const assigneeSummary = computed(() => {
   return `Исполнители (${filtersStore.assigneeIds.length})`
 })
 
+function forceBubbleMode() {
+  if (prefs.groupBy !== 'bubble') prefs.set('groupBy', 'bubble')
+}
+
+function setStatus(status) {
+  filtersStore.setStatus(status)
+  if (status !== 'all') forceBubbleMode()
+}
+
+function toggleAssignee(userId) {
+  filtersStore.toggleAssignee(userId)
+  if (filtersStore.assigneeIds.length) forceBubbleMode()
+}
+
 function toggleDatePreset(preset) {
   if (filtersStore.datePreset === preset) filtersStore.setCustomDateRange(null, null)
   else filtersStore.setDatePreset(preset)
+  if (filtersStore.datePreset) forceBubbleMode()
 }
 </script>
 
@@ -40,7 +57,7 @@ function toggleDatePreset(preset) {
       <button
         v-for="opt in STATUS_OPTIONS" :key="opt.value"
         class="filter-btn" :class="{ active: filtersStore.status === opt.value }"
-        @click="filtersStore.setStatus(opt.value)"
+        @click="setStatus(opt.value)"
       >{{ opt.label }}</button>
     </div>
 
@@ -52,7 +69,7 @@ function toggleDatePreset(preset) {
       </button>
       <div v-if="assigneePickerOpen" class="assignee-dropdown card" @click.self="assigneePickerOpen = false">
         <label v-for="u in usersStore.users" :key="u.id" class="assignee-option">
-          <input type="checkbox" :checked="filtersStore.assigneeIds.includes(u.id)" @change="filtersStore.toggleAssignee(u.id)" />
+          <input type="checkbox" :checked="filtersStore.assigneeIds.includes(u.id)" @change="toggleAssignee(u.id)" />
           {{ u.name }}
         </label>
         <div v-if="!usersStore.users.length" class="assignee-empty">Нет пользователей</div>
