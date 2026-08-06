@@ -66,9 +66,9 @@ export function createTask({
 
 export function createMeeting({
   id, title, date, description = '', createdBy = null,
-  createdAt = new Date().toISOString(),
+  createdAt = new Date().toISOString(), attendeeIds = [],
 }) {
-  return { id: id || nextId('meeting'), title, date, description, createdBy, createdAt }
+  return { id: id || nextId('meeting'), title, date, description, createdBy, createdAt, attendeeIds }
 }
 
 export function createChecklistItem({ id, taskId, title, done = false, order = 0, recurrenceScope = 'instance_only' }) {

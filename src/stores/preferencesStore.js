@@ -14,17 +14,12 @@ const DEFAULT_PREFS = {
   sortField: SortField.SCORE,
   sortDir: 'desc',
   colorCode: ColorCodeMode.PRIORITY,
-  showCompleted: false,
   showSubtaskCount: true,
   showChecklistProgress: true,
   showCommentsCount: true,
   showTags: true,
   showAssigneeAvatar: true,
   showDueDate: true,
-  // Настраиваемая видимость аккуратного блока метаданных дат на строке
-  // задачи: крайний срок уже покрыт showDueDate; отдельно управляем датой
-  // выполнения и датой последнего изменения, т.к. это разные сигналы
-  // (что сделано / что менялось) и не всем нужны оба сразу.
   showCompletedDate: true,
   showLastUpdatedDate: true,
   showScoreDebug: false,

@@ -47,7 +47,6 @@ function toggleSortDir() {
     <div class="settings-group">
       <label class="settings-label">Видимость полей в списке</label>
       <div class="checkbox-grid">
-        <label class="checkbox-row"><input type="checkbox" :checked="prefs.showCompleted" @change="prefs.toggle('showCompleted')" /> Выполненные задачи</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showDueDate" @change="prefs.toggle('showDueDate')" /> Крайний срок</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showCompletedDate" @change="prefs.toggle('showCompletedDate')" /> Дата выполнения</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showLastUpdatedDate" @change="prefs.toggle('showLastUpdatedDate')" /> Последнее изменение</label>

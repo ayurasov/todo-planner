@@ -1,5 +1,4 @@
 <script setup>
-import { computed } from 'vue'
 import { usePreferencesStore } from '../../stores/preferencesStore'
 import { GroupByMode, GROUP_LABEL } from '../../domain/entities/enums'
 
@@ -24,25 +23,6 @@ function cycleDensity() {
   prefs.set('density', next)
 }
 
-/**
- * Переключатель режима отображения: "Актуальность" — непрерывный ranking
- * score (rankingScore.js), "Пузырьки" — жёсткое разделение На "Не выполнено /
- * Выполнено" (bubbleSort.js), см. раздел 3.3 ТЗ TaskBubbler. Переключение
- * реализовано через prefs.groupBy, чтобы не плодить отдельный флаг режима —
- * "bubble" — это просто ещё один вариант группировки, взаимоисключающий
- * с прочими вариантами GroupByMode.
- */
-const viewMode = computed(() => (prefs.groupBy === 'bubble' ? 'bubble' : 'relevance'))
-let lastNonBubbleGroupBy = prefs.groupBy === 'bubble' ? 'none' : prefs.groupBy
-function setViewMode(mode) {
-  if (mode === 'bubble') {
-    if (prefs.groupBy !== 'bubble') lastNonBubbleGroupBy = prefs.groupBy
-    prefs.set('groupBy', 'bubble')
-  } else {
-    prefs.set('groupBy', lastNonBubbleGroupBy)
-  }
-}
-
 const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
 </script>
 
@@ -50,39 +30,21 @@ const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
   <div class="quick-toolbar">
     <span v-if="taskCount !== null" class="task-count">{{ taskCount }} задач</span>
 
-    <div class="quick-group" role="group" aria-label="Режим отображения">
-      <button
-        class="quick-btn" :class="{ active: viewMode === 'relevance' }"
-        @click="setViewMode('relevance')"
-        title="Единая сортировка по ranking score (просрочка, срок, недавняя активность, приоритет)"
-      >Актуальность</button>
-      <button
-        class="quick-btn" :class="{ active: viewMode === 'bubble' }"
-        @click="setViewMode('bubble')"
-        title="Два блока: Не выполнено (просрочка → срок → без срока) и Выполнено (по дате завершения)"
-      >Пузырьки</button>
-    </div>
-
-    <div v-if="viewMode === 'relevance'" class="quick-group" role="group" aria-label="Сортировка">
+    <div class="quick-group" role="group" aria-label="Сортировка">
       <button
         v-for="s in QUICK_SORTS" :key="s.field"
         class="quick-btn" :class="{ active: prefs.sortField === s.field }"
         @click="setSort(s.field)"
-        :title="`Сортировать по: ${s.label}`"
+        :title="`Сортировать по: ${s.label} (внутри блоков Не выполнено / Выполнено)`"
       >
         {{ s.label }}
         <span v-if="prefs.sortField === s.field" class="dir-arrow">{{ prefs.sortDir === 'asc' ? '↑' : '↓' }}</span>
       </button>
     </div>
 
-    <select v-if="viewMode === 'relevance'" class="quick-select" :value="prefs.groupBy" title="Группировка" @change="prefs.set('groupBy', $event.target.value)">
-      <option v-for="g in Object.values(GroupByMode).filter((g) => g !== 'bubble')" :key="g" :value="g">{{ GROUP_LABEL[g] }}</option>
+    <select class="quick-select" :value="prefs.groupBy" title="Группировка внутри блоков Не выполнено / Выполнено" @change="prefs.set('groupBy', $event.target.value)">
+      <option v-for="g in Object.values(GroupByMode)" :key="g" :value="g">{{ GROUP_LABEL[g] }}</option>
     </select>
-
-    <label class="quick-toggle" title="Показывать выполненные задачи">
-      <input type="checkbox" :checked="prefs.showCompleted" @change="prefs.toggle('showCompleted')" />
-      Выполненные
-    </label>
 
     <button class="quick-icon-btn" title="Плотность строк" @click="cycleDensity">{{ DENSITY_ICON[prefs.density] }}</button>
 
@@ -106,7 +68,6 @@ const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
 .quick-select {
   border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 12.5px; background: var(--color-surface);
 }
-.quick-toggle { display: flex; align-items: center; gap: 5px; cursor: pointer; color: var(--color-text-muted); }
 .quick-icon-btn {
   border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 6px;
   width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
