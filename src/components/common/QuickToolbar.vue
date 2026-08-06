@@ -3,15 +3,25 @@ import { computed } from 'vue'
 import { usePreferencesStore } from '../../stores/preferencesStore'
 import { GroupByMode, GROUP_LABEL } from '../../domain/entities/enums'
 
-defineProps({ taskCount: { type: Number, default: null } })
+const props = defineProps({
+  taskCount: { type: Number, default: null },
+  // Во встречах режим с единой лентой должен быть упрощён: оставляем только
+  // сортировку «Обновлено», чтобы не конкурировать с контекстом встречи и не
+  // дублировать смысл пузырькового режима, где уже есть прозрачная логика
+  // «Не выполнено / Выполнено».
+  meetingMode: { type: Boolean, default: false },
+})
 const prefs = usePreferencesStore()
 
-const QUICK_SORTS = [
-  { field: 'score', label: 'Актуальность' },
-  { field: 'due_date', label: 'Срок' },
-  { field: 'priority', label: 'Приоритет' },
-  { field: 'updated_at', label: 'Обновлено' },
-]
+const QUICK_SORTS = computed(() => {
+  if (props.meetingMode) return [{ field: 'updated_at', label: 'Обновлено' }]
+  return [
+    { field: 'score', label: 'Актуальность' },
+    { field: 'due_date', label: 'Срок' },
+    { field: 'priority', label: 'Приоритет' },
+    { field: 'updated_at', label: 'Обновлено' },
+  ]
+})
 
 function setSort(field) {
   if (prefs.sortField === field) prefs.set('sortDir', prefs.sortDir === 'asc' ? 'desc' : 'asc')
@@ -25,19 +35,15 @@ function cycleDensity() {
 }
 
 /**
- * Переключатель режима отображения: "Актуальность" — непрерывный ranking
- * score (rankingScore.js), "Пузырьки" — жёсткое разделение на "Не выполнено /
- * Выполнено" (bubbleSort.js), см. раздел 3.3 ТЗ TaskBubbler.
- *
- * Это ОТДЕЛЬНЫЙ визуальный переключатель (2 кнопки), а не просто ещё один
- * пункт в общем select группировки — режимы принципиально разные (единая
- * шкала релевантности vs жёсткое разбиение на 2 блока со своей внутренней
- * сортировкой), и пользователю должно быть сразу видно, какой режим активен,
- * без необходимости открывать dropdown. Технически переключение всё ещё
- * реализовано через prefs.groupBy (значение 'bubble'), чтобы не плодить
- * отдельный флаг состояния, но UI явно разделяет два режима.
+ * Два взаимоисключающих режима списка:
+ * - «Группировка» — обычный режим списка: пользователь выбирает способ
+ *   группировки (none/status/priority/assignee/...) и, при необходимости,
+ *   сортировку внутри групп.
+ * - «Пузырьки» — фиксированное разбиение на «Не выполнено / Выполнено» со
+ *   своей встроенной сортировкой (bubbleSort.js), без обычного select
+ *   группировки и без конкурирующих правил сортировки.
  */
-const viewMode = computed(() => (prefs.groupBy === 'bubble' ? 'bubble' : 'relevance'))
+const viewMode = computed(() => (prefs.groupBy === 'bubble' ? 'bubble' : 'grouping'))
 let lastNonBubbleGroupBy = prefs.groupBy === 'bubble' ? 'none' : prefs.groupBy
 function setViewMode(mode) {
   if (mode === 'bubble') {
@@ -57,10 +63,10 @@ const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
 
     <div class="quick-group" role="group" aria-label="Режим отображения">
       <button
-        class="quick-btn" :class="{ active: viewMode === 'relevance' }"
-        @click="setViewMode('relevance')"
-        title="Единая сортировка по ranking score (просрочка, срок, недавняя активность, приоритет)"
-      >Актуальность</button>
+        class="quick-btn" :class="{ active: viewMode === 'grouping' }"
+        @click="setViewMode('grouping')"
+        title="Обычный режим: группировка и сортировка списка"
+      >Группировка</button>
       <button
         class="quick-btn" :class="{ active: viewMode === 'bubble' }"
         @click="setViewMode('bubble')"
@@ -68,7 +74,7 @@ const DENSITY_ICON = { compact: '≡', comfortable: '☰', spacious: '▤' }
       >Пузырьки</button>
     </div>
 
-    <template v-if="viewMode === 'relevance'">
+    <template v-if="viewMode === 'grouping'">
       <div class="quick-group" role="group" aria-label="Сортировка">
         <button
           v-for="s in QUICK_SORTS" :key="s.field"
