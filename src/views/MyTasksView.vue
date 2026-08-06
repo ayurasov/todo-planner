@@ -1,8 +1,9 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useTasksStore } from '../stores/tasksStore'
 import { useListsStore } from '../stores/listsStore'
 import { useFiltersStore } from '../stores/filtersStore'
+import { useMeetingsStore } from '../stores/meetingsStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
@@ -10,8 +11,13 @@ import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 const tasksStore = useTasksStore()
 const listsStore = useListsStore()
 const filtersStore = useFiltersStore()
+const meetingsStore = useMeetingsStore()
 const myTasks = computed(() => filtersStore.apply(tasksStore.myTasksRanked))
 const defaultListId = computed(() => listsStore.lists[0]?.id)
+
+onMounted(async () => {
+  if (!meetingsStore.loaded) await meetingsStore.load()
+})
 </script>
 
 <template>
@@ -21,7 +27,7 @@ const defaultListId = computed(() => listsStore.lists[0]?.id)
   </div>
   <QuickFiltersBar />
   <QuickAddTaskRow v-if="defaultListId" :list-id="defaultListId" placeholder="Добавить задачу в первый доступный список..." />
-  <TaskListPanel :tasks="myTasks" empty-text="Нет задач, соответствующих текущим фильтрам" />
+  <TaskListPanel :tasks="myTasks" :group-by-meeting="true" empty-text="Нет задач, соответствующих текущим фильтрам" />
 </template>
 
 <style scoped>

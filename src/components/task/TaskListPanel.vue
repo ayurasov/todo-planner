@@ -1,32 +1,49 @@
 <script setup>
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import TaskRow from './TaskRow.vue'
 import QuickToolbar from '../common/QuickToolbar.vue'
 import { usePreferencesStore } from '../../stores/preferencesStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { useListsStore } from '../../stores/listsStore'
+import { useMeetingsStore } from '../../stores/meetingsStore'
 import { PRIORITY_LABEL } from '../../domain/entities/enums'
 import { splitIntoBubbles, BUBBLE_TIER_LABEL } from '../../domain/ranking/bubbleSort'
+import { formatDateTime } from '../../utils/formatters'
 
 const props = defineProps({
   tasks: { type: Array, required: true },
   emptyText: { type: String, default: 'Нет задач, соответствующих текущему фильтру' },
   showToolbar: { type: Boolean, default: true },
+  // Принудительная группировка по встрече (Промпт 5) — не зависит от
+  // пользовательских preferences.groupBy, включается конкретным экраном
+  // (My Tasks), внутри группы порядок — пузырьковый (bubbleSort.js).
+  groupByMeeting: { type: Boolean, default: false },
 })
 
 const prefs = usePreferencesStore()
 const usersStore = useUsersStore()
 const listsStore = useListsStore()
+const meetingsStore = useMeetingsStore()
 const uiStore = useUiStore()
+const router = useRouter()
 
 function openTask(task) { uiStore.openTask(task.id) }
 
+function goToMeeting(meetingId) {
+  router.push(`/meetings/${meetingId}`)
+}
+
 const visibleTasks = computed(() => {
   let list = props.tasks
-  // В режиме "Пузырьки" блок "Выполнено" — часть основного макета, поэтому
-  // выполненные задачи не отфильтровываются флагом showCompleted.
-  if (!prefs.showCompleted && prefs.groupBy !== 'bubble') list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
+  // В режиме "Пузырьки" (в т.ч. группировка по встречам, которая внутри
+  // группы использует тот же пузырьковый порядок) блок "Выполнено" — часть
+  // основного макета, поэтому выполненные задачи не отфильтровываются
+  // флагом showCompleted.
+  if (!prefs.showCompleted && prefs.groupBy !== 'bubble' && !props.groupByMeeting) {
+    list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
+  }
   return list
 })
 
@@ -60,7 +77,57 @@ const bubbleBlocks = computed(() => {
   ]
 })
 
+/**
+ * Группировка "Мои задачи" по встрече (Промпт 5). Задача принадлежит группе
+ * своей встречи (task.meetingId), задачи без meetingId попадают в отдельный
+ * блок "Без встречи", который всегда идёт последним. Порядок групп-встреч —
+ * по дате встречи (более ранние/близкие — выше). Внутри каждой группы
+ * применяется пузырьковый порядок (splitIntoBubbles), а не ranking score —
+ * это осознанное решение: встреча — это фиксированный контекст, где важнее
+ * видеть "что ещё не сделано" вместо relevance-скоринга.
+ */
+const meetingGroups = computed(() => {
+  const byMeeting = {}
+  const noMeeting = []
+  for (const task of visibleTasks.value) {
+    if (task.meetingId) {
+      if (!byMeeting[task.meetingId]) byMeeting[task.meetingId] = []
+      byMeeting[task.meetingId].push(task)
+    } else {
+      noMeeting.push(task)
+    }
+  }
+
+  const meetingEntries = Object.entries(byMeeting)
+    .map(([meetingId, tasks]) => ({ meetingId, meeting: meetingsStore.meetingById(meetingId), tasks }))
+    .sort((a, b) => {
+      if (!a.meeting) return 1
+      if (!b.meeting) return -1
+      return new Date(a.meeting.date) - new Date(b.meeting.date)
+    })
+
+  const groupsResult = meetingEntries.map(({ meetingId, meeting, tasks }) => {
+    const { notDone, done } = splitIntoBubbles(tasks)
+    return {
+      key: `meeting_${meetingId}`,
+      label: meeting ? `Встреча: ${meeting.title}, ${formatDateTime(meeting.date)}` : `Встреча (${meetingId})`,
+      meetingId,
+      tasks: [...notDone, ...done],
+      bubble: true,
+      isMeetingGroup: true,
+    }
+  })
+
+  if (noMeeting.length) {
+    const { notDone, done } = splitIntoBubbles(noMeeting)
+    groupsResult.push({ key: 'no_meeting', label: 'Без встречи', tasks: [...notDone, ...done], bubble: true })
+  }
+
+  return groupsResult
+})
+
 const groups = computed(() => {
+  if (props.groupByMeeting) return meetingGroups.value
   if (prefs.groupBy === 'bubble') return bubbleBlocks.value
   const sorted = sortTasks(visibleTasks.value)
   if (prefs.groupBy === 'none') return [{ key: null, label: null, tasks: sorted }]
@@ -102,7 +169,10 @@ const groups = computed(() => {
   <QuickToolbar v-if="showToolbar" :task-count="visibleTasks.length" />
 
   <div v-for="group in groups" :key="group.key || 'all'" class="group-block" :class="{ 'bubble-block': group.bubble, 'bubble-block-done': group.key === 'done' }">
-    <div v-if="group.label" class="group-header" :class="{ 'bubble-header': group.bubble }">{{ group.label }}</div>
+    <div v-if="group.label" class="group-header" :class="{ 'bubble-header': group.bubble, 'meeting-group-header': group.isMeetingGroup }">
+      <span class="group-header-text">{{ group.label }}</span>
+      <button v-if="group.isMeetingGroup" class="btn btn-ghost btn-sm meeting-link-btn" @click="goToMeeting(group.meetingId)">Перейти к встрече →</button>
+    </div>
     <div class="task-list-panel card" :class="`density-${prefs.density}`">
       <div v-if="!group.tasks.length" class="empty-state">{{ emptyText }}</div>
       <TransitionGroup v-else name="fade" tag="div" class="task-list-body">
@@ -122,4 +192,7 @@ const groups = computed(() => {
 .bubble-header { font-size: 13.5px; text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 2px 10px; }
 .bubble-block-done .bubble-header { color: var(--color-text-muted); opacity: 0.8; }
 .bubble-block:not(.bubble-block-done) .bubble-header { color: var(--color-danger); }
+.meeting-group-header { color: var(--color-text) !important; justify-content: space-between; text-transform: none; letter-spacing: normal; font-size: 13px; background: #eef1f7; border-radius: 8px; padding: 8px 10px; }
+.group-header-text { display: flex; align-items: center; gap: 6px; }
+.meeting-link-btn { flex-shrink: 0; white-space: nowrap; }
 </style>
