@@ -46,3 +46,34 @@ export function relativeDay(iso) {
   if (diffDays < 0) return `Просрочено на ${Math.abs(diffDays)} дн.`
   return formatDate(iso)
 }
+
+const WEEKDAY_LABEL_SHORT = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб']
+const WEEKDAY_LABEL_GENITIVE_PLURAL = {
+  1: 'понедельникам', 2: 'вторникам', 3: 'средам', 4: 'четвергам',
+  5: 'пятницам', 6: 'субботам', 0: 'воскресеньям',
+}
+
+/**
+ * Человекочитаемое описание регулярности встречи для карточки/списка встреч.
+ * Модель: meeting.recurrence = null | { freq: 'daily'|'weekly'|'biweekly', weekdays: number[] }
+ * weekdays — номера дней недели (0=вс..6=сб), актуальны только для weekly/biweekly.
+ * Если recurrence отсутствует — встреча считается разовой.
+ */
+export function formatMeetingRecurrence(recurrence) {
+  if (!recurrence || !recurrence.freq) return 'Разовая'
+  const days = [...(recurrence.weekdays || [])].sort((a, b) => a - b)
+  const daysLabel = days.length
+    ? days.map((d) => WEEKDAY_LABEL_GENITIVE_PLURAL[d] || WEEKDAY_LABEL_SHORT[d]).join(', ')
+    : null
+
+  switch (recurrence.freq) {
+    case 'daily':
+      return 'Регулярная: каждый день'
+    case 'weekly':
+      return daysLabel ? `Регулярная: каждую неделю по ${daysLabel}` : 'Регулярная: каждую неделю'
+    case 'biweekly':
+      return daysLabel ? `Регулярная: раз в 2 недели по ${daysLabel}` : 'Регулярная: раз в 2 недели'
+    default:
+      return 'Регулярная'
+  }
+}
