@@ -6,6 +6,8 @@ import { useListsStore } from '../../stores/listsStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
 import { relativeDay, isOverdue, relativeTimeAgo, formatDate } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
+import { useAssignableUsers } from '../../composables/useAssignableUsers'
+import { useClickOutside } from '../../composables/useClickOutside'
 import PriorityBadge from './PriorityBadge.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
 
@@ -46,6 +48,24 @@ const checklistCount = checklistItems
 const commentsCount = computed(() => tasksStore.commentsByTask[props.task.id]?.length)
 
 const { canEditThisTask, canToggleStatus, reason: permissionReason } = useTaskPermissions(() => props.task)
+
+// Быстрый ассайн исполнителя кликом по аватару строки — не требует
+// открытия контекстного меню. Список кандидатов — тот же, что и в
+// контекстном меню (учитывает состав встречи, если задача к ней привязана).
+const assignPickerOpen = ref(false)
+const assignPickerEl = ref(null)
+const assignableUsers = useAssignableUsers(() => props.task)
+useClickOutside(assignPickerEl, () => { assignPickerOpen.value = false })
+
+function toggleAssignPicker() {
+  if (!canEditThisTask.value) return
+  assignPickerOpen.value = !assignPickerOpen.value
+}
+
+function quickAssign(userId) {
+  tasksStore.assignTask(props.task.id, userId)
+  assignPickerOpen.value = false
+}
 
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
 
@@ -211,8 +231,29 @@ function closeContextMenu() {
         </div>
       </div>
 
-      <div v-if="prefs.showAssigneeAvatar" class="task-assignee" :title="assignee?.name">
-        <span v-if="assignee" class="avatar" :class="{ 'avatar-compact': prefs.compactAvatars }">{{ assignee.name.charAt(0) }}</span>
+      <div v-if="prefs.showAssigneeAvatar" ref="assignPickerEl" class="task-assignee">
+        <button
+          class="avatar-btn" :class="{ 'avatar-btn-disabled': !canEditThisTask }"
+          :title="canEditThisTask ? (assignee ? `Исполнитель: ${assignee.name} — нажмите, чтобы изменить` : 'Назначить исполнителя') : assignee?.name"
+          @click.stop="toggleAssignPicker"
+        >
+          <span v-if="assignee" class="avatar" :class="{ 'avatar-compact': prefs.compactAvatars }">{{ assignee.name.charAt(0) }}</span>
+          <span v-else class="avatar avatar-empty" :class="{ 'avatar-compact': prefs.compactAvatars }">+</span>
+        </button>
+        <div v-if="assignPickerOpen" class="assign-dropdown card scroll-thin" @click.stop>
+          <button
+            v-for="u in assignableUsers" :key="u.id"
+            class="assign-option" :class="{ active: task.assigneeId === u.id }"
+            @click="quickAssign(u.id)"
+          >
+            <span class="assign-avatar">{{ u.name.charAt(0) }}</span>
+            {{ u.name }}
+            <span v-if="task.assigneeId === u.id" class="assign-check">✓</span>
+          </button>
+          <button class="assign-option" @click="quickAssign(null)">
+            <span class="assign-avatar assign-avatar-empty">—</span> Без исполнителя
+          </button>
+        </div>
       </div>
 
       <div class="task-quick-actions">
@@ -264,6 +305,7 @@ function closeContextMenu() {
       @close="closeContextMenu"
       @open-detail="emit('open', $event)"
       @add-subtask="startAddSubtask"
+      @rename="startEditTitle"
     />
   </div>
 </template>
@@ -303,12 +345,31 @@ function closeContextMenu() {
 .date-meta-done { color: #1e9e4d; opacity: 0.85; }
 .list-badge { font-weight: 600; }
 .watcher-tag, .score-tag { background: #f4f0ff; color: #7c5cd6; }
-.task-assignee { width: 26px; flex-shrink: 0; }
+.task-assignee { width: 26px; flex-shrink: 0; position: relative; }
+.avatar-btn { border: none; background: none; padding: 0; cursor: pointer; display: flex; border-radius: 50%; }
+.avatar-btn-disabled { cursor: default; }
 .avatar {
   width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary);
   color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;
 }
+.avatar-empty { background: #d9dde8; color: var(--color-text-muted); font-weight: 700; }
 .avatar-compact { width: 18px; height: 18px; font-size: 9px; }
+.assign-dropdown {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 60; min-width: 180px;
+  padding: 4px; display: flex; flex-direction: column; gap: 1px; max-height: 220px; overflow-y: auto;
+}
+.assign-option {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: none;
+  padding: 6px 8px; border-radius: 7px; font-size: 12.5px; cursor: pointer; color: var(--color-text);
+}
+.assign-option:hover { background: #eef1f7; }
+.assign-option.active { background: #eef2ff; color: var(--color-primary-dark); font-weight: 600; }
+.assign-avatar {
+  width: 20px; height: 20px; border-radius: 50%; background: #b7bfd1; color: #fff; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+}
+.assign-avatar-empty { background: #d9dde8; color: var(--color-text-muted); }
+.assign-check { margin-left: auto; color: var(--color-primary); font-weight: 700; }
 .task-quick-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
 .task-row:hover .task-quick-actions { opacity: 1; }
 .task-children { border-left: 1px solid var(--color-border); margin-left: 20px; }
