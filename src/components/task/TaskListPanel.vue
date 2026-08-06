@@ -7,6 +7,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { useListsStore } from '../../stores/listsStore'
 import { PRIORITY_LABEL } from '../../domain/entities/enums'
+import { splitIntoBubbles, BUBBLE_TIER_LABEL } from '../../domain/ranking/bubbleSort'
 
 const props = defineProps({
   tasks: { type: Array, required: true },
@@ -23,7 +24,9 @@ function openTask(task) { uiStore.openTask(task.id) }
 
 const visibleTasks = computed(() => {
   let list = props.tasks
-  if (!prefs.showCompleted) list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
+  // В режиме "Пузырьки" блок "Выполнено" — часть основного макета, поэтому
+  // выполненные задачи не отфильтровываются флагом showCompleted.
+  if (!prefs.showCompleted && prefs.groupBy !== 'bubble') list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
   return list
 })
 
@@ -49,7 +52,16 @@ function sortTasks(tasks) {
   })
 }
 
+const bubbleBlocks = computed(() => {
+  const { notDone, done } = splitIntoBubbles(visibleTasks.value)
+  return [
+    { key: 'not_done', label: `Не выполнено (${notDone.length})`, tasks: notDone, bubble: true },
+    { key: 'done', label: `Выполнено (${done.length})`, tasks: done, bubble: true },
+  ]
+})
+
 const groups = computed(() => {
+  if (prefs.groupBy === 'bubble') return bubbleBlocks.value
   const sorted = sortTasks(visibleTasks.value)
   if (prefs.groupBy === 'none') return [{ key: null, label: null, tasks: sorted }]
 
@@ -89,12 +101,12 @@ const groups = computed(() => {
 <template>
   <QuickToolbar v-if="showToolbar" :task-count="visibleTasks.length" />
 
-  <div v-for="group in groups" :key="group.key || 'all'" class="group-block">
-    <div v-if="group.label" class="group-header">{{ group.label }} <span class="group-count">{{ group.tasks.length }}</span></div>
+  <div v-for="group in groups" :key="group.key || 'all'" class="group-block" :class="{ 'bubble-block': group.bubble, 'bubble-block-done': group.key === 'done' }">
+    <div v-if="group.label" class="group-header" :class="{ 'bubble-header': group.bubble }">{{ group.label }}</div>
     <div class="task-list-panel card" :class="`density-${prefs.density}`">
       <div v-if="!group.tasks.length" class="empty-state">{{ emptyText }}</div>
       <TransitionGroup v-else name="fade" tag="div" class="task-list-body">
-        <TaskRow v-for="task in group.tasks" :key="task.id" :task="task" class="fade-move" @open="openTask" />
+        <TaskRow v-for="task in group.tasks" :key="task.id" :task="task" :bubble-mode="group.bubble" class="fade-move" @open="openTask" />
       </TransitionGroup>
     </div>
   </div>
@@ -107,4 +119,7 @@ const groups = computed(() => {
 .group-count { background: #eef1f7; border-radius: 10px; padding: 1px 7px; font-size: 11px; font-weight: 600; }
 .task-list-panel { overflow: hidden; }
 .empty-state { padding: 40px 20px; text-align: center; color: var(--color-text-muted); font-size: 13.5px; }
+.bubble-header { font-size: 13.5px; text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 2px 10px; }
+.bubble-block-done .bubble-header { color: var(--color-text-muted); opacity: 0.8; }
+.bubble-block:not(.bubble-block-done) .bubble-header { color: var(--color-danger); }
 </style>

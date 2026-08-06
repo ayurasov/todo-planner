@@ -12,6 +12,7 @@ import TaskContextMenu from './TaskContextMenu.vue'
 const props = defineProps({
   task: { type: Object, required: true },
   depth: { type: Number, default: 0 },
+  bubbleMode: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open'])
 
@@ -159,7 +160,7 @@ function closeContextMenu() {
   <div class="task-row-wrapper">
     <div
       class="task-row"
-      :class="[`density-${prefs.density}`, { done: isDone, overdue: overdue && prefs.highlightOverdue }]"
+      :class="[`density-${prefs.density}`, { done: isDone, overdue: overdue && prefs.highlightOverdue, 'bubble-overdue': bubbleMode && overdue, 'bubble-no-due': bubbleMode && !task.dueDate && !isDone }]"
       :style="{ paddingLeft: `${8 + depth * 22}px`, borderLeftColor: rowAccentColor, borderLeftWidth: rowAccentColor !== 'transparent' ? '3px' : '0' }"
       @contextmenu="openContextMenu"
     >
@@ -238,7 +239,7 @@ function closeContextMenu() {
     </div>
 
     <div v-if="expanded && (children.length || addingSubtask)" class="task-children">
-      <TaskRow v-for="child in children" :key="child.id" :task="child" :depth="depth + 1" @open="emit('open', $event)" />
+      <TaskRow v-for="child in children" :key="child.id" :task="child" :depth="depth + 1" :bubble-mode="bubbleMode" @open="emit('open', $event)" />
       <div v-if="addingSubtask" class="subtask-add-row" :style="{ paddingLeft: `${28 + (depth + 1) * 22}px` }">
         <span class="subtask-add-icon">↳</span>
         <input
@@ -277,6 +278,8 @@ function closeContextMenu() {
 .task-row:hover { background: #fafbfe; }
 .task-row.done .task-title { color: var(--color-text-muted); text-decoration: line-through; }
 .task-row.overdue .due-date { color: var(--color-danger); font-weight: 600; }
+.task-row.bubble-overdue { background: rgba(229, 72, 77, 0.07); }
+.task-row.bubble-no-due { box-shadow: inset 3px 0 0 var(--color-text-muted); }
 .expand-btn { border: none; background: none; cursor: pointer; width: 16px; color: var(--color-text-muted); font-size: 12px; }
 .expand-spacer { width: 16px; display: inline-block; }
 .task-checkbox { accent-color: var(--color-primary); cursor: pointer; }

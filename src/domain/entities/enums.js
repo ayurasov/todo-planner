@@ -92,6 +92,7 @@ export const GroupByMode = {
   DUE_DATE: 'due_date',
   LIST: 'list',
   TAG: 'tag',
+  BUBBLE: 'bubble',
 }
 
 export const SortField = {
@@ -119,6 +120,7 @@ export const GROUP_LABEL = {
   due_date: 'По сроку',
   list: 'По списку',
   tag: 'По тегу',
+  bubble: 'Пузырьки (Не выполнено / Выполнено)',
 }
 
 export const SORT_LABEL = {
