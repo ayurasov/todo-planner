@@ -2,7 +2,6 @@
 import { computed, onMounted } from 'vue'
 import { useTasksStore } from '../stores/tasksStore'
 import { useListsStore } from '../stores/listsStore'
-import { useFiltersStore } from '../stores/filtersStore'
 import { useMeetingsStore } from '../stores/meetingsStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
@@ -10,9 +9,8 @@ import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 
 const tasksStore = useTasksStore()
 const listsStore = useListsStore()
-const filtersStore = useFiltersStore()
 const meetingsStore = useMeetingsStore()
-const myTasks = computed(() => filtersStore.apply(tasksStore.myTasksRanked))
+const myTasks = computed(() => tasksStore.myTasksRanked)
 const defaultListId = computed(() => listsStore.lists[0]?.id)
 
 onMounted(async () => {

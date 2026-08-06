@@ -8,6 +8,7 @@ import { useUiStore } from '../../stores/uiStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { useListsStore } from '../../stores/listsStore'
 import { useMeetingsStore } from '../../stores/meetingsStore'
+import { useFiltersStore } from '../../stores/filtersStore'
 import { PRIORITY_LABEL } from '../../domain/entities/enums'
 import { splitIntoBubbles, BUBBLE_TIER_LABEL } from '../../domain/ranking/bubbleSort'
 import { formatDateTime } from '../../utils/formatters'
@@ -26,6 +27,7 @@ const prefs = usePreferencesStore()
 const usersStore = useUsersStore()
 const listsStore = useListsStore()
 const meetingsStore = useMeetingsStore()
+const filtersStore = useFiltersStore()
 const uiStore = useUiStore()
 const router = useRouter()
 
@@ -36,7 +38,11 @@ function goToMeeting(meetingId) {
 }
 
 const visibleTasks = computed(() => {
-  let list = props.tasks
+  // Быстрые фильтры (QuickFiltersBar / filtersStore) применяются здесь —
+  // централизованно, на уровне TaskListPanel — чтобы работать одинаково
+  // во ВСЕХ представлениях и списках (Мои задачи, Команда, конкретный
+  // список, встреча), а не только там, где явно вызван filtersStore.apply().
+  let list = filtersStore.apply(props.tasks)
   // В режиме "Пузырьки" (в т.ч. группировка по встречам, которая внутри
   // группы использует тот же пузырьковый порядок) блок "Выполнено" — часть
   // основного макета, поэтому выполненные задачи не отфильтровываются

@@ -8,6 +8,7 @@ import { useListsStore } from '../stores/listsStore'
 import { useIsAdmin } from '../composables/usePermissions'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
+import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import { formatDateTime } from '../utils/formatters'
 
 const props = defineProps({ id: { type: String, required: true } })
@@ -110,6 +111,7 @@ async function removeMeeting() {
     </div>
 
     <h3 class="tasks-title">Задачи встречи</h3>
+    <QuickFiltersBar />
     <QuickAddTaskRow
       v-if="defaultListId"
       :list-id="defaultListId"

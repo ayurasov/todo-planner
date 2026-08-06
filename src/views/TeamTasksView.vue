@@ -1,15 +1,13 @@
 <script setup>
 import { computed } from 'vue'
 import { useTasksStore } from '../stores/tasksStore'
-import { useFiltersStore } from '../stores/filtersStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import WorkloadChart from '../components/charts/WorkloadChart.vue'
 
 const tasksStore = useTasksStore()
-const filtersStore = useFiltersStore()
 
-const filteredTasks = computed(() => filtersStore.apply(tasksStore.teamTasksRanked))
+const filteredTasks = computed(() => tasksStore.teamTasksRanked)
 </script>
 
 <template>

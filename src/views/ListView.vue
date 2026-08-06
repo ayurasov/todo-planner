@@ -5,6 +5,7 @@ import { useListsStore } from '../stores/listsStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import ListSettingsModal from '../components/common/ListSettingsModal.vue'
+import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 
 const props = defineProps({ id: { type: String, required: true } })
 const tasksStore = useTasksStore()
@@ -24,6 +25,7 @@ const rankedRoots = computed(() => tasksStore.rankedTasksForList(props.id).filte
     <button class="btn btn-sm" @click="showSettings = true">⚙️ Настроить список</button>
   </div>
   <p v-if="list?.description" class="list-description">{{ list.description }}</p>
+  <QuickFiltersBar />
   <QuickAddTaskRow :list-id="id" />
   <TaskListPanel :tasks="rankedRoots" empty-text="В этом списке пока нет задач" />
   <ListSettingsModal v-if="showSettings && list" :list="list" @close="showSettings = false" />
