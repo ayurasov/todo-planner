@@ -169,7 +169,7 @@ async function removeMeeting() {
       :meeting-id="props.id"
       placeholder="Добавить задачу по итогам встречи..."
     />
-    <TaskListPanel :tasks="meetingTasks" empty-text="К этой встрече пока не привязано ни одной задачи" />
+    <TaskListPanel :tasks="meetingTasks" :meeting-mode="true" empty-text="К этой встрече пока не привязано ни одной задачи" />
 
     <div v-if="showSummaryParser" class="modal-overlay" @click.self="showSummaryParser = false">
       <div class="modal modal-wide card scroll-thin">
