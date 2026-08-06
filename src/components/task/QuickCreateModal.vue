@@ -1,8 +1,10 @@
 <script setup>
-import { ref, computed, nextTick, onMounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useTasksStore } from '../../stores/tasksStore'
 import { useListsStore } from '../../stores/listsStore'
 import { useUsersStore } from '../../stores/usersStore'
+import { useMeetingsStore } from '../../stores/meetingsStore'
+import { useAssignableUsers } from '../../composables/useAssignableUsers'
 import { TaskPriority, PRIORITY_LABEL } from '../../domain/entities/enums'
 
 const props = defineProps({
@@ -12,6 +14,7 @@ const emit = defineEmits(['close'])
 const tasksStore = useTasksStore()
 const listsStore = useListsStore()
 const usersStore = useUsersStore()
+const meetingsStore = useMeetingsStore()
 
 const titleEl = ref(null)
 const title = ref('')
@@ -25,7 +28,23 @@ const createMore = ref(false)
 
 const contextList = computed(() => listsStore.byId(listId.value))
 const parentTask = computed(() => parentTaskId.value ? tasksStore.byId(parentTaskId.value) : null)
+const contextMeeting = computed(() => meetingId.value ? meetingsStore.meetingById(meetingId.value) : null)
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
+
+// Список исполнителей ограничивается участниками встречи (attendeeIds), если
+// задача привязана к встрече и участники для неё настроены владельцем —
+// см. useAssignableUsers.js. При создании из карточки встречи через верхнюю
+// кнопку «+ Создать задачу» meetingId уже приходит в context (AppTopBar.vue).
+const assignableUsers = useAssignableUsers(() => ({ meetingId: meetingId.value }))
+
+// Если пользователь вручную сменил встречу (или очистил её) и текущий
+// assignee больше не входит в список доступных участников — сбрасываем,
+// чтобы не отправить задачу с исполнителем, не имеющим отношения к встрече.
+watch(assignableUsers, (users) => {
+  if (assigneeId.value && !users.some((u) => u.id === assigneeId.value)) {
+    assigneeId.value = null
+  }
+})
 
 onMounted(() => nextTick(() => titleEl.value?.focus()))
 
@@ -76,6 +95,17 @@ function quickDue(days) {
         </div>
 
         <div class="field-block">
+          <span class="field-caption">Встреча (необязательно)</span>
+          <select v-model="meetingId" class="field-select">
+            <option :value="null">Без встречи</option>
+            <option v-for="m in meetingsStore.sortedByDate" :key="m.id" :value="m.id">{{ m.title }}</option>
+          </select>
+          <span v-if="contextMeeting" class="field-hint">
+            Исполнитель ограничен участниками этой встречи{{ contextMeeting.attendeeIds?.length ? '' : ' (участники не заданы — доступны все)' }}
+          </span>
+        </div>
+
+        <div class="field-block">
           <span class="field-caption">Приоритет</span>
           <div class="segmented-pills">
             <button
@@ -95,12 +125,13 @@ function quickDue(days) {
           <div class="assignee-pills">
             <button class="assignee-pill" :class="{ active: !assigneeId }" @click="assigneeId = null">Не назначен</button>
             <button
-              v-for="u in usersStore.users" :key="u.id"
+              v-for="u in assignableUsers" :key="u.id"
               class="assignee-pill" :class="{ active: assigneeId === u.id }"
               @click="assigneeId = u.id"
             >
               <span class="mini-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
             </button>
+            <span v-if="!assignableUsers.length" class="field-hint">Нет доступных участников</span>
           </div>
         </div>
 
@@ -145,6 +176,7 @@ function quickDue(days) {
 .field-block { display: flex; flex-direction: column; gap: 6px; }
 .field-caption { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
 .field-select { border: 1px solid var(--color-border); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+.field-hint { font-size: 11px; color: var(--color-text-muted); }
 .segmented-pills { display: flex; gap: 5px; flex-wrap: wrap; }
 .pill {
   border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 20px;
@@ -153,7 +185,7 @@ function quickDue(days) {
 .pill:hover { background: #f1f3f9; }
 .pill.active { font-weight: 600; color: var(--color-text); }
 .dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-.assignee-pills { display: flex; gap: 5px; flex-wrap: wrap; }
+.assignee-pills { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
 .assignee-pill {
   border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 20px;
   padding: 5px 10px; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 6px;
