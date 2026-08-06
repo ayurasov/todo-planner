@@ -18,7 +18,7 @@ function setThreshold(e) {
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('close')">
+  <div class="modal-overlay">
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Настройки уведомлений</h3>
