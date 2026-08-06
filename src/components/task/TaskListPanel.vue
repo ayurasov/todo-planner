@@ -17,12 +17,11 @@ const props = defineProps({
   tasks: { type: Array, required: true },
   emptyText: { type: String, default: 'Нет задач, соответствующих текущему фильтру' },
   showToolbar: { type: Boolean, default: true },
-  // Принудительная группировка по встрече (Промпт 5) — не зависит от
-  // пользовательских preferences.groupBy, включается конкретным экраном
-  // (My Tasks), внутри группы порядок теперь берётся из выбранной в
-  // QuickFiltersBar сортировки (см. sortTasks), а не из bubbleSort —
-  // иначе кнопки сортировки в панели фильтров визуально работали, но
-  // не влияли на порядок внутри групп встреч.
+  // Авто-группировка по встрече (Промпт 5) — это только дефолтное поведение
+  // экрана (My Tasks), которое включается, только если пользователь явно не
+  // выбрал свой вариант группировки в QuickToolbar (prefs.groupBy). Раньше этот режим
+  // безусловно игнорировал prefs.groupBy — из-за этого выбор группировки в
+  // тулбаре на экране «Мои задачи» не имел эффекта (см. groups ниже).
   groupByMeeting: { type: Boolean, default: false },
 })
 
@@ -46,11 +45,11 @@ const visibleTasks = computed(() => {
   // во ВСЕХ представлениях и списках (Мои задачи, Команда, конкретный
   // список, встреча), а не только там, где явно вызван filtersStore.apply().
   let list = filtersStore.apply(props.tasks)
-  // В режиме "Пузырьки" (в т.ч. группировка по встречам, которая внутри
-  // группы использует тот же пузырьковый порядок) блок "Выполнено" — часть
-  // основного макета, поэтому выполненные задачи не отфильтровываются
+  const usingBubble = prefs.groupBy === 'bubble' || (props.groupByMeeting && (!prefs.groupBy || prefs.groupBy === 'none'))
+  // В режиме "Пузырьки" (в т.ч. авто-группировка по встречам) блок "Выполнено" —
+  // часть основного макета, поэтому выполненные задачи не отфильтровываются
   // флагом showCompleted.
-  if (!prefs.showCompleted && prefs.groupBy !== 'bubble' && !props.groupByMeeting) {
+  if (!prefs.showCompleted && !usingBubble) {
     list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
   }
   return list
@@ -95,9 +94,8 @@ const bubbleBlocks = computed(() => {
  * своей встречи (task.meetingId), задачи без meetingId попадают в отдельный
  * блок "Без встречи", который всегда идёт последним. Порядок групп-встреч —
  * по дате встречи (более ранние/близкие — выше). Внутри каждой группы
- * применяется сортировка, выбранная пользователем в QuickFiltersBar
- * (sortTasks) — это делает поведение предсказуемым: переключатель
- * сортировки одинаково работает и с группировкой по встречам, и без неё.
+ * применяется сортировка — та же, что выбрана пользователем в QuickFiltersBar
+ * (sortTasks), а не жёсткий пузырьковый порядок.
  */
 const meetingGroups = computed(() => {
   const byMeeting = {}
@@ -135,19 +133,18 @@ const meetingGroups = computed(() => {
   return groupsResult
 })
 
-const groups = computed(() => {
-  if (props.groupByMeeting) return meetingGroups.value
-  if (prefs.groupBy === 'bubble') return bubbleBlocks.value
-  const sorted = sortTasks(visibleTasks.value)
-  if (prefs.groupBy === 'none') return [{ key: null, label: null, tasks: sorted }]
+const GROUP_KEY_LABEL = {
+  status: { open: 'Открыто', in_progress: 'В работе', done: 'Выполнено', cancelled: 'Отменено' },
+}
 
+function explicitGroups(sorted) {
   const buckets = {}
   const order = []
   for (const task of sorted) {
     let key, label
     switch (prefs.groupBy) {
       case 'status':
-        key = task.status; label = { open: 'Открыто', in_progress: 'В работе', done: 'Выполнено', cancelled: 'Отменено' }[task.status]
+        key = task.status; label = GROUP_KEY_LABEL.status[task.status]
         break
       case 'priority':
         key = task.priority; label = PRIORITY_LABEL[task.priority]
@@ -171,6 +168,16 @@ const groups = computed(() => {
     buckets[key].tasks.push(task)
   }
   return order.map((k) => buckets[k])
+}
+
+const groups = computed(() => {
+  // Приоритеты (сверху вниз): 1) явный выбор группировки в QuickToolbar
+  // (prefs.groupBy из GroupByMode, кроме 'none'), 2) автоматическая группировка по
+  // встречам (только на экранах с groupByMeeting), 3) без группировки.
+  if (prefs.groupBy === 'bubble') return bubbleBlocks.value
+  if (prefs.groupBy && prefs.groupBy !== 'none') return explicitGroups(sortTasks(visibleTasks.value))
+  if (props.groupByMeeting) return meetingGroups.value
+  return [{ key: null, label: null, tasks: sortTasks(visibleTasks.value) }]
 })
 </script>
 
@@ -180,6 +187,7 @@ const groups = computed(() => {
   <div v-for="group in groups" :key="group.key || 'all'" class="group-block" :class="{ 'bubble-block': group.bubble, 'bubble-block-done': group.key === 'done' }">
     <div v-if="group.label" class="group-header" :class="{ 'bubble-header': group.bubble, 'meeting-group-header': group.isMeetingGroup }">
       <span class="group-header-text">{{ group.label }}</span>
+      <span v-if="!group.bubble" class="group-count">{{ group.tasks.length }}</span>
       <button v-if="group.isMeetingGroup" class="btn btn-ghost btn-sm meeting-link-btn" @click="goToMeeting(group.meetingId)">Перейти к встрече →</button>
     </div>
     <div class="task-list-panel card" :class="`density-${prefs.density}`">
