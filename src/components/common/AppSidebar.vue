@@ -17,7 +17,10 @@ const viewStore = useViewStore()
     </nav>
 
     <div class="sidebar-section">
-      <div class="sidebar-section-title">Списки</div>
+      <div class="sidebar-section-title">
+        Списки
+        <router-link to="/lists-manager" class="manage-link" title="Управление списками">⚙️</router-link>
+      </div>
       <router-link
         v-for="list in listsStore.lists"
         :key="list.id"
@@ -48,7 +51,9 @@ const viewStore = useViewStore()
 .sidebar-logo { font-weight: 700; font-size: 15px; padding: 4px 10px 16px; }
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
 .sidebar-section { margin-top: 10px; }
-.sidebar-section-title { font-size: 11px; color: var(--color-text-muted); padding: 4px 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.sidebar-section-title { font-size: 11px; color: var(--color-text-muted); padding: 4px 10px; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; justify-content: space-between; }
+.manage-link { text-decoration: none; font-size: 12px; opacity: 0.7; }
+.manage-link:hover { opacity: 1; }
 .nav-item {
   display: flex; align-items: center; gap: 8px;
   padding: 7px 10px; border-radius: var(--radius-sm); font-size: 13px;

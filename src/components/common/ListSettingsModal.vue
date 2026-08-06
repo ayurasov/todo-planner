@@ -1,7 +1,7 @@
 <script setup>
 import { reactive, watch } from 'vue'
 import { useListsStore } from '../../stores/listsStore'
-import { GroupByMode, SortField, GROUP_LABEL, SORT_LABEL } from '../../domain/entities/enums'
+import { GroupByMode, SortField, GROUP_LABEL, SORT_LABEL, WEEKDAY_LABEL, MEETING_FREQ_LABEL } from '../../domain/entities/enums'
 
 const props = defineProps({ list: { type: Object, required: true } })
 const emit = defineEmits(['close'])
@@ -13,6 +13,16 @@ const form = reactive({
   color: props.list.color,
   icon: props.list.settings?.icon || '📋',
   ...props.list.settings,
+  recurringMeeting: {
+    enabled: false,
+    title: '',
+    description: '',
+    link: '',
+    dayOfWeek: 'monday',
+    time: '10:00',
+    frequency: 'weekly',
+    ...(props.list.settings?.recurringMeeting || {}),
+  },
 })
 
 async function save() {
@@ -30,6 +40,7 @@ async function save() {
       requireDueDateOnCreate: form.requireDueDateOnCreate,
       allowedViews: form.allowedViews,
       icon: form.icon,
+      recurringMeeting: { ...form.recurringMeeting },
     },
   })
   emit('close')
@@ -101,6 +112,42 @@ function toggleView(view) {
             {{ v === 'list' ? 'Плоский список' : v === 'tree' ? 'Дерево' : 'Группировка' }}
           </label>
         </div>
+
+        <div class="section-title">Регулярная встреча / звонок</div>
+        <p class="hint-text">Опишите регулярный созвон, привязанный к этому списку — вместо абстрактного "шаблона повторения" укажите понятные параметры звонка.</p>
+        <label class="checkbox-row"><input type="checkbox" v-model="form.recurringMeeting.enabled" /> В этом списке есть регулярная встреча</label>
+        <template v-if="form.recurringMeeting.enabled">
+          <div class="field-group">
+            <label>Название встречи</label>
+            <input v-model="form.recurringMeeting.title" placeholder="Например: Еженедельный синк по проекту" />
+          </div>
+          <div class="field-group">
+            <label>Описание</label>
+            <textarea v-model="form.recurringMeeting.description" rows="2" placeholder="Повестка, участники, формат..." />
+          </div>
+          <div class="field-group">
+            <label>Ссылка на звонок</label>
+            <input v-model="form.recurringMeeting.link" placeholder="https://meet.example.com/..." />
+          </div>
+          <div class="field-row">
+            <div class="field-group">
+              <label>День недели</label>
+              <select v-model="form.recurringMeeting.dayOfWeek">
+                <option v-for="(label, day) in WEEKDAY_LABEL" :key="day" :value="day">{{ label }}</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label>Время</label>
+              <input v-model="form.recurringMeeting.time" type="time" />
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Периодичность</label>
+            <select v-model="form.recurringMeeting.frequency">
+              <option v-for="(label, freq) in MEETING_FREQ_LABEL" :key="freq" :value="freq">{{ label }}</option>
+            </select>
+          </div>
+        </template>
       </div>
 
       <div class="modal-actions">
@@ -125,5 +172,6 @@ function toggleView(view) {
 .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted); margin-top: 8px; border-top: 1px solid var(--color-border); padding-top: 10px; }
 .checkbox-row { display: flex; align-items: center; gap: 7px; font-size: 13px; }
 .views-toggles { display: flex; gap: 14px; }
+.hint-text { font-size: 11.5px; color: var(--color-text-muted); line-height: 1.5; margin: 0; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-border); }
 </style>
