@@ -15,7 +15,7 @@ const usersStore = useUsersStore()
 
 const titleEl = ref(null)
 const title = ref('')
-const listId = ref(props.context.listId || listsStore.lists[0]?.id || null)
+const listId = ref(props.context.listId || null)
 const parentTaskId = ref(props.context.parentTaskId || null)
 const priority = ref(props.context.priority || TaskPriority.MEDIUM)
 const assigneeId = ref(props.context.assigneeId || usersStore.currentUser?.id || null)
@@ -29,7 +29,7 @@ const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urg
 onMounted(() => nextTick(() => titleEl.value?.focus()))
 
 async function submit() {
-  if (!title.value.trim() || !listId.value) return
+  if (!title.value.trim()) return
   await tasksStore.createTask({
     title: title.value.trim(), listId: listId.value, priority: priority.value,
     parentTaskId: parentTaskId.value || null,
@@ -66,8 +66,9 @@ function quickDue(days) {
         <input ref="titleEl" v-model="title" class="title-input" placeholder="Что нужно сделать?" @keyup.enter="submit" @keyup.escape="emit('close')" />
 
         <div class="field-block" v-if="!parentTask">
-          <span class="field-caption">Список</span>
+          <span class="field-caption">Список (необязательно)</span>
           <select v-model="listId" class="field-select">
+            <option :value="null">Без списка</option>
             <option v-for="l in listsStore.lists" :key="l.id" :value="l.id">{{ l.title }}</option>
           </select>
         </div>

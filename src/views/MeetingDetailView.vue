@@ -58,8 +58,6 @@ const canManageMeeting = computed(() => {
   return false
 })
 
-const defaultListId = computed(() => listsStore.lists[0]?.id)
-
 function openSummaryParser() {
   summaryText.value = meeting.value?.description || ''
   parsedCandidates.value = []
@@ -86,7 +84,6 @@ async function confirmCreateTasks() {
   const toCreate = parsedCandidates.value.filter((c) => c.accepted && c.title.trim())
   for (const c of toCreate) {
     await tasksStore.createTask({
-      listId: defaultListId.value,
       meetingId: props.id,
       title: c.title.trim(),
       assigneeId: c.assigneeGuess || null,
@@ -155,8 +152,6 @@ async function removeMeeting() {
     <h3 class="tasks-title">Задачи встречи</h3>
     <QuickFiltersBar />
     <QuickAddTaskRow
-      v-if="defaultListId"
-      :list-id="defaultListId"
       :meeting-id="props.id"
       placeholder="Добавить задачу по итогам встречи..."
     />

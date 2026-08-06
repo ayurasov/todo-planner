@@ -46,7 +46,7 @@ export function createListMembership({ id, listId, userId, role, addedAt = new D
 }
 
 export function createTask({
-  id, listId, parentTaskId = null, title, description = '',
+  id, listId = null, parentTaskId = null, title, description = '',
   status = TaskStatus.OPEN, priority = TaskPriority.MEDIUM,
   assigneeId = null, watcherIds = [], dueDate = null, startDate = null,
   recurrenceTemplateId = null, tags = [], pinned = false,

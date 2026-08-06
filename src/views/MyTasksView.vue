@@ -1,17 +1,14 @@
 <script setup>
 import { computed, onMounted } from 'vue'
 import { useTasksStore } from '../stores/tasksStore'
-import { useListsStore } from '../stores/listsStore'
 import { useMeetingsStore } from '../stores/meetingsStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 
 const tasksStore = useTasksStore()
-const listsStore = useListsStore()
 const meetingsStore = useMeetingsStore()
 const myTasks = computed(() => tasksStore.myTasksRanked)
-const defaultListId = computed(() => listsStore.lists[0]?.id)
 
 onMounted(async () => {
   if (!meetingsStore.loaded) await meetingsStore.load()
@@ -24,7 +21,9 @@ onMounted(async () => {
     <span class="view-subtitle">Сортировка по актуальности: срочность, срок, недавняя активность</span>
   </div>
   <QuickFiltersBar />
-  <QuickAddTaskRow v-if="defaultListId" :list-id="defaultListId" placeholder="Добавить задачу в первый доступный список..." />
+  <!-- Список не подставляется автоматически — задача без списка допустима.
+       Автоподстановка listId происходит только внутри конкретного списка (ListView). -->
+  <QuickAddTaskRow placeholder="Добавить задачу без привязки к списку..." />
   <TaskListPanel :tasks="myTasks" :group-by-meeting="true" empty-text="Нет задач, соответствующих текущим фильтрам" />
 </template>
 

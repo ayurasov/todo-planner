@@ -4,7 +4,10 @@ import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
 
 const props = defineProps({
-  listId: { type: String, required: true },
+  // listId необязателен: базово задача создаётся без списка. Автоматическая
+  // подстановка listId происходит только тогда, когда компонент используется
+  // непосредственно внутри конкретного списка (ListView передаёт свой id).
+  listId: { type: String, default: null },
   meetingId: { type: String, default: null },
   placeholder: { type: String, default: 'Добавить задачу — Enter, чтобы продолжить' },
 })

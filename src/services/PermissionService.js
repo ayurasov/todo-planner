@@ -21,6 +21,13 @@ export class PermissionService {
   }
 
   async canEditTask(task, userId) {
+    // Задача без списка (listId = null) — приватный/личный объект без
+    // ролевой модели списка: править её может создатель или назначенный
+    // исполнитель. Это осознанное упрощение (см. допущение "список
+    // необязателен"): полноценные ACL для задач-сирот вне scope MVP.
+    if (!task.listId) {
+      return task.createdBy === userId || task.assigneeId === userId
+    }
     const role = await this.getRole(task.listId, userId)
     if (CAN_EDIT_ANY_TASK.includes(role)) return true
     if (role === ListRole.ASSIGNEE && task.assigneeId === userId) return true
