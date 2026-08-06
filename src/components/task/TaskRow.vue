@@ -8,6 +8,7 @@ import { relativeDay, isOverdue, relativeTimeAgo, formatDate } from '../../utils
 import { useTaskPermissions } from '../../composables/usePermissions'
 import { useAssignableUsers } from '../../composables/useAssignableUsers'
 import { useClickOutside } from '../../composables/useClickOutside'
+import { getInitials, getAvatarColor } from '../../utils/avatar'
 import PriorityBadge from './PriorityBadge.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
 
@@ -52,14 +53,34 @@ const { canEditThisTask, canToggleStatus, reason: permissionReason } = useTaskPe
 // Быстрый ассайн исполнителя кликом по аватару строки — не требует
 // открытия контекстного меню. Список кандидатов — тот же, что и в
 // контекстном меню (учитывает состав встречи, если задача к ней привязана).
+// Дропдаун рендерится через Teleport в body и позиционируется по
+// getBoundingClientRect кнопки-аватара — иначе он обрезался overflow/скроллом
+// родительских контейнеров списка задач и "проваливался" за пределы экрана.
 const assignPickerOpen = ref(false)
-const assignPickerEl = ref(null)
+const avatarBtnEl = ref(null)
+const dropdownEl = ref(null)
+const dropdownPos = ref({ top: 0, left: 0 })
 const assignableUsers = useAssignableUsers(() => props.task)
-useClickOutside(assignPickerEl, () => { assignPickerOpen.value = false })
+useClickOutside(dropdownEl, () => { assignPickerOpen.value = false })
 
 function toggleAssignPicker() {
   if (!canEditThisTask.value) return
-  assignPickerOpen.value = !assignPickerOpen.value
+  if (assignPickerOpen.value) {
+    assignPickerOpen.value = false
+    return
+  }
+  const margin = 8
+  const rect = avatarBtnEl.value.getBoundingClientRect()
+  const dropdownW = 220
+  const estimatedH = Math.min(260, 40 + assignableUsers.value.length * 34)
+  let left = rect.right - dropdownW
+  left = Math.min(Math.max(margin, left), window.innerWidth - dropdownW - margin)
+  let top = rect.bottom + 4
+  if (top + estimatedH > window.innerHeight - margin) {
+    top = Math.max(margin, rect.top - estimatedH - 4)
+  }
+  dropdownPos.value = { top, left }
+  assignPickerOpen.value = true
 }
 
 function quickAssign(userId) {
@@ -231,29 +252,16 @@ function closeContextMenu() {
         </div>
       </div>
 
-      <div v-if="prefs.showAssigneeAvatar" ref="assignPickerEl" class="task-assignee">
+      <div v-if="prefs.showAssigneeAvatar" class="task-assignee">
         <button
+          ref="avatarBtnEl"
           class="avatar-btn" :class="{ 'avatar-btn-disabled': !canEditThisTask }"
           :title="canEditThisTask ? (assignee ? `Исполнитель: ${assignee.name} — нажмите, чтобы изменить` : 'Назначить исполнителя') : assignee?.name"
           @click.stop="toggleAssignPicker"
         >
-          <span v-if="assignee" class="avatar" :class="{ 'avatar-compact': prefs.compactAvatars }">{{ assignee.name.charAt(0) }}</span>
+          <span v-if="assignee" class="avatar" :class="{ 'avatar-compact': prefs.compactAvatars }" :style="{ background: getAvatarColor(assignee.name) }">{{ getInitials(assignee.name) }}</span>
           <span v-else class="avatar avatar-empty" :class="{ 'avatar-compact': prefs.compactAvatars }">+</span>
         </button>
-        <div v-if="assignPickerOpen" class="assign-dropdown card scroll-thin" @click.stop>
-          <button
-            v-for="u in assignableUsers" :key="u.id"
-            class="assign-option" :class="{ active: task.assigneeId === u.id }"
-            @click="quickAssign(u.id)"
-          >
-            <span class="assign-avatar">{{ u.name.charAt(0) }}</span>
-            {{ u.name }}
-            <span v-if="task.assigneeId === u.id" class="assign-check">✓</span>
-          </button>
-          <button class="assign-option" @click="quickAssign(null)">
-            <span class="assign-avatar assign-avatar-empty">—</span> Без исполнителя
-          </button>
-        </div>
       </div>
 
       <div class="task-quick-actions">
@@ -263,6 +271,30 @@ function closeContextMenu() {
         <button class="btn btn-ghost btn-sm" title="Ещё" @click.stop="openContextMenu($event)">⋯</button>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="assignPickerOpen"
+        ref="dropdownEl"
+        class="assign-dropdown card scroll-thin"
+        :style="{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px` }"
+        @click.stop
+      >
+        <div class="assign-dropdown-label">Назначить исполнителя</div>
+        <button
+          v-for="u in assignableUsers" :key="u.id"
+          class="assign-option" :class="{ active: task.assigneeId === u.id }"
+          @click="quickAssign(u.id)"
+        >
+          <span class="assign-avatar" :style="{ background: getAvatarColor(u.name) }">{{ getInitials(u.name) }}</span>
+          {{ u.name }}
+          <span v-if="task.assigneeId === u.id" class="assign-check">✓</span>
+        </button>
+        <button class="assign-option" @click="quickAssign(null)">
+          <span class="assign-avatar assign-avatar-empty">—</span> Без исполнителя
+        </button>
+      </div>
+    </Teleport>
 
     <div v-if="checklistExpanded" class="inline-checklist" :style="{ paddingLeft: `${36 + depth * 22}px` }">
       <div v-for="item in checklistItems" :key="item.id" class="inline-checklist-item">
@@ -350,23 +382,25 @@ function closeContextMenu() {
 .avatar-btn-disabled { cursor: default; }
 .avatar {
   width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary);
-  color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600;
+  color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
 }
 .avatar-empty { background: #d9dde8; color: var(--color-text-muted); font-weight: 700; }
-.avatar-compact { width: 18px; height: 18px; font-size: 9px; }
+.avatar-compact { width: 18px; height: 18px; font-size: 8px; }
 .assign-dropdown {
-  position: absolute; top: calc(100% + 4px); right: 0; z-index: 60; min-width: 180px;
-  padding: 4px; display: flex; flex-direction: column; gap: 1px; max-height: 220px; overflow-y: auto;
+  position: fixed; z-index: 500; min-width: 220px;
+  padding: 6px; display: flex; flex-direction: column; gap: 1px; max-height: 280px; overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(20, 24, 38, 0.08), 0 16px 40px rgba(20, 24, 38, 0.16);
 }
+.assign-dropdown-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); padding: 4px 8px 6px; }
 .assign-option {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: none;
-  padding: 6px 8px; border-radius: 7px; font-size: 12.5px; cursor: pointer; color: var(--color-text);
+  padding: 7px 8px; border-radius: 7px; font-size: 12.5px; cursor: pointer; color: var(--color-text);
 }
 .assign-option:hover { background: #eef1f7; }
 .assign-option.active { background: #eef2ff; color: var(--color-primary-dark); font-weight: 600; }
 .assign-avatar {
-  width: 20px; height: 20px; border-radius: 50%; background: #b7bfd1; color: #fff; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+  width: 22px; height: 22px; border-radius: 50%; background: #b7bfd1; color: #fff; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700;
 }
 .assign-avatar-empty { background: #d9dde8; color: var(--color-text-muted); }
 .assign-check { margin-left: auto; color: var(--color-primary); font-weight: 700; }
