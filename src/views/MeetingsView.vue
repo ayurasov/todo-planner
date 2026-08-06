@@ -3,21 +3,24 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMeetingsStore } from '../stores/meetingsStore'
 import { useTasksStore } from '../stores/tasksStore'
+import { useUsersStore } from '../stores/usersStore'
 import { formatDateTime } from '../utils/formatters'
 
 const router = useRouter()
 const meetingsStore = useMeetingsStore()
 const tasksStore = useTasksStore()
+const usersStore = useUsersStore()
 
 const searchQuery = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const showCreateForm = ref(false)
-const draft = ref({ title: '', date: '', time: '', description: '' })
+const draft = ref({ title: '', date: '', time: '', description: '', attendeeIds: [] })
 
 onMounted(async () => {
   if (!meetingsStore.loaded) await meetingsStore.load()
   if (!tasksStore.loaded) await tasksStore.load()
+  if (!usersStore.loaded) await usersStore.load()
 })
 
 const taskCountByMeeting = computed(() => {
@@ -58,8 +61,15 @@ function openCreateForm() {
     date: now.toISOString().slice(0, 10),
     time: now.toTimeString().slice(0, 5),
     description: '',
+    attendeeIds: [],
   }
   showCreateForm.value = true
+}
+
+function toggleDraftAttendee(userId) {
+  const idx = draft.value.attendeeIds.indexOf(userId)
+  if (idx === -1) draft.value.attendeeIds.push(userId)
+  else draft.value.attendeeIds.splice(idx, 1)
 }
 
 async function submitCreate() {
@@ -69,6 +79,7 @@ async function submitCreate() {
     title: draft.value.title.trim(),
     date: isoDate,
     description: draft.value.description.trim(),
+    attendeeIds: [...draft.value.attendeeIds],
   })
   showCreateForm.value = false
   router.push(`/meetings/${meeting.id}`)
@@ -110,6 +121,7 @@ function openMeeting(id) {
       </div>
       <div class="meeting-card-meta">
         <span class="meeting-card-date">🕐 {{ formatDateTime(m.date) }}</span>
+        <span v-if="m.attendeeIds?.length" class="tag attendees-tag">👥 {{ m.attendeeIds.length }}</span>
         <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag">✓ {{ taskCountByMeeting[m.id] }} задач</span>
       </div>
     </div>
@@ -139,6 +151,15 @@ function openMeeting(id) {
         <div class="field-group">
           <label>Описание (опционально)</label>
           <textarea v-model="draft.description" rows="3" placeholder="Тема, ссылка на созвон, контекст..." />
+        </div>
+        <div class="field-group">
+          <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
+          <div class="attendee-picker">
+            <label v-for="u in usersStore.users" :key="u.id" class="attendee-option">
+              <input type="checkbox" :checked="draft.attendeeIds.includes(u.id)" @change="toggleDraftAttendee(u.id)" />
+              {{ u.name }}
+            </label>
+          </div>
         </div>
       </div>
       <div class="modal-actions">
@@ -178,6 +199,7 @@ function openMeeting(id) {
 .meeting-card-meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 .meeting-card-date { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
 .task-count-tag { background: #eef1f7; color: var(--color-text-muted); }
+.attendees-tag { background: #f4f0ff; color: #7c5cd6; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { width: 440px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
@@ -190,4 +212,6 @@ function openMeeting(id) {
 .field-row { display: flex; gap: 12px; }
 .field-row .field-group { flex: 1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-border); }
+.attendee-picker { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
+.attendee-option { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 2px; cursor: pointer; }
 </style>
