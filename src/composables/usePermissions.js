@@ -50,6 +50,7 @@ export function useTaskPermissions(taskRef) {
   const usersStore = useUsersStore()
   const canEditThisTask = ref(true)
   const canToggleStatus = ref(true)
+  const canDeleteThisTask = ref(false)
   const loaded = ref(false)
   const reason = ref('')
 
@@ -63,6 +64,7 @@ export function useTaskPermissions(taskRef) {
     const allowed = await permissionService.canEditTask(task, userId)
     canEditThisTask.value = allowed
     canToggleStatus.value = allowed
+    canDeleteThisTask.value = await permissionService.canDeleteTask(task, userId)
     reason.value = allowed ? '' : 'У вас нет прав редактировать эту задачу (роль в списке не позволяет)'
     loaded.value = true
   }
@@ -70,13 +72,13 @@ export function useTaskPermissions(taskRef) {
   watch(
     () => {
       const task = typeof taskRef === 'function' ? taskRef() : taskRef.value
-      return task ? `${task.id}:${task.assigneeId}:${task.listId}` : null
+      return task ? `${task.id}:${task.assigneeId}:${task.listId}:${task.createdBy}` : null
     },
     refresh,
     { immediate: true },
   )
 
-  return { canEditThisTask, canToggleStatus, reason, loaded, refresh }
+  return { canEditThisTask, canToggleStatus, canDeleteThisTask, reason, loaded, refresh }
 }
 
 export function useCurrentUserRole() {

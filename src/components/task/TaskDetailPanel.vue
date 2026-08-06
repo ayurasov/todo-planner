@@ -5,8 +5,9 @@ import { useUsersStore } from '../../stores/usersStore'
 import { useHistoryStore } from '../../stores/historyStore'
 import { useListsStore } from '../../stores/listsStore'
 import { useMeetingsStore } from '../../stores/meetingsStore'
+import { usePreferencesStore } from '../../stores/preferencesStore'
 import { TaskPriority, TaskStatus, PRIORITY_LABEL } from '../../domain/entities/enums'
-import { formatDateTime } from '../../utils/formatters'
+import { formatDateTime, formatDate } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
 
 const props = defineProps({ task: { type: Object, required: true } })
@@ -17,6 +18,7 @@ const usersStore = useUsersStore()
 const historyStore = useHistoryStore()
 const listsStore = useListsStore()
 const meetingsStore = useMeetingsStore()
+const prefs = usePreferencesStore()
 
 const tab = ref('overview')
 const newChecklistTitle = ref('')
@@ -28,7 +30,7 @@ const titleInputEl = ref(null)
 const assigneeMenuOpen = ref(false)
 
 const liveTask = computed(() => tasksStore.byId(props.task.id) || props.task)
-const { canEditThisTask, canToggleStatus, reason: permissionReason } = useTaskPermissions(liveTask)
+const { canEditThisTask, canToggleStatus, canDeleteThisTask, reason: permissionReason } = useTaskPermissions(liveTask)
 const checklist = computed(() => tasksStore.checklistByTask[props.task.id] || [])
 const notes = computed(() => tasksStore.notesByTask[props.task.id] || [])
 const timeline = computed(() => historyStore.timelineByTask[props.task.id] || [])
@@ -87,6 +89,13 @@ function cancelEditTitle() {
   titleDraft.value = liveTask.value.title
 }
 
+function requestDelete() {
+  if (confirm('Удалить задачу и все подзадачи? Действие нельзя отменить.')) {
+    tasksStore.removeTask(liveTask.value.id)
+    emit('close')
+  }
+}
+
 function setStatus(s) { updateField('status', s) }
 function setPriority(p) { updateField('priority', p) }
 
@@ -130,7 +139,10 @@ const HISTORY_ICON = {
         <div class="panel-header">
           <div class="header-top">
             <span v-if="isSubtask && parentTask" class="parent-crumb">↳ {{ parentTask.title }}</span>
-            <button class="btn btn-ghost close-btn" @click="emit('close')">✕</button>
+            <div class="header-actions">
+              <button v-if="canDeleteThisTask" class="btn btn-ghost close-btn btn-danger" title="Удалить задачу" @click="requestDelete">🗑</button>
+              <button class="btn btn-ghost close-btn" @click="emit('close')">✕</button>
+            </div>
           </div>
           <div v-if="linkedMeeting" class="meeting-crumb">
             📅 <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
@@ -206,6 +218,11 @@ const HISTORY_ICON = {
               <input type="date" class="date-input" :disabled="!canEditThisTask" :value="liveTask.dueDate ? liveTask.dueDate.slice(0,10) : ''"
                 @change="tasksStore.rescheduleTask(liveTask.id, $event.target.value ? new Date($event.target.value).toISOString() : null)" />
             </div>
+          </div>
+
+          <div v-if="(prefs.showCompletedDate && liveTask.completedAt) || (prefs.showLastUpdatedDate && liveTask.updatedAt)" class="dates-meta-row">
+            <span v-if="prefs.showCompletedDate && liveTask.completedAt" class="dates-meta-item dates-meta-done">✓ Выполнено: {{ formatDate(liveTask.completedAt) }}</span>
+            <span v-if="prefs.showLastUpdatedDate && liveTask.updatedAt" class="dates-meta-item">✎ Изменено: {{ formatDate(liveTask.updatedAt) }}</span>
           </div>
         </div>
 
@@ -294,7 +311,10 @@ const HISTORY_ICON = {
 .panel-header { padding: 16px 20px 4px; }
 .header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .parent-crumb { font-size: 12px; color: var(--color-text-muted); }
+.header-actions { display: flex; align-items: center; gap: 4px; }
 .close-btn { border-radius: 8px; width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; }
+.close-btn.btn-danger { color: var(--color-danger); }
+.close-btn.btn-danger:hover { background: #fdeeee; }
 .title-display { margin: 4px 0 12px; font-size: 18px; font-weight: 650; cursor: text; padding: 4px 6px; border-radius: 8px; display: flex; align-items: center; gap: 6px; }
 .title-display:hover { background: #f6f7fb; }
 .title-readonly { cursor: default; }
@@ -303,6 +323,9 @@ const HISTORY_ICON = {
 .title-edit-input { width: 100%; font-size: 18px; font-weight: 650; border: 1.5px solid var(--color-primary); border-radius: 8px; padding: 6px 8px; margin: 4px 0 12px; outline: none; }
 
 .field-row { display: flex; flex-direction: column; gap: 12px; padding: 4px 20px 16px; border-bottom: 1px solid var(--color-border); }
+.dates-meta-row { display: flex; gap: 14px; padding: 0 20px 14px; font-size: 11.5px; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); }
+.dates-meta-item { opacity: 0.8; }
+.dates-meta-done { color: #1e9e4d; }
 .field-block { display: flex; flex-direction: column; gap: 6px; }
 .field-block-inline { flex-direction: row; gap: 20px; }
 .field-caption { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }

@@ -49,6 +49,19 @@ export class PermissionService {
     return CAN_DELETE_LIST.includes(role)
   }
 
+  /**
+   * Создатель задачи может удалить её всегда, независимо от текущей роли
+   * в списке (например, если позже был понижен до Viewer или список сменил
+   * владельца) — право авторства не отзывается автоматически правами списка.
+   * Owner/Editor списка также могут удалять любую задачу списка.
+   */
+  async canDeleteTask(task, userId) {
+    if (task.createdBy === userId) return true
+    if (!task.listId) return false
+    const role = await this.getRole(task.listId, userId)
+    return CAN_EDIT_ANY_TASK.includes(role)
+  }
+
   async getAccessibleListIds(userId) {
     return listRepository.getAccessibleListIds(userId)
   }

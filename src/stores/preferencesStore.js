@@ -21,6 +21,12 @@ const DEFAULT_PREFS = {
   showTags: true,
   showAssigneeAvatar: true,
   showDueDate: true,
+  // Настраиваемая видимость аккуратного блока метаданных дат на строке
+  // задачи: крайний срок уже покрыт showDueDate; отдельно управляем датой
+  // выполнения и датой последнего изменения, т.к. это разные сигналы
+  // (что сделано / что менялось) и не всем нужны оба сразу.
+  showCompletedDate: true,
+  showLastUpdatedDate: true,
   showScoreDebug: false,
   showWatchers: false,
   showListBadgeInMyTasks: true,

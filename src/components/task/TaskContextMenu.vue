@@ -25,7 +25,7 @@ onMounted(() => { mounted.value = true })
 
 const isDone = computed(() => props.task.status === 'done')
 const isSubtask = computed(() => !!props.task.parentTaskId)
-const { canEditThisTask, canToggleStatus } = useTaskPermissions(() => props.task)
+const { canEditThisTask, canToggleStatus, canDeleteThisTask } = useTaskPermissions(() => props.task)
 
 const style = computed(() => {
   const menuW = 264
@@ -192,11 +192,15 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
           <button class="ctx-item" @click="duplicate">
             <span class="ctx-icon icon-neutral">⧉</span> Дублировать
           </button>
+        </div>
+        </template>
+
+        <div v-if="canDeleteThisTask" class="ctx-divider" />
+        <div v-if="canDeleteThisTask" class="ctx-section">
           <button class="ctx-item ctx-item-danger" @click="remove">
             <span class="ctx-icon icon-danger">🗑</span> Удалить
           </button>
         </div>
-        </template>
       </div>
     </Transition>
   </Teleport>

@@ -4,7 +4,7 @@ import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { useListsStore } from '../../stores/listsStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
-import { relativeDay, isOverdue } from '../../utils/formatters'
+import { relativeDay, isOverdue, relativeTimeAgo, formatDate } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
 import PriorityBadge from './PriorityBadge.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
@@ -201,7 +201,9 @@ function closeContextMenu() {
         </span>
         <div class="task-meta" v-if="!editingTitle">
           <PriorityBadge :priority="task.priority" />
-          <span v-if="prefs.showDueDate && task.dueDate" class="due-date" :class="{ 'due-overdue': overdue }">{{ relativeDay(task.dueDate) }}</span>
+          <span v-if="prefs.showDueDate && task.dueDate" class="due-date" :class="{ 'due-overdue': overdue }" title="Крайний срок">🗓 {{ relativeDay(task.dueDate) }}</span>
+          <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`">✓ {{ formatDate(task.completedAt) }}</span>
+          <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`Последнее изменение: ${formatDate(task.updatedAt)}`">✎ {{ relativeTimeAgo(task.updatedAt) }}</span>
           <span v-if="prefs.showListBadgeInMyTasks && list" class="tag list-badge" :style="{ background: list.color + '22', color: list.color }">{{ list.title }}</span>
           <span v-if="prefs.showTags && task.tags?.length" class="tag" v-for="tag in task.tags" :key="tag">{{ tag }}</span>
           <span v-if="prefs.showWatchers && task.watcherIds?.length" class="tag watcher-tag">👁 {{ task.watcherIds.length }}</span>
@@ -297,6 +299,8 @@ function closeContextMenu() {
 .mini-count-clickable:hover { background: #eef1f7; color: var(--color-text); }
 .task-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .due-date { font-size: 11.5px; color: var(--color-text-muted); }
+.date-meta { font-size: 11px; color: var(--color-text-muted); opacity: 0.75; white-space: nowrap; }
+.date-meta-done { color: #1e9e4d; opacity: 0.85; }
 .list-badge { font-weight: 600; }
 .watcher-tag, .score-tag { background: #f4f0ff; color: #7c5cd6; }
 .task-assignee { width: 26px; flex-shrink: 0; }
