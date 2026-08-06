@@ -12,6 +12,7 @@ import { mockSavedViewRepository } from './mock/MockSavedViewRepository'
 import { mockChecklistRepository } from './mock/MockChecklistRepository'
 import { mockNoteRepository } from './mock/MockNoteRepository'
 import { mockCommentRepository } from './mock/MockCommentRepository'
+import { mockNotificationRepository } from './mock/MockNotificationRepository'
 
 export const taskRepository = mockTaskRepository
 export const listRepository = mockListRepository
@@ -22,3 +23,4 @@ export const savedViewRepository = mockSavedViewRepository
 export const checklistRepository = mockChecklistRepository
 export const noteRepository = mockNoteRepository
 export const commentRepository = mockCommentRepository
+export const notificationRepository = mockNotificationRepository

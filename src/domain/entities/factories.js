@@ -25,6 +25,15 @@ export function createList({
     requireDueDateOnCreate: false,
     allowedViews: ['list', 'tree', 'grouped'],
     icon: '📋',
+    recurringMeeting: {
+      enabled: false,
+      title: '',
+      description: '',
+      link: '',
+      dayOfWeek: 'monday',
+      time: '10:00',
+      frequency: 'weekly',
+    },
   }
   return {
     id: id || nextId('list'), title, description, color, ownerIds, isShared, defaultView, createdAt,
@@ -92,4 +101,11 @@ export function createReminderTrigger({ id, taskId, type = 'time', timeOffset = 
 
 export function createComment({ id, taskId, authorId, text, createdAt = new Date().toISOString(), editedAt = null, mentions = [] }) {
   return { id: id || nextId('comment'), taskId, authorId, text, createdAt, editedAt, mentions }
+}
+
+export function createNotification({
+  id, userId, type, taskId = null, listId = null, title, body = '',
+  createdAt = new Date().toISOString(), read = false, actorId = null,
+}) {
+  return { id: id || nextId('notif'), userId, type, taskId, listId, title, body, createdAt, read, actorId }
 }

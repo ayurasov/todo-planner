@@ -1,9 +1,9 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { computed } from 'vue'
 import TaskRow from './TaskRow.vue'
-import TaskDetailPanel from './TaskDetailPanel.vue'
 import QuickToolbar from '../common/QuickToolbar.vue'
 import { usePreferencesStore } from '../../stores/preferencesStore'
+import { useUiStore } from '../../stores/uiStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { useListsStore } from '../../stores/listsStore'
 import { PRIORITY_LABEL } from '../../domain/entities/enums'
@@ -17,10 +17,9 @@ const props = defineProps({
 const prefs = usePreferencesStore()
 const usersStore = useUsersStore()
 const listsStore = useListsStore()
-const activeTask = ref(null)
+const uiStore = useUiStore()
 
-function openTask(task) { activeTask.value = task }
-function closePanel() { activeTask.value = null }
+function openTask(task) { uiStore.openTask(task.id) }
 
 const visibleTasks = computed(() => {
   let list = props.tasks
@@ -100,7 +99,6 @@ const groups = computed(() => {
     </div>
   </div>
 
-  <TaskDetailPanel v-if="activeTask" :task="activeTask" @close="closePanel" />
 </template>
 
 <style scoped>

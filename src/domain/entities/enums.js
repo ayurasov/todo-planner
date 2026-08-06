@@ -143,3 +143,45 @@ export const COLOR_CODE_LABEL = {
   assignee: 'По исполнителю',
   overdue: 'По просрочке',
 }
+
+// --- Уведомления ---
+export const NotificationType = {
+  ASSIGNED: 'assigned',
+  DUE_SOON: 'due_soon',
+  OVERDUE: 'overdue',
+  COMMENT: 'comment',
+  MENTION: 'mention',
+  STATUS_CHANGED: 'status_changed',
+  RESCHEDULED: 'rescheduled',
+  SUBTASK_COMPLETED: 'subtask_completed',
+  LIST_INVITE: 'list_invite',
+}
+
+export const NOTIFICATION_LABEL = {
+  assigned: 'Назначение задачи',
+  due_soon: 'Срок приближается',
+  overdue: 'Просрочено',
+  comment: 'Новый комментарий',
+  mention: 'Упоминание',
+  status_changed: 'Изменение статуса',
+  rescheduled: 'Перенос срока',
+  subtask_completed: 'Подзадача выполнена',
+  list_invite: 'Приглашение в список',
+}
+
+export const NotificationChannel = {
+  IN_APP: 'in_app',
+  EMAIL: 'email',
+}
+
+// --- Регулярные встречи/звонки на уровне списка ---
+export const WEEKDAY_LABEL = {
+  monday: 'Понедельник', tuesday: 'Вторник', wednesday: 'Среда', thursday: 'Четверг',
+  friday: 'Пятница', saturday: 'Субботa', sunday: 'Воскресенье',
+}
+
+export const MEETING_FREQ_LABEL = {
+  weekly: 'Еженедельно',
+  biweekly: 'Раз в 2 недели',
+  monthly: 'Ежемесячно',
+}

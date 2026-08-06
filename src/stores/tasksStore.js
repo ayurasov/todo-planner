@@ -6,6 +6,7 @@ import { sortTasksByRanking } from '../domain/ranking/rankingScore'
 import { useUsersStore } from './usersStore'
 import { useListsStore } from './listsStore'
 import { usePreferencesStore } from './preferencesStore'
+import { useNotificationsStore } from './notificationsStore'
 
 /**
  * Определяет, должна ли задача (в т.ч. подзадача) отображаться как самостоятельная
@@ -61,6 +62,38 @@ export const useTasksStore = defineStore('tasks', {
     async load() {
       this.tasks = await taskRepository.getAll()
       this.loaded = true
+      await this.scanDueNotifications()
+    },
+
+    async scanDueNotifications() {
+      const usersStore = useUsersStore()
+      const notificationsStore = useNotificationsStore()
+      const currentUserId = usersStore.currentUser?.id
+      if (!currentUserId) return
+      const now = new Date()
+      const thresholdMs = notificationsStore.settings.dueSoonThresholdHours * 60 * 60 * 1000
+
+      for (const task of this.tasks) {
+        if (task.assigneeId !== currentUserId || !task.dueDate) continue
+        if (task.status === 'done' || task.status === 'cancelled') continue
+        const due = new Date(task.dueDate)
+        const alreadyNotified = notificationsStore.items.some(
+          (n) => n.taskId === task.id && (n.type === 'due_soon' || n.type === 'overdue')
+        )
+        if (alreadyNotified) continue
+
+        if (due < now) {
+          await notificationsStore.notify({
+            userId: currentUserId, type: 'overdue', taskId: task.id, listId: task.listId,
+            title: `Просрочена задача «${task.title}»`,
+          })
+        } else if (due - now <= thresholdMs) {
+          await notificationsStore.notify({
+            userId: currentUserId, type: 'due_soon', taskId: task.id, listId: task.listId,
+            title: `Срок задачи «${task.title}» приближается`,
+          })
+        }
+      }
     },
 
     rankedTasksForList(listId) {
@@ -102,12 +135,23 @@ export const useTasksStore = defineStore('tasks', {
 
     async completeTask(id) {
       const usersStore = useUsersStore()
+      const notificationsStore = useNotificationsStore()
       const updated = await taskRepository.complete(id)
       const idx = this.tasks.findIndex((t) => t.id === id)
       this.tasks[idx] = updated
       await historyService.recordCompleted(id, usersStore.currentUser.id)
       const nextInstance = await recurrenceService.onTaskCompleted(updated)
       if (nextInstance) this.tasks.push(nextInstance)
+
+      if (updated.parentTaskId) {
+        const parent = this.byId(updated.parentTaskId)
+        if (parent?.assigneeId && parent.assigneeId !== usersStore.currentUser.id) {
+          await notificationsStore.notify({
+            userId: parent.assigneeId, type: 'subtask_completed', taskId: parent.id, listId: parent.listId,
+            title: `Подзадача «${updated.title}» выполнена`, actorId: usersStore.currentUser.id,
+          })
+        }
+      }
       return updated
     },
 
@@ -121,11 +165,32 @@ export const useTasksStore = defineStore('tasks', {
     },
 
     async rescheduleTask(id, newDueDate) {
-      return this.updateTaskField(id, 'dueDate', newDueDate)
+      const usersStore = useUsersStore()
+      const notificationsStore = useNotificationsStore()
+      const task = this.byId(id)
+      const result = await this.updateTaskField(id, 'dueDate', newDueDate)
+      if (task?.assigneeId && task.assigneeId !== usersStore.currentUser?.id) {
+        await notificationsStore.notify({
+          userId: task.assigneeId, type: 'rescheduled', taskId: id, listId: task.listId,
+          title: `Срок задачи «${task.title}» перенесён`, actorId: usersStore.currentUser?.id,
+        })
+      }
+      return result
     },
 
     async assignTask(id, assigneeId) {
-      return this.updateTaskField(id, 'assigneeId', assigneeId)
+      const usersStore = useUsersStore()
+      const notificationsStore = useNotificationsStore()
+      const task = this.byId(id)
+      const previousAssignee = task?.assigneeId
+      const result = await this.updateTaskField(id, 'assigneeId', assigneeId)
+      if (assigneeId && assigneeId !== previousAssignee) {
+        await notificationsStore.notify({
+          userId: assigneeId, type: 'assigned', taskId: id, listId: task?.listId,
+          title: `Вам назначена задача «${task?.title}»`, actorId: usersStore.currentUser?.id,
+        })
+      }
+      return result
     },
 
     async togglePin(id) {
@@ -222,6 +287,15 @@ export const useTasksStore = defineStore('tasks', {
       this.commentsByTask[taskId].push(comment)
       await historyService.recordComment(taskId, usersStore.currentUser.id, text)
       await this.touchActivity(taskId)
+
+      const notificationsStore = useNotificationsStore()
+      const notifyTargets = new Set([task?.assigneeId, ...(task?.watcherIds || [])].filter((u) => u && u !== usersStore.currentUser.id))
+      for (const uid of notifyTargets) {
+        await notificationsStore.notify({
+          userId: uid, type: 'comment', taskId, listId: task?.listId,
+          title: `Новый комментарий к «${task?.title}»`, body: text, actorId: usersStore.currentUser.id,
+        })
+      }
       return comment
     },
 
