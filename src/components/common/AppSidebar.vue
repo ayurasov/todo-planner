@@ -42,8 +42,10 @@ const isAdmin = useIsAdmin()
       </button>
     </div>
 
-    <router-link v-if="isAdmin" to="/settings/users" class="nav-item">🛡️ Пользователи</router-link>
-    <router-link to="/settings" class="nav-item nav-item-bottom">⚙️ Настройки</router-link>
+    <div class="sidebar-bottom">
+      <router-link v-if="isAdmin" to="/settings/users" class="nav-item">🛡️ Пользователи</router-link>
+      <router-link to="/settings" class="nav-item">⚙️ Настройки</router-link>
+    </div>
   </aside>
 </template>
 
@@ -67,6 +69,9 @@ const isAdmin = useIsAdmin()
 .nav-item:hover { background: #eef1f7; }
 .nav-item.router-link-active { background: #e6ecff; color: var(--color-primary-dark); font-weight: 600; }
 .list-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.nav-item-bottom { margin-top: auto; }
 .nav-item-btn { cursor: pointer; }
+.sidebar-bottom {
+  margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border);
+  display: flex; flex-direction: column; gap: 2px;
+}
 </style>
