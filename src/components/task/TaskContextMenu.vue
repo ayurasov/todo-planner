@@ -1,10 +1,11 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useClickOutside } from '../../composables/useClickOutside'
 import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
 import { useTaskPermissions } from '../../composables/usePermissions'
+import { useAssignableUsers } from '../../composables/useAssignableUsers'
 import { TaskPriority, PRIORITY_LABEL } from '../../domain/entities/enums'
 
 const props = defineProps({
@@ -12,27 +13,38 @@ const props = defineProps({
   x: { type: Number, required: true },
   y: { type: Number, required: true },
 })
-const emit = defineEmits(['close', 'open-detail', 'add-subtask'])
+const emit = defineEmits(['close', 'open-detail', 'add-subtask', 'rename'])
 
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
 const prefs = usePreferencesStore()
 const menuEl = ref(null)
 const mounted = ref(false)
+const measuredSize = ref({ w: 264, h: 0 })
 
 useClickOutside(menuEl, () => emit('close'))
-onMounted(() => { mounted.value = true })
+onMounted(() => {
+  mounted.value = true
+  nextTick(() => {
+    if (menuEl.value) {
+      const rect = menuEl.value.getBoundingClientRect()
+      measuredSize.value = { w: rect.width || 264, h: rect.height || 0 }
+    }
+  })
+})
 
 const isDone = computed(() => props.task.status === 'done')
 const isSubtask = computed(() => !!props.task.parentTaskId)
 const { canEditThisTask, canToggleStatus, canDeleteThisTask } = useTaskPermissions(() => props.task)
+const assignableUsers = useAssignableUsers(() => props.task)
 
 const style = computed(() => {
-  const menuW = 264
-  const menuH = 460
-  const maxX = window.innerWidth - menuW - 8
-  const maxY = window.innerHeight - Math.min(menuH, window.innerHeight - 16) - 8
-  return { left: `${Math.min(props.x, maxX)}px`, top: `${Math.max(8, Math.min(props.y, maxY))}px` }
+  const margin = 8
+  const menuW = measuredSize.value.w
+  const menuH = measuredSize.value.h || Math.min(window.innerHeight - margin * 2, 520)
+  const maxX = Math.max(margin, window.innerWidth - menuW - margin)
+  const maxY = Math.max(margin, window.innerHeight - menuH - margin)
+  return { left: `${Math.min(props.x, maxX)}px`, top: `${Math.max(margin, Math.min(props.y, maxY))}px` }
 })
 
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
@@ -48,6 +60,11 @@ function toggleComplete() {
 
 function addSubtask() {
   emit('add-subtask', props.task)
+  close()
+}
+
+function rename() {
+  emit('rename', props.task)
   close()
 }
 
@@ -120,6 +137,9 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
             <span class="ctx-icon" :class="isDone ? 'icon-neutral' : 'icon-success'">{{ isDone ? '↺' : '✓' }}</span>
             {{ isDone ? 'Вернуть в работу' : 'Завершить' }}
           </button>
+          <button v-if="canEditThisTask" class="ctx-item" @click="rename">
+            <span class="ctx-icon icon-neutral">✎</span> Переименовать
+          </button>
           <button v-if="canEditThisTask" class="ctx-item" @click="addSubtask">
             <span class="ctx-icon icon-neutral">＋</span> Добавить подзадачу
           </button>
@@ -172,7 +192,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
           <div class="ctx-label">Назначить</div>
           <div class="ctx-scroll scroll-thin">
             <button
-              v-for="u in usersStore.users" :key="u.id"
+              v-for="u in assignableUsers" :key="u.id"
               class="ctx-item ctx-item-user" :class="{ active: task.assigneeId === u.id }"
               @click="assign(u.id)"
             >
@@ -212,7 +232,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
   background: var(--color-surface); border-radius: 14px;
   box-shadow: 0 4px 12px rgba(20, 24, 38, 0.08), 0 16px 40px rgba(20, 24, 38, 0.16);
   border: 1px solid rgba(20, 24, 38, 0.06);
-  max-height: 85vh; overflow-y: auto;
+  max-height: calc(100vh - 16px); overflow-y: auto;
 }
 .menu-pop-enter-active { transition: opacity 0.14s ease, transform 0.14s ease; }
 .menu-pop-enter-from { opacity: 0; transform: scale(0.96) translateY(-4px); }
