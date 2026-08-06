@@ -19,7 +19,10 @@ const props = defineProps({
   showToolbar: { type: Boolean, default: true },
   // Принудительная группировка по встрече (Промпт 5) — не зависит от
   // пользовательских preferences.groupBy, включается конкретным экраном
-  // (My Tasks), внутри группы порядок — пузырьковый (bubbleSort.js).
+  // (My Tasks), внутри группы порядок теперь берётся из выбранной в
+  // QuickFiltersBar сортировки (см. sortTasks), а не из bubbleSort —
+  // иначе кнопки сортировки в панели фильтров визуально работали, но
+  // не влияли на порядок внутри групп встреч.
   groupByMeeting: { type: Boolean, default: false },
 })
 
@@ -57,7 +60,11 @@ const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 }
 
 function sortTasks(tasks) {
   const dir = prefs.sortDir === 'asc' ? 1 : -1
+  // pinned-задачи всегда идут первыми независимо от выбранного поля
+  // сортировки — это отдельный, явный сигнал пользователя (📌), который
+  // не должен «тонуть» среди обычных полей.
   return [...tasks].sort((a, b) => {
+    if (!!a.pinned !== !!b.pinned) return a.pinned ? -1 : 1
     switch (prefs.sortField) {
       case 'due_date':
         return dir * ((a.dueDate ? new Date(a.dueDate) : Infinity) - (b.dueDate ? new Date(b.dueDate) : Infinity))
@@ -88,9 +95,9 @@ const bubbleBlocks = computed(() => {
  * своей встречи (task.meetingId), задачи без meetingId попадают в отдельный
  * блок "Без встречи", который всегда идёт последним. Порядок групп-встреч —
  * по дате встречи (более ранние/близкие — выше). Внутри каждой группы
- * применяется пузырьковый порядок (splitIntoBubbles), а не ranking score —
- * это осознанное решение: встреча — это фиксированный контекст, где важнее
- * видеть "что ещё не сделано" вместо relevance-скоринга.
+ * применяется сортировка, выбранная пользователем в QuickFiltersBar
+ * (sortTasks) — это делает поведение предсказуемым: переключатель
+ * сортировки одинаково работает и с группировкой по встречам, и без неё.
  */
 const meetingGroups = computed(() => {
   const byMeeting = {}
@@ -112,21 +119,17 @@ const meetingGroups = computed(() => {
       return new Date(a.meeting.date) - new Date(b.meeting.date)
     })
 
-  const groupsResult = meetingEntries.map(({ meetingId, meeting, tasks }) => {
-    const { notDone, done } = splitIntoBubbles(tasks)
-    return {
-      key: `meeting_${meetingId}`,
-      label: meeting ? `Встреча: ${meeting.title}, ${formatDateTime(meeting.date)}` : `Встреча (${meetingId})`,
-      meetingId,
-      tasks: [...notDone, ...done],
-      bubble: true,
-      isMeetingGroup: true,
-    }
-  })
+  const groupsResult = meetingEntries.map(({ meetingId, meeting, tasks }) => ({
+    key: `meeting_${meetingId}`,
+    label: meeting ? `Встреча: ${meeting.title}, ${formatDateTime(meeting.date)}` : `Встреча (${meetingId})`,
+    meetingId,
+    tasks: sortTasks(tasks),
+    bubble: true,
+    isMeetingGroup: true,
+  }))
 
   if (noMeeting.length) {
-    const { notDone, done } = splitIntoBubbles(noMeeting)
-    groupsResult.push({ key: 'no_meeting', label: 'Без встречи', tasks: [...notDone, ...done], bubble: true })
+    groupsResult.push({ key: 'no_meeting', label: 'Без встречи', tasks: sortTasks(noMeeting), bubble: true })
   }
 
   return groupsResult
