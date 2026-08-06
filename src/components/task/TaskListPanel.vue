@@ -78,7 +78,7 @@ function buildBubbleBlocks(tasks) {
 }
 
 const GROUP_KEY_LABEL = {
-  status: { open: 'Открыто', in_progress: 'В работе', done: 'Выполнено', cancelled: 'Отменено' },
+  status: { open: 'Не начато', in_progress: 'В работе', done: 'Выполнено', cancelled: 'Отменено' },
 }
 
 function buildExplicitGroups(tasks) {
