@@ -9,7 +9,7 @@ import { useIsAdmin } from '../composables/usePermissions'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
-import { formatDateTime } from '../utils/formatters'
+import { formatDateTime, formatMeetingRecurrence } from '../utils/formatters'
 import { meetingSummaryParser, MATCHED_PATTERN_LABEL } from '../services/MeetingSummaryParser'
 
 const props = defineProps({ id: { type: String, required: true } })
@@ -21,12 +21,25 @@ const listsStore = useListsStore()
 const isAdmin = useIsAdmin()
 
 const editing = ref(false)
-const editDraft = ref({ title: '', date: '', time: '', description: '', attendeeIds: [] })
+const editDraft = ref({
+  title: '', date: '', time: '', description: '', attendeeIds: [],
+  recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
+})
 
 const showSummaryParser = ref(false)
 const summaryText = ref('')
 const parsedCandidates = ref([])
 const parseAttempted = ref(false)
+
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: 'Пн' },
+  { value: 2, label: 'Вт' },
+  { value: 3, label: 'Ср' },
+  { value: 4, label: 'Чт' },
+  { value: 5, label: 'Пт' },
+  { value: 6, label: 'Сб' },
+  { value: 0, label: 'Вс' },
+]
 
 onMounted(async () => {
   if (!meetingsStore.loaded) await meetingsStore.load()
@@ -39,15 +52,8 @@ const meeting = computed(() => meetingsStore.meetingById(props.id))
 const author = computed(() => (meeting.value ? usersStore.byId(meeting.value.createdBy) : null))
 const meetingTasks = computed(() => tasksStore.tasks.filter((t) => t.meetingId === props.id && !t.parentTaskId))
 const attendees = computed(() => (meeting.value?.attendeeIds || []).map((id) => usersStore.byId(id)).filter(Boolean))
+const recurrenceLabel = computed(() => formatMeetingRecurrence(meeting.value?.recurrence))
 
-/**
- * Права на редактирование/удаление встречи: автор встречи или системный
- * администратор. Явное допущение: встреча — сущность вне ролевой модели
- * списков (у неё нет собственного списка участников), поэтому правило
- * "Owner/Editor" из ТЗ трактуется как "Owner/Editor хотя бы одного списка,
- * к которому привязаны задачи этой встречи" — это покрывает типичный кейс
- * (постановщик встречи обычно владеет соответствующим списком задач).
- */
 const canManageMeeting = computed(() => {
   if (!meeting.value) return false
   if (isAdmin.value) return true
@@ -67,12 +73,6 @@ function openSummaryParser() {
   showSummaryParser.value = true
 }
 
-/**
- * Разбор резюме — эвристика на regex (MockRegexSummaryParser), без
- * реального NLP (см. раздел 3.7 ТЗ и комментарий в MeetingSummaryParser.js).
- * Результат — предварительный список кандидатов, ничего не сохраняется
- * до явного подтверждения пользователем в форме ниже.
- */
 function runParse() {
   parsedCandidates.value = meetingSummaryParser.parse(summaryText.value, { knownUsers: usersStore.users })
   parseAttempted.value = true
@@ -103,6 +103,9 @@ function startEdit() {
     time: d.toTimeString().slice(0, 5),
     description: meeting.value.description || '',
     attendeeIds: [...(meeting.value.attendeeIds || [])],
+    recurrenceEnabled: !!meeting.value.recurrence,
+    recurrenceFreq: meeting.value.recurrence?.freq || 'weekly',
+    recurrenceWeekdays: [...(meeting.value.recurrence?.weekdays || [])],
   }
   editing.value = true
 }
@@ -113,14 +116,29 @@ function toggleEditAttendee(userId) {
   else editDraft.value.attendeeIds.splice(idx, 1)
 }
 
+function toggleWeekday(day) {
+  const idx = editDraft.value.recurrenceWeekdays.indexOf(day)
+  if (idx === -1) editDraft.value.recurrenceWeekdays.push(day)
+  else editDraft.value.recurrenceWeekdays.splice(idx, 1)
+}
+
 async function saveEdit() {
   if (!editDraft.value.title.trim() || !editDraft.value.date) return
   const isoDate = new Date(`${editDraft.value.date}T${editDraft.value.time || '00:00'}`).toISOString()
+  const recurrence = editDraft.value.recurrenceEnabled
+    ? {
+        freq: editDraft.value.recurrenceFreq,
+        weekdays: ['weekly', 'biweekly'].includes(editDraft.value.recurrenceFreq)
+          ? [...editDraft.value.recurrenceWeekdays].sort((a, b) => a - b)
+          : [],
+      }
+    : null
   await meetingsStore.updateMeeting(props.id, {
     title: editDraft.value.title.trim(),
     date: isoDate,
     description: editDraft.value.description.trim(),
     attendeeIds: [...editDraft.value.attendeeIds],
+    recurrence,
   })
   editing.value = false
 }
@@ -146,14 +164,15 @@ async function removeMeeting() {
       <div v-if="canManageMeeting" class="header-actions">
         <button class="btn btn-sm" @click="openSummaryParser">🧩 Разбор резюме в задачи</button>
         <button class="btn btn-sm" @click="startEdit">✎ Редактировать</button>
-        <button class="btn btn-sm btn-danger" @click="removeMeeting">🗑 Удалить</button>
+        <button class="btn btn-sm btn-danger" @click="removeMeeting">✖ Удалить</button>
       </div>
     </div>
 
     <div class="meeting-header card">
       <h2 class="meeting-title">📅 {{ meeting.title }}</h2>
-      <div class="meeting-meta">
+      <div class="meeting-meta meeting-meta-wrap">
         <span>🕐 {{ formatDateTime(meeting.date) }}</span>
+        <span class="meeting-recurrence">🔁 {{ recurrenceLabel }}</span>
         <span v-if="author">· Автор: {{ author.name }}</span>
       </div>
       <p v-if="meeting.description" class="meeting-description">{{ meeting.description }}</p>
@@ -164,7 +183,7 @@ async function removeMeeting() {
     </div>
 
     <h3 class="tasks-title">Задачи встречи</h3>
-    <QuickFiltersBar />
+    <QuickFiltersBar :task-count="meetingTasks.length" :meeting-mode="true" />
     <QuickAddTaskRow
       :meeting-id="props.id"
       placeholder="Добавить задачу по итогам встречи..."
@@ -245,6 +264,28 @@ async function removeMeeting() {
               <input v-model="editDraft.time" type="time" />
             </div>
           </div>
+          <div class="field-group recurrence-section">
+            <label>Тип встречи</label>
+            <div class="segmented-row">
+              <button class="segmented-btn" :class="{ active: !editDraft.recurrenceEnabled }" @click="editDraft.recurrenceEnabled = false">Разовая</button>
+              <button class="segmented-btn" :class="{ active: editDraft.recurrenceEnabled }" @click="editDraft.recurrenceEnabled = true">Регулярная</button>
+            </div>
+          </div>
+          <div v-if="editDraft.recurrenceEnabled" class="field-group recurrence-box">
+            <label>Периодичность</label>
+            <div class="segmented-row recurrence-type-row">
+              <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'daily' }" @click="editDraft.recurrenceFreq = 'daily'">Каждый день</button>
+              <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'weekly' }" @click="editDraft.recurrenceFreq = 'weekly'">Раз в неделю</button>
+              <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'biweekly' }" @click="editDraft.recurrenceFreq = 'biweekly'">Раз в 2 недели</button>
+            </div>
+            <div v-if="editDraft.recurrenceFreq !== 'daily'" class="weekday-picker">
+              <button
+                v-for="day in WEEKDAY_OPTIONS" :key="day.value"
+                class="weekday-btn" :class="{ active: editDraft.recurrenceWeekdays.includes(day.value) }"
+                @click="toggleWeekday(day.value)"
+              >{{ day.label }}</button>
+            </div>
+          </div>
           <div class="field-group">
             <label>Описание</label>
             <textarea v-model="editDraft.description" rows="3" />
@@ -276,6 +317,8 @@ async function removeMeeting() {
 .meeting-header { padding: 16px 18px; margin-bottom: 18px; }
 .meeting-title { margin: 0 0 6px; font-size: 18px; }
 .meeting-meta { display: flex; gap: 10px; font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 8px; }
+.meeting-meta-wrap { flex-wrap: wrap; }
+.meeting-recurrence { color: var(--color-text); font-weight: 500; }
 .meeting-description { margin: 0 0 8px; font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; }
 .meeting-attendees { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .attendees-label { font-size: 11.5px; color: var(--color-text-muted); }
@@ -297,6 +340,21 @@ async function removeMeeting() {
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-border); }
 .attendee-picker { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
 .attendee-option { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 2px; cursor: pointer; }
+
+.segmented-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.segmented-btn {
+  border: 1px solid var(--color-border); background: var(--color-surface); padding: 6px 10px;
+  border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--color-text-muted);
+}
+.segmented-btn.active { background: #eef2ff; border-color: #cfd8ff; color: var(--color-primary-dark); font-weight: 600; }
+.recurrence-box { border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; background: #fafbfe; }
+.recurrence-type-row { margin-bottom: 6px; }
+.weekday-picker { display: flex; gap: 6px; flex-wrap: wrap; }
+.weekday-btn {
+  border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 20px;
+  padding: 5px 10px; cursor: pointer; font-size: 12px; color: var(--color-text-muted);
+}
+.weekday-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
 
 .modal-wide { width: 560px; }
 .hint-text { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; margin: 0 0 4px; }
