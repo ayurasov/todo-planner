@@ -6,6 +6,7 @@ import { useTasksStore } from '../../stores/tasksStore'
 import { useListsStore } from '../../stores/listsStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useNotificationsStore } from '../../stores/notificationsStore'
+import { useMeetingsStore } from '../../stores/meetingsStore'
 import QuickCreateModal from '../task/QuickCreateModal.vue'
 import NotificationsPanel from '../notifications/NotificationsPanel.vue'
 import { useClickOutside } from '../../composables/useClickOutside'
@@ -15,6 +16,7 @@ const tasksStore = useTasksStore()
 const listsStore = useListsStore()
 const uiStore = useUiStore()
 const notificationsStore = useNotificationsStore()
+const meetingsStore = useMeetingsStore()
 const route = useRoute()
 
 const search = ref('')
@@ -38,8 +40,19 @@ function pickResult(task) {
   searchFocused.value = false
 }
 
+/**
+ * Контекст для QuickCreateModal, зависящий от текущего маршрута.
+ * - list-view: задача создаётся в открытый список (listId)
+ * - meeting-detail: задача создаётся привязанной к открытой встрече (meetingId),
+ *   а также подтягивает listId встречи, если он задан в meetingsStore, чтобы
+ *   задача сразу попадала в правильный список, а не только в контекст встречи
+ */
 function contextForCreate() {
   if (route.name === 'list-view' && route.params.id) return { listId: route.params.id }
+  if (route.name === 'meeting-detail' && route.params.id) {
+    const meeting = meetingsStore.byId ? meetingsStore.byId(route.params.id) : null
+    return { meetingId: route.params.id, listId: meeting?.listId || null }
+  }
   return {}
 }
 
