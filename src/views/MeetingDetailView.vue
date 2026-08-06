@@ -21,7 +21,7 @@ const listsStore = useListsStore()
 const isAdmin = useIsAdmin()
 
 const editing = ref(false)
-const editDraft = ref({ title: '', date: '', time: '', description: '' })
+const editDraft = ref({ title: '', date: '', time: '', description: '', attendeeIds: [] })
 
 const showSummaryParser = ref(false)
 const summaryText = ref('')
@@ -32,11 +32,13 @@ onMounted(async () => {
   if (!meetingsStore.loaded) await meetingsStore.load()
   if (!tasksStore.loaded) await tasksStore.load()
   if (!listsStore.loaded) await listsStore.load()
+  if (!usersStore.loaded) await usersStore.load()
 })
 
 const meeting = computed(() => meetingsStore.meetingById(props.id))
 const author = computed(() => (meeting.value ? usersStore.byId(meeting.value.createdBy) : null))
 const meetingTasks = computed(() => tasksStore.tasks.filter((t) => t.meetingId === props.id && !t.parentTaskId))
+const attendees = computed(() => (meeting.value?.attendeeIds || []).map((id) => usersStore.byId(id)).filter(Boolean))
 
 /**
  * Права на редактирование/удаление встречи: автор встречи или системный
@@ -100,8 +102,15 @@ function startEdit() {
     date: d.toISOString().slice(0, 10),
     time: d.toTimeString().slice(0, 5),
     description: meeting.value.description || '',
+    attendeeIds: [...(meeting.value.attendeeIds || [])],
   }
   editing.value = true
+}
+
+function toggleEditAttendee(userId) {
+  const idx = editDraft.value.attendeeIds.indexOf(userId)
+  if (idx === -1) editDraft.value.attendeeIds.push(userId)
+  else editDraft.value.attendeeIds.splice(idx, 1)
 }
 
 async function saveEdit() {
@@ -111,6 +120,7 @@ async function saveEdit() {
     title: editDraft.value.title.trim(),
     date: isoDate,
     description: editDraft.value.description.trim(),
+    attendeeIds: [...editDraft.value.attendeeIds],
   })
   editing.value = false
 }
@@ -147,6 +157,10 @@ async function removeMeeting() {
         <span v-if="author">· Автор: {{ author.name }}</span>
       </div>
       <p v-if="meeting.description" class="meeting-description">{{ meeting.description }}</p>
+      <div v-if="attendees.length" class="meeting-attendees">
+        <span class="attendees-label">Участники:</span>
+        <span v-for="u in attendees" :key="u.id" class="tag attendee-tag">{{ u.name }}</span>
+      </div>
     </div>
 
     <h3 class="tasks-title">Задачи встречи</h3>
@@ -235,6 +249,15 @@ async function removeMeeting() {
             <label>Описание</label>
             <textarea v-model="editDraft.description" rows="3" />
           </div>
+          <div class="field-group">
+            <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
+            <div class="attendee-picker">
+              <label v-for="u in usersStore.users" :key="u.id" class="attendee-option">
+                <input type="checkbox" :checked="editDraft.attendeeIds.includes(u.id)" @change="toggleEditAttendee(u.id)" />
+                {{ u.name }}
+              </label>
+            </div>
+          </div>
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" @click="editing = false">Отмена</button>
@@ -253,7 +276,10 @@ async function removeMeeting() {
 .meeting-header { padding: 16px 18px; margin-bottom: 18px; }
 .meeting-title { margin: 0 0 6px; font-size: 18px; }
 .meeting-meta { display: flex; gap: 10px; font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 8px; }
-.meeting-description { margin: 0; font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; }
+.meeting-description { margin: 0 0 8px; font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; }
+.meeting-attendees { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.attendees-label { font-size: 11.5px; color: var(--color-text-muted); }
+.attendee-tag { background: #f4f0ff; color: #7c5cd6; }
 
 .tasks-title { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
@@ -269,6 +295,8 @@ async function removeMeeting() {
 .field-row { display: flex; gap: 12px; }
 .field-row .field-group { flex: 1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-border); }
+.attendee-picker { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
+.attendee-option { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 2px; cursor: pointer; }
 
 .modal-wide { width: 560px; }
 .hint-text { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; margin: 0 0 4px; }
