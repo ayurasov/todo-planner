@@ -140,13 +140,18 @@ const HISTORY_ICON = {
           <div class="header-top">
             <span v-if="isSubtask && parentTask" class="parent-crumb">↳ {{ parentTask.title }}</span>
             <div class="header-actions">
-              <button v-if="canDeleteThisTask" class="btn btn-ghost close-btn btn-danger" title="Удалить задачу" @click="requestDelete">🗑</button>
+              <button v-if="canDeleteThisTask" class="btn btn-ghost close-btn btn-danger" title="Удалить задачу" @click="requestDelete">✖</button>
               <button class="btn btn-ghost close-btn" @click="emit('close')">✕</button>
             </div>
           </div>
-          <div v-if="linkedMeeting" class="meeting-crumb">
-            📅 <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
-            <span class="meeting-crumb-date">{{ formatDateTime(linkedMeeting.date) }}</span>
+          <div class="meta-crumbs">
+            <div v-if="parentList" class="list-crumb">
+              📋 <span class="list-crumb-title">{{ parentList.title }}</span>
+            </div>
+            <div v-if="linkedMeeting" class="meeting-crumb">
+              📅 <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
+              <span class="meeting-crumb-date">{{ formatDateTime(linkedMeeting.date) }}</span>
+            </div>
           </div>
           <input
             v-if="editingTitle"
@@ -315,6 +320,7 @@ const HISTORY_ICON = {
 .close-btn { border-radius: 8px; width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; }
 .close-btn.btn-danger { color: var(--color-danger); }
 .close-btn.btn-danger:hover { background: #fdeeee; }
+.meta-crumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
 .title-display { margin: 4px 0 12px; font-size: 18px; font-weight: 650; cursor: text; padding: 4px 6px; border-radius: 8px; display: flex; align-items: center; gap: 6px; }
 .title-display:hover { background: #f6f7fb; }
 .title-readonly { cursor: default; }
@@ -415,11 +421,13 @@ const HISTORY_ICON = {
 .comment-box textarea { border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; resize: vertical; font-size: 13px; outline: none; }
 .comment-box textarea:focus { border-color: var(--color-primary); }
 .pin-icon { font-size: 15px; }
-.meeting-crumb {
+.meeting-crumb,
+.list-crumb {
   display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-text-muted);
-  background: #eef1f7; border-radius: 8px; padding: 6px 10px; margin: 0 0 8px; width: fit-content;
+  background: #eef1f7; border-radius: 8px; padding: 6px 10px; width: fit-content;
 }
-.meeting-crumb-title { font-weight: 600; color: var(--color-text); }
+.meeting-crumb-title,
+.list-crumb-title { font-weight: 600; color: var(--color-text); }
 .meeting-crumb-date { color: var(--color-text-muted); }
 
 </style>
