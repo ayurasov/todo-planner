@@ -1,9 +1,11 @@
 <script setup>
 import { useListsStore } from '../../stores/listsStore'
 import { useViewStore } from '../../stores/viewStore'
+import { useIsAdmin } from '../../composables/usePermissions'
 
 const listsStore = useListsStore()
 const viewStore = useViewStore()
+const isAdmin = useIsAdmin()
 </script>
 
 <template>
@@ -40,6 +42,7 @@ const viewStore = useViewStore()
       </button>
     </div>
 
+    <router-link v-if="isAdmin" to="/settings/users" class="nav-item">🛡️ Пользователи</router-link>
     <router-link to="/settings" class="nav-item nav-item-bottom">⚙️ Настройки</router-link>
   </aside>
 </template>

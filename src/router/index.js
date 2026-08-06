@@ -1,4 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { useUsersStore } from '../stores/usersStore'
+import { useNotificationsStore } from '../stores/notificationsStore'
 
 const routes = [
   { path: '/', redirect: '/my-tasks' },
@@ -11,9 +13,48 @@ const routes = [
   { path: '/recurring', name: 'recurring', component: () => import('../views/RecurringTasksView.vue') },
   { path: '/history', name: 'history', component: () => import('../views/HistoryView.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
+  {
+    path: '/settings/users',
+    name: 'users',
+    component: () => import('../views/UsersView.vue'),
+    meta: { requiresAdmin: true },
+  },
 ]
 
 export const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+/**
+ * Route guard для экранов, доступных только администраторам (globalRole === 'admin').
+ * Ждём загрузки usersStore (на случай прямого перехода по URL до onMounted в App.vue),
+ * затем проверяем роль. Не-admin получает redirect на /my-tasks + in-app уведомление.
+ */
+router.beforeEach(async (to) => {
+  if (!to.meta?.requiresAdmin) return true
+
+  const usersStore = useUsersStore()
+  if (!usersStore.loaded) {
+    await usersStore.load()
+  }
+
+  const isAdmin = usersStore.currentUser?.globalRole === 'admin'
+  if (isAdmin) return true
+
+  const notificationsStore = useNotificationsStore()
+  notificationsStore.items.unshift({
+    id: `local_${Date.now()}`,
+    userId: usersStore.currentUser?.id,
+    type: 'status_changed',
+    taskId: null,
+    listId: null,
+    title: 'Доступ только для администраторов',
+    body: `Раздел «${to.path}» доступен только пользователям с ролью «Администратор».`,
+    createdAt: new Date().toISOString(),
+    read: false,
+    actorId: null,
+  })
+
+  return { path: '/my-tasks' }
 })
