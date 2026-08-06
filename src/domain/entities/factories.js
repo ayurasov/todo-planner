@@ -53,15 +53,22 @@ export function createTask({
   createdAt = new Date().toISOString(), createdBy = null,
   updatedAt = new Date().toISOString(), updatedBy = null,
   lastActivityAt = new Date().toISOString(), completedAt = null,
-  displayStandalone = false,
+  displayStandalone = false, meetingId = null,
 }) {
   return {
     id: id || nextId('task'), listId, parentTaskId, title, description,
     status, priority, assigneeId, watcherIds, dueDate, startDate,
     recurrenceTemplateId, tags, pinned,
     createdAt, createdBy, updatedAt, updatedBy, lastActivityAt, completedAt,
-    displayStandalone,
+    displayStandalone, meetingId,
   }
+}
+
+export function createMeeting({
+  id, title, date, description = '', createdBy = null,
+  createdAt = new Date().toISOString(),
+}) {
+  return { id: id || nextId('meeting'), title, date, description, createdBy, createdAt }
 }
 
 export function createChecklistItem({ id, taskId, title, done = false, order = 0, recurrenceScope = 'instance_only' }) {

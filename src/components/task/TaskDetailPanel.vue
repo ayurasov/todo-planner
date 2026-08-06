@@ -4,6 +4,7 @@ import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { useHistoryStore } from '../../stores/historyStore'
 import { useListsStore } from '../../stores/listsStore'
+import { useMeetingsStore } from '../../stores/meetingsStore'
 import { TaskPriority, TaskStatus, PRIORITY_LABEL } from '../../domain/entities/enums'
 import { formatDateTime } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
@@ -15,6 +16,7 @@ const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
 const historyStore = useHistoryStore()
 const listsStore = useListsStore()
+const meetingsStore = useMeetingsStore()
 
 const tab = ref('overview')
 const newChecklistTitle = ref('')
@@ -35,6 +37,7 @@ const parentList = computed(() => listsStore.byId(liveTask.value.listId))
 const commentsAllowed = computed(() => parentList.value?.settings?.allowComments !== false)
 const isSubtask = computed(() => !!liveTask.value.parentTaskId)
 const parentTask = computed(() => isSubtask.value ? tasksStore.byId(liveTask.value.parentTaskId) : null)
+const linkedMeeting = computed(() => liveTask.value.meetingId ? meetingsStore.meetingById(liveTask.value.meetingId) : null)
 const currentAssignee = computed(() => usersStore.byId(liveTask.value.assigneeId))
 const checklistProgress = computed(() => {
   if (!checklist.value.length) return null
@@ -55,6 +58,7 @@ const STATUS_META = {
 }
 
 onMounted(async () => {
+  if (!meetingsStore.loaded) await meetingsStore.load()
   await tasksStore.loadChecklist(props.task.id)
   await tasksStore.loadNotes(props.task.id)
   await tasksStore.loadComments(props.task.id)
@@ -127,6 +131,10 @@ const HISTORY_ICON = {
           <div class="header-top">
             <span v-if="isSubtask && parentTask" class="parent-crumb">↳ {{ parentTask.title }}</span>
             <button class="btn btn-ghost close-btn" @click="emit('close')">✕</button>
+          </div>
+          <div v-if="linkedMeeting" class="meeting-crumb">
+            📅 <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
+            <span class="meeting-crumb-date">{{ formatDateTime(linkedMeeting.date) }}</span>
           </div>
           <input
             v-if="editingTitle"
@@ -384,4 +392,11 @@ const HISTORY_ICON = {
 .comment-box textarea { border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; resize: vertical; font-size: 13px; outline: none; }
 .comment-box textarea:focus { border-color: var(--color-primary); }
 .pin-icon { font-size: 15px; }
+.meeting-crumb {
+  display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-text-muted);
+  background: #eef1f7; border-radius: 8px; padding: 6px 10px; margin: 0 0 8px; width: fit-content;
+}
+.meeting-crumb-title { font-weight: 600; color: var(--color-text); }
+.meeting-crumb-date { color: var(--color-text-muted); }
+
 </style>

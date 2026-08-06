@@ -1,4 +1,4 @@
-import { createUser, createList, createListMembership, createTask, createChecklistItem, createNote, createHistoryEntry, createRecurrenceTemplate } from '../../domain/entities/factories'
+import { createUser, createList, createListMembership, createTask, createChecklistItem, createNote, createHistoryEntry, createRecurrenceTemplate, createMeeting } from '../../domain/entities/factories'
 import { TaskStatus, TaskPriority, ListRole, HistoryEventType, RecurrenceType, RecurrenceFreq } from '../../domain/entities/enums'
 
 const now = new Date()
@@ -40,7 +40,7 @@ const t1 = createTask({
   description: 'Проверить спецификацию, отправить на согласование заказчику.',
   priority: TaskPriority.HIGH, assigneeId: 'user_1', dueDate: iso(-1),
   createdAt: iso(-5), updatedAt: iso(0, -2), lastActivityAt: iso(0, -2), pinned: true,
-  tags: ['integration', 'urgent-review'],
+  tags: ['integration', 'urgent-review'], meetingId: 'meeting_1',
 })
 const t2 = createTask({
   id: 'task_2', listId: 'list_1', parentTaskId: 'task_1', title: 'Собрать замечания от отдела безопасности',
@@ -101,4 +101,9 @@ export const seedRecurrenceTemplates = [
     rule: { freq: RecurrenceFreq.WEEKLY, interval: 1, byWeekday: ['MO'], endCondition: null },
     generateAheadCount: 2,
   }),
+]
+
+export const seedMeetings = [
+  createMeeting({ id: 'meeting_1', title: 'Планёрка по ERP-проекту', date: iso(-2, 10), description: 'Синхронизация статусов интеграции Odoo, обсуждение блокеров.', createdBy: 'user_1' }),
+  createMeeting({ id: 'meeting_2', title: 'Еженедельный ревью команды', date: iso(1, 11), description: 'Обзор текущих задач и приоритетов на неделю.', createdBy: 'user_1' }),
 ]
