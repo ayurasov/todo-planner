@@ -53,7 +53,7 @@ const checklistPercent = computed(() => {
 
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
 const STATUS_META = {
-  open: { label: 'Открыто', color: '#6b7280', bg: '#eef1f7' },
+  open: { label: 'Не начато', color: '#6b7280', bg: '#eef1f7' },
   in_progress: { label: 'В работе', color: '#4f7cff', bg: '#eaf0ff' },
   done: { label: 'Выполнено', color: '#1e9e4d', bg: '#e4f6ea' },
   cancelled: { label: 'Отменено', color: '#9aa3b2', bg: '#f1f2f5' },
