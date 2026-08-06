@@ -84,8 +84,16 @@ export const DensityMode = {
   SPACIOUS: 'spacious',
 }
 
+// GroupByMode.BUBBLE — режим "Не выполнено / Выполнено" (раздел 3.3 ТЗ),
+// прозрачная сортировка без весов (см. domain/ranking/bubbleSort.js). Ранее
+// это значение отсутствовало в перечислении (хотя TaskListPanel.vue и
+// QuickToolbar.vue уже ссылались на строку 'bubble'), из-за чего опция
+// пропадала из селектора группировки в тулбаре и была недостижима из UI —
+// как следствие, задачи со статусом done/cancelled скрывались обычным
+// фильтром showCompleted без возможности их увидеть.
 export const GroupByMode = {
   NONE: 'none',
+  BUBBLE: 'bubble',
   STATUS: 'status',
   PRIORITY: 'priority',
   ASSIGNEE: 'assignee',
@@ -113,6 +121,7 @@ export const ColorCodeMode = {
 
 export const GROUP_LABEL = {
   none: 'Без группировки',
+  bubble: 'Пузырьки (Выполнено/Не выполнено)',
   status: 'По статусу',
   priority: 'По приоритету',
   assignee: 'По исполнителю',
