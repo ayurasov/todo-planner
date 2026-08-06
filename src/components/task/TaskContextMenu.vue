@@ -7,6 +7,7 @@ import { usePreferencesStore } from '../../stores/preferencesStore'
 import { useTaskPermissions } from '../../composables/usePermissions'
 import { useAssignableUsers } from '../../composables/useAssignableUsers'
 import { TaskPriority, PRIORITY_LABEL } from '../../domain/entities/enums'
+import AppIcon from '../common/AppIcon.vue'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -134,24 +135,24 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
 
         <div class="ctx-section">
           <button v-if="canToggleStatus" class="ctx-item ctx-item-primary" @click="toggleComplete">
-            <span class="ctx-icon" :class="isDone ? 'icon-neutral' : 'icon-success'">{{ isDone ? '↺' : '✓' }}</span>
+            <span class="ctx-icon" :class="isDone ? 'icon-neutral' : 'icon-success'"><AppIcon :name="isDone ? 'undo' : 'check'" :size="13" /></span>
             {{ isDone ? 'Вернуть в работу' : 'Завершить' }}
           </button>
           <button v-if="canEditThisTask" class="ctx-item" @click="rename">
-            <span class="ctx-icon icon-neutral">✎</span> Переименовать
+            <span class="ctx-icon icon-neutral"><AppIcon name="edit" :size="13" /></span> Переиименовать
           </button>
           <button v-if="canEditThisTask" class="ctx-item" @click="addSubtask">
-            <span class="ctx-icon icon-neutral">＋</span> Добавить подзадачу
+            <span class="ctx-icon icon-neutral"><AppIcon name="plus" :size="13" /></span> Добавить подзадачу
           </button>
           <button class="ctx-item" @click="openDetail">
-            <span class="ctx-icon icon-neutral">☰</span> Открыть детали
+            <span class="ctx-icon icon-neutral"><AppIcon name="detail" :size="13" /></span> Открыть детали
           </button>
           <button v-if="canEditThisTask" class="ctx-item" @click="togglePin">
-            <span class="ctx-icon" :class="task.pinned ? 'icon-warning' : 'icon-neutral'">📌</span>
+            <span class="ctx-icon" :class="task.pinned ? 'icon-warning' : 'icon-neutral'"><AppIcon name="pin" :size="13" /></span>
             {{ task.pinned ? 'Открепить' : 'Закрепить' }}
           </button>
           <button v-if="canEditThisTask && isSubtask" class="ctx-item" @click="toggleStandalone">
-            <span class="ctx-icon icon-neutral">{{ task.displayStandalone ? '⊟' : '⊞' }}</span>
+            <span class="ctx-icon icon-neutral"><AppIcon :name="task.displayStandalone ? 'standaloneOff' : 'standaloneOn'" :size="13" /></span>
             {{ task.displayStandalone ? 'Скрыть из общих списков' : 'Показывать отдельно' }}
           </button>
           <p v-if="!canEditThisTask" class="ctx-readonly-hint">Только просмотр — недостаточно прав для этой задачи</p>
@@ -198,7 +199,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
             >
               <span class="ctx-avatar" :style="task.assigneeId === u.id ? { background: 'var(--color-primary)' } : {}">{{ u.name.charAt(0) }}</span>
               {{ u.name }}
-              <span v-if="task.assigneeId === u.id" class="ctx-check">✓</span>
+              <span v-if="task.assigneeId === u.id" class="ctx-check"><AppIcon name="check" :size="12" /></span>
             </button>
             <button class="ctx-item ctx-item-user" @click="assign(null)">
               <span class="ctx-avatar ctx-avatar-empty">—</span> Без исполнителя
@@ -210,7 +211,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
 
         <div class="ctx-section">
           <button class="ctx-item" @click="duplicate">
-            <span class="ctx-icon icon-neutral">⧉</span> Дублировать
+            <span class="ctx-icon icon-neutral"><AppIcon name="copy" :size="13" /></span> Дублировать
           </button>
         </div>
         </template>
@@ -218,7 +219,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
         <div v-if="canDeleteThisTask" class="ctx-divider" />
         <div v-if="canDeleteThisTask" class="ctx-section">
           <button class="ctx-item ctx-item-danger" @click="remove">
-            <span class="ctx-icon icon-danger">✖</span> Удалить
+            <span class="ctx-icon icon-danger"><AppIcon name="trash" :size="13" /></span> Удалить
           </button>
         </div>
       </div>
@@ -259,7 +260,7 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
 
 .ctx-icon {
   width: 22px; height: 22px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
-  font-size: 12px; flex-shrink: 0;
+  flex-shrink: 0;
 }
 .icon-neutral { background: #eef1f7; color: var(--color-text-muted); }
 .icon-success { background: #e4f6ea; color: #1e9e4d; }
@@ -286,5 +287,5 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
   display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700;
 }
 .ctx-avatar-empty { background: #d9dde8; color: var(--color-text-muted); }
-.ctx-check { margin-left: auto; color: var(--color-primary); font-weight: 700; }
+.ctx-check { margin-left: auto; color: var(--color-primary); font-weight: 700; display: flex; }
 </style>
