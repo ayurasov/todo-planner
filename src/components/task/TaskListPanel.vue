@@ -21,8 +21,10 @@ const props = defineProps({
   // структуры экрана (My Tasks), который не заменяет группировку, выбранную
   // пользователем в QuickToolbar (prefs.groupBy), а дополняет её: выбор из
   // тулбара применяется КАК ВЛОЖЕННАЯ подгруппа внутри каждого блока встречи
-  // (см. groups/buildSubgroups ниже). Раньше эти два режима были
-  // взаимоисключающими — либо группировка по встрече, либо выбор из тулбара.
+  // (см. groups/buildSubgroups ниже). Оформление заголовков «Встреча: ...» /
+  // «Без встречи» всегда стабильное (meeting-group-header) и не зависит от того,
+  // выбрана ли вложенная группировка внутри него (раньше group.bubble = !subgroups
+  // заставлял шрифт/стиль заголовка меняться при включении группировки).
   groupByMeeting: { type: Boolean, default: false },
 })
 
@@ -147,6 +149,14 @@ function buildSubgroups(tasks) {
  * каждой группы дополнительно применяется подгруппировка из тулбара
  * (buildSubgroups) — если она не выбрана, задачи внутри блока встречи просто
  * сортируются (sortTasks), без дублирующего пузырькового порядка.
+ *
+ * верхний заголовок (label + кнопка "Перейти к встрече") всегда
+ * рендерится с bubble: false — это не стиль внутреннего содержимого, а стабильный
+ * визуальный якорь блока встречи/«Без встречи» (meeting-group-header), который не
+ * должен менять шрифт/стиль в зависимости от того, включена ли вложенная
+ * группировка внутри. Раньше bubble выставлялся как !subgroups, из-за чего заголовок
+ * переключался между двумя разными стилями (bubble-header vs обычный) при
+ * включении/выключении группировки.
  */
 const meetingTopGroups = computed(() => {
   const byMeeting = {}
@@ -176,7 +186,7 @@ const meetingTopGroups = computed(() => {
       meetingId,
       tasks: subgroups ? null : sortTasks(tasks),
       subgroups,
-      bubble: !subgroups,
+      bubble: false,
       isMeetingGroup: true,
     }
   })
@@ -188,7 +198,8 @@ const meetingTopGroups = computed(() => {
       label: 'Без встречи',
       tasks: subgroups ? null : sortTasks(noMeeting),
       subgroups,
-      bubble: !subgroups,
+      bubble: false,
+      isMeetingGroup: true,
     })
   }
 
@@ -214,7 +225,7 @@ const groups = computed(() => {
     <div v-if="group.label" class="group-header" :class="{ 'bubble-header': group.bubble, 'meeting-group-header': group.isMeetingGroup }">
       <span class="group-header-text">{{ group.label }}</span>
       <span v-if="!group.bubble" class="group-count">{{ (group.tasks || group.subgroups.flatMap(s => s.tasks)).length }}</span>
-      <button v-if="group.isMeetingGroup" class="btn btn-ghost btn-sm meeting-link-btn" @click="goToMeeting(group.meetingId)">Перейти к встрече →</button>
+      <button v-if="group.isMeetingGroup && group.meetingId" class="btn btn-ghost btn-sm meeting-link-btn" @click="goToMeeting(group.meetingId)">Перейти к встрече →</button>
     </div>
 
     <template v-if="group.subgroups">
