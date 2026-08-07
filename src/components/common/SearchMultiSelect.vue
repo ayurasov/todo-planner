@@ -1,6 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
-import { onClickOutside } from '@vueuse/core'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import AppIcon from './AppIcon.vue'
 
 // Общий компонент для фильтра "мультиселект с поиском" — используется
@@ -17,7 +16,12 @@ const open = ref(false)
 const search = ref('')
 const rootEl = ref(null)
 
-onClickOutside(rootEl, () => { open.value = false })
+function handleOutsideClick(e) {
+  if (rootEl.value && !rootEl.value.contains(e.target)) open.value = false
+}
+
+onMounted(() => document.addEventListener('mousedown', handleOutsideClick))
+onUnmounted(() => document.removeEventListener('mousedown', handleOutsideClick))
 
 const filteredOptions = computed(() => {
   const q = search.value.trim().toLowerCase()
