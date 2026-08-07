@@ -20,6 +20,10 @@ const props = defineProps({
   // привязывалась к встрече, либо привязка работала только через служебный
   // context из другого места приложения).
   meetingId: { type: String, default: null },
+  // occurrenceId — если задан, задача создаётся привязанной не просто к серии
+  // встречи, а к конкретной подвстрече регулярной серии (см. MeetingDetailView,
+  // блок с перечислением подвстреч). Имеет смысл только совместно с meetingId.
+  occurrenceId: { type: String, default: null },
   placeholder: { type: String, default: 'Добавить задачу — Enter, чтобы продолжить' },
 })
 
@@ -77,6 +81,7 @@ async function commit(keepOpen = true) {
       listId: props.listId,
       title,
       meetingId: selectedMeetingId.value,
+      occurrenceId: props.occurrenceId || null,
       assigneeId: selectedAssigneeId.value,
     })
   }
