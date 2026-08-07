@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { meetingRepository } from '../repositories'
 import { useUsersStore } from './usersStore'
+import { meetingOccurrenceService } from '../services/MeetingOccurrenceService'
 
 export const useMeetingsStore = defineStore('meetings', {
   state: () => ({ meetings: [], loaded: false }),
@@ -11,11 +12,39 @@ export const useMeetingsStore = defineStore('meetings', {
     // как результат пользовательского drag-n-drop, в отличие от sortedByDate.
     activeMeetings: (state) => [...state.meetings].filter((m) => !m.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
     archivedMeetings: (state) => [...state.meetings].filter((m) => m.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+
+    /**
+     * Отсортированные по дате occurrences конкретной регулярной встречи (включая
+     * первую, дата которой равна meeting.date). Для разовой встречи — пустой массив,
+     * так как понятие occurrence к ней неприменимо (см. MeetingDetailView).
+     */
+    occurrencesOf: (state) => (meetingId) => {
+      const meeting = state.meetings.find((m) => m.id === meetingId)
+      if (!meeting || !meeting.recurrence) return []
+      return [...(meeting.occurrences || [])].sort((a, b) => new Date(a.date) - new Date(b.date))
+    },
   },
   actions: {
     async load() {
       this.meetings = await meetingRepository.getAll()
       this.loaded = true
+      // Догенерируем подвстречи для всех регулярных встреч сразу после загрузки —
+      // это гарантирует, что пользователь никогда не увидит пустой список подвстреч
+      // у регулярной встречи и что "завтрашняя" подвстреча появится без ручных действий.
+      await Promise.all(this.meetings.filter((m) => m.recurrence).map((m) => this.ensureOccurrences(m.id)))
+    },
+
+    /**
+     * Пересчитывает и, если появились новые подвстречи, сохраняет их. Безопасно
+     * вызывать многократно (идемпотентно) — уже сгенерированные occurrences не
+     * трогаются, только дописываются новые в конец.
+     */
+    async ensureOccurrences(meetingId) {
+      const meeting = this.meetingById(meetingId)
+      if (!meeting || !meeting.recurrence) return meeting
+      const rebuilt = meetingOccurrenceService.buildOccurrences(meeting)
+      if (rebuilt.length === (meeting.occurrences || []).length) return meeting
+      return this.updateMeeting(meetingId, { occurrences: rebuilt })
     },
 
     async createMeeting(payload) {
@@ -23,6 +52,7 @@ export const useMeetingsStore = defineStore('meetings', {
       const maxOrder = this.meetings.reduce((max, m) => Math.max(max, m.order ?? 0), -1)
       const meeting = await meetingRepository.create({ createdBy: usersStore.currentUser?.id, order: maxOrder + 1, ...payload })
       this.meetings.push(meeting)
+      if (meeting.recurrence) await this.ensureOccurrences(meeting.id)
       return meeting
     },
 
@@ -31,6 +61,17 @@ export const useMeetingsStore = defineStore('meetings', {
       const idx = this.meetings.findIndex((m) => m.id === id)
       if (idx !== -1) this.meetings[idx] = updated
       return updated
+    },
+
+    /**
+     * Обновляет описание/ссылку конкретной подвстречи (не всей серии). Используется
+     * при заполнении итогов встречи по каждому вхождению регулярной серии отдельно.
+     */
+    async updateOccurrence(meetingId, occurrenceId, patch) {
+      const meeting = this.meetingById(meetingId)
+      if (!meeting) return null
+      const occurrences = (meeting.occurrences || []).map((o) => (o.id === occurrenceId ? { ...o, ...patch } : o))
+      return this.updateMeeting(meetingId, { occurrences })
     },
 
     async removeMeeting(id) {
