@@ -1,5 +1,5 @@
 <script setup>
-import { reactive, watch } from 'vue'
+import { reactive, ref } from 'vue'
 import { useListsStore } from '../../stores/listsStore'
 import { GroupByMode, SortField, GROUP_LABEL, SORT_LABEL, WEEKDAY_LABEL, MEETING_FREQ_LABEL } from '../../domain/entities/enums'
 import AppIcon from './AppIcon.vue'
@@ -7,6 +7,8 @@ import AppIcon from './AppIcon.vue'
 const props = defineProps({ list: { type: Object, required: true } })
 const emit = defineEmits(['close'])
 const listsStore = useListsStore()
+
+const ICON_OPTIONS = ['📋', '📁', '✅', '📅', '📌', '🎯', '📊', '💡', '🚀', '⭐', '🔥', '🛠️', '💬', '👥', '📈', '🏷️', '📦', '🧩', '🎨', '🔔']
 
 const form = reactive({
   title: props.list.title,
@@ -25,6 +27,13 @@ const form = reactive({
     ...(props.list.settings?.recurringMeeting || {}),
   },
 })
+
+const iconPickerOpen = ref(false)
+
+function pickIcon(icon) {
+  form.icon = icon
+  iconPickerOpen.value = false
+}
 
 async function save() {
   await listsStore.updateList(props.list.id, {
@@ -68,17 +77,26 @@ function toggleView(view) {
           <input v-model="form.title" />
         </div>
         <div class="field-group">
-          <label>Описание</label>
+          <label>Обойдет</label>
           <textarea v-model="form.description" rows="2" />
         </div>
         <div class="field-row">
           <div class="field-group">
-            <label>Цвет</label>
+            <label>Свет</label>
             <input v-model="form.color" type="color" />
           </div>
-          <div class="field-group">
+          <div class="field-group icon-picker-group">
             <label>Иконка</label>
-            <input v-model="form.icon" maxlength="2" class="icon-input" />
+            <button type="button" class="icon-trigger" @click="iconPickerOpen = !iconPickerOpen">
+              <span class="icon-preview">{{ form.icon }}</span>
+              <AppIcon name="chevronDown" :size="11" />
+            </button>
+            <div v-if="iconPickerOpen" class="icon-grid card">
+              <button
+                v-for="opt in ICON_OPTIONS" :key="opt" type="button" class="icon-option"
+                :class="{ active: opt === form.icon }" @click="pickIcon(opt)"
+              >{{ opt }}</button>
+            </div>
           </div>
         </div>
 
@@ -165,11 +183,27 @@ function toggleView(view) {
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 10px; }
 .modal-header h3 { margin: 0; font-size: 15px; }
 .modal-body { padding: 4px 18px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
-.field-group { display: flex; flex-direction: column; gap: 4px; }
+.field-group { display: flex; flex-direction: column; gap: 4px; position: relative; }
 .field-group label { font-size: 11.5px; color: var(--color-text-muted); }
 .field-group input, .field-group select, .field-group textarea { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
 .field-row { display: flex; gap: 12px; }
-.icon-input { width: 60px; text-align: center; }
+.icon-picker-group { min-width: 90px; }
+.icon-trigger {
+  display: flex; align-items: center; gap: 6px; border: 1px solid var(--color-border); background: var(--color-surface);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer; color: var(--color-text-muted);
+}
+.icon-trigger:hover { background: #eef1f7; }
+.icon-preview { font-size: 16px; line-height: 1; }
+.icon-grid {
+  position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 30; padding: 8px;
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; width: 190px; box-shadow: var(--shadow-2);
+}
+.icon-option {
+  border: 1px solid transparent; background: none; border-radius: 6px; font-size: 17px; padding: 5px;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.icon-option:hover { background: #eef1f7; }
+.icon-option.active { border-color: var(--color-primary); background: #eaf0ff; }
 .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted); margin-top: 8px; border-top: 1px solid var(--color-border); padding-top: 10px; }
 .checkbox-row { display: flex; align-items: center; gap: 7px; font-size: 13px; }
 .views-toggles { display: flex; gap: 14px; }
