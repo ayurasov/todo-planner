@@ -1,12 +1,33 @@
 <script setup>
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { useViewStore } from '../../stores/viewStore'
 import { useUiStore } from '../../stores/uiStore'
+import { useListsStore } from '../../stores/listsStore'
 import { useIsAdmin } from '../../composables/usePermissions'
 import AppIcon from './AppIcon.vue'
 
 const viewStore = useViewStore()
 const uiStore = useUiStore()
+const listsStore = useListsStore()
 const isAdmin = useIsAdmin()
+const route = useRoute()
+
+// Подменю со списками открыто по умолчанию, если пользователь уже находится
+// на странице конкретного списка (прямой переход по ссылке / обновление страницы) —
+// иначе после захода в список сайдбар выглядел бы так, будто список "потерялся".
+const listsExpanded = ref(route.name === 'list-view')
+
+onMounted(async () => {
+  if (!listsStore.loaded) await listsStore.load()
+})
+
+function toggleLists() {
+  // В свёрнутом сайдбаре подменю не показываем — просто уходим в раздел
+  // управления списками, иначе иконки без текста было бы невозможно читать.
+  if (uiStore.sidebarCollapsed) return
+  listsExpanded.value = !listsExpanded.value
+}
 </script>
 
 <template>
@@ -31,9 +52,39 @@ const isAdmin = useIsAdmin()
       <router-link to="/meetings" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Встречи' : ''">
         <AppIcon name="calendar" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Встречи</span>
       </router-link>
-      <router-link to="/lists-manager" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Списки' : ''">
-        <AppIcon name="folder" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Списки</span>
-      </router-link>
+
+      <div class="nav-item-group">
+        <button
+          class="nav-item nav-item-btn nav-item-expandable"
+          :class="{ 'router-link-active': route.name === 'lists-manager' || route.name === 'list-view' }"
+          :title="uiStore.sidebarCollapsed ? 'Списки' : ''"
+          @click="toggleLists"
+        >
+          <AppIcon name="folder" :size="15" />
+          <span v-if="!uiStore.sidebarCollapsed" class="nav-item-label">Списки</span>
+          <AppIcon
+            v-if="!uiStore.sidebarCollapsed"
+            :name="listsExpanded ? 'chevronDown' : 'chevronRight'"
+            :size="12"
+            class="expand-caret"
+          />
+        </button>
+
+        <div v-if="listsExpanded && !uiStore.sidebarCollapsed" class="nav-submenu">
+          <router-link
+            v-for="list in listsStore.lists" :key="list.id"
+            :to="`/lists/${list.id}`" class="nav-item nav-subitem"
+          >
+            <span class="list-dot" :style="{ background: list.color }" />
+            <span class="nav-item-label">{{ list.title }}</span>
+          </router-link>
+          <div v-if="!listsStore.lists.length" class="nav-submenu-empty">Списков пока нет</div>
+          <router-link to="/lists-manager" class="nav-item nav-subitem nav-manage-item">
+            <AppIcon name="settings" :size="13" /><span class="nav-item-label">Управление списками</span>
+          </router-link>
+        </div>
+      </div>
+
       <router-link to="/history" class="nav-item" :title="uiStore.sidebarCollapsed ? 'История' : ''">
         <AppIcon name="history" :size="15" /><span v-if="!uiStore.sidebarCollapsed">История</span>
       </router-link>
@@ -92,6 +143,16 @@ const isAdmin = useIsAdmin()
 .nav-item.router-link-active { background: #e6ecff; color: var(--color-primary-dark); font-weight: 600; }
 .list-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .nav-item-btn { cursor: pointer; }
+
+.nav-item-group { display: flex; flex-direction: column; }
+.nav-item-expandable { justify-content: flex-start; }
+.nav-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.expand-caret { flex-shrink: 0; color: var(--color-text-muted); }
+.nav-submenu { display: flex; flex-direction: column; gap: 1px; padding-left: 14px; margin-top: 1px; margin-bottom: 2px; }
+.nav-subitem { font-size: 12.5px; padding: 6px 10px; }
+.nav-submenu-empty { font-size: 11.5px; color: var(--color-text-muted); padding: 5px 10px 5px 24px; }
+.nav-manage-item { color: var(--color-text-muted); border-top: 1px solid var(--color-border); margin-top: 3px; padding-top: 7px; }
+
 .sidebar-bottom {
   margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border);
   display: flex; flex-direction: column; gap: 2px;
