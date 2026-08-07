@@ -28,8 +28,8 @@ onMounted(async () => {
 })
 
 function toggleLists() {
-  // В свёрнутом сайдбаре подменю не показываем — просто уходим в раздел
-  // управления списками, иначе иконки без текста было бы невозможно читать.
+  // В свёрнутом сайдбаре подменю не показываем — просто
+  // уходим в раздел управления списками, иначе иконки без текста было бы невозможно читать.
   if (uiStore.sidebarCollapsed) return
   listsExpanded.value = !listsExpanded.value
 }
@@ -162,6 +162,9 @@ const meetingsDrag = useDragReorder(
 
       <router-link to="/history" class="nav-item" :title="uiStore.sidebarCollapsed ? 'История' : ''">
         <AppIcon name="history" :size="15" /><span v-if="!uiStore.sidebarCollapsed">История</span>
+      </router-link>
+      <router-link to="/analytics" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Аналитика' : ''">
+        <AppIcon name="chart" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Аналитика</span>
       </router-link>
     </nav>
 
