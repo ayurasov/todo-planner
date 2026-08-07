@@ -58,7 +58,7 @@ const meetingsDrag = useDragReorder(
   <aside class="sidebar scroll-thin" :class="{ collapsed: uiStore.sidebarCollapsed }">
     <div class="sidebar-top">
       <div class="sidebar-logo">
-        <AppIcon name="brandMark" :size="22" class="brand-icon" />
+        <AppIcon name="brandMark" :size="26" class="brand-icon" />
         <div v-if="!uiStore.sidebarCollapsed" class="brand-text">
           <span class="brand-name">По Делу</span>
           <span class="brand-tagline">Менеджер задач и списков</span>
@@ -205,9 +205,9 @@ const meetingsDrag = useDragReorder(
 .sidebar.collapsed .sidebar-top { flex-direction: column; gap: 10px; }
 .sidebar-logo { display: flex; align-items: center; gap: 9px; white-space: nowrap; overflow: hidden; }
 .brand-icon { color: var(--color-primary); flex-shrink: 0; }
-.brand-text { display: flex; flex-direction: column; overflow: hidden; }
+.brand-text { display: flex; flex-direction: column; overflow: hidden; padding-top: 3px; }
 .brand-name { font-weight: 700; font-size: 15px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
-.brand-tagline { font-size: 10.5px; color: var(--color-text-muted); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brand-tagline { font-size: 10.5px; color: var(--color-text-muted); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
 .collapse-btn {
   border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 7px; width: 24px; height: 24px;
   display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-muted); flex-shrink: 0;
@@ -245,5 +245,5 @@ const meetingsDrag = useDragReorder(
   margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border);
   display: flex; flex-direction: column; gap: 2px;
 }
-.sidebar-copyright { font-size: 10.5px; color: var(--color-text-muted); text-align: center; padding: 8px 6px 2px; opacity: 0.75; }
+.sidebar-copyright { font-size: 10.5px; color: var(--color-text-muted); text-align: left; padding: 8px 6px 0; opacity: 0.75; align-self: flex-start; }
 </style>
