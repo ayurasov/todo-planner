@@ -170,6 +170,9 @@ async function toggleChecklistExpand() {
   if (checklistExpanded.value && !tasksStore.checklistByTask[props.task.id]) {
     await tasksStore.loadChecklist(props.task.id)
   }
+  if (checklistExpanded.value) {
+    nextTick(() => inlineChecklistInputEl.value?.focus())
+  }
 }
 
 function toggleChecklistDone(itemId) {
@@ -336,10 +339,12 @@ function closeContextMenu() {
       :task="task"
       :x="contextMenu.x"
       :y="contextMenu.y"
+      :checklist-expanded="checklistExpanded"
       @close="closeContextMenu"
       @open-detail="emit('open', $event)"
       @add-subtask="startAddSubtask"
       @rename="startEditTitle"
+      @toggle-checklist="toggleChecklistExpand"
     />
   </div>
 </template>
