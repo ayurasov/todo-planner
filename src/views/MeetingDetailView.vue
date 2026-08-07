@@ -23,7 +23,7 @@ const isAdmin = useIsAdmin()
 
 const editing = ref(false)
 const editDraft = ref({
-  title: '', date: '', time: '', description: '', attendeeIds: [],
+  title: '', date: '', time: '', description: '', link: '', attendeeIds: [],
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
 })
 
@@ -103,6 +103,7 @@ function startEdit() {
     date: d.toISOString().slice(0, 10),
     time: d.toTimeString().slice(0, 5),
     description: meeting.value.description || '',
+    link: meeting.value.link || '',
     attendeeIds: [...(meeting.value.attendeeIds || [])],
     recurrenceEnabled: !!meeting.value.recurrence,
     recurrenceFreq: meeting.value.recurrence?.freq || 'weekly',
@@ -138,6 +139,7 @@ async function saveEdit() {
     title: editDraft.value.title.trim(),
     date: isoDate,
     description: editDraft.value.description.trim(),
+    link: editDraft.value.link.trim(),
     attendeeIds: [...editDraft.value.attendeeIds],
     recurrence,
   })
@@ -174,6 +176,7 @@ async function removeMeeting() {
       <div class="meeting-meta meeting-meta-wrap">
         <span class="meta-item"><AppIcon name="alarm" :size="12" /> {{ formatDateTime(meeting.date) }}</span>
         <span class="meeting-recurrence meta-item"><AppIcon name="repeat" :size="12" /> {{ recurrenceLabel }}</span>
+        <a v-if="meeting.link" :href="meeting.link" target="_blank" rel="noopener" class="meta-item meeting-link"><AppIcon name="link" :size="12" /> Присоединиться к звонку</a>
         <span v-if="author">· Автор: {{ author.name }}</span>
       </div>
       <p v-if="meeting.description" class="meeting-description">{{ meeting.description }}</p>
@@ -265,6 +268,10 @@ async function removeMeeting() {
               <input v-model="editDraft.time" type="time" />
             </div>
           </div>
+          <div class="field-group">
+            <label>Ссылка на звонок</label>
+            <input v-model="editDraft.link" placeholder="https://meet.example.com/..." />
+          </div>
           <div class="field-group recurrence-section">
             <label>Тип встречи</label>
             <div class="segmented-row">
@@ -321,6 +328,8 @@ async function removeMeeting() {
 .meeting-meta-wrap { flex-wrap: wrap; }
 .meta-item { display: inline-flex; align-items: center; gap: 5px; }
 .meeting-recurrence { color: var(--color-text); font-weight: 500; }
+.meeting-link { color: var(--color-primary); font-weight: 600; text-decoration: none; }
+.meeting-link:hover { text-decoration: underline; }
 .meeting-description { margin: 0 0 8px; font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; }
 .meeting-attendees { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .attendees-label { font-size: 11.5px; color: var(--color-text-muted); }
