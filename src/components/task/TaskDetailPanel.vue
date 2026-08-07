@@ -10,6 +10,7 @@ import { TaskPriority, TaskStatus, PRIORITY_LABEL } from '../../domain/entities/
 import { formatDateTime, formatDate } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
 import AppIcon from '../common/AppIcon.vue'
+import RichTextEditor from '../common/RichTextEditor.vue'
 
 const props = defineProps({ task: { type: Object, required: true } })
 const emit = defineEmits(['close'])
@@ -121,6 +122,10 @@ async function submitComment() {
 async function saveNote() {
   const existingNoteId = notes.value[0]?.id
   await tasksStore.saveNote(props.task.id, existingNoteId, { type: 'doc', content: [{ type: 'paragraph', text: noteContent.value }] })
+}
+
+function updateDescription(html) {
+  updateField('description', html)
 }
 
 const HISTORY_LABEL = {
@@ -247,8 +252,12 @@ const HISTORY_ICON = {
         <div class="tab-content scroll-thin">
           <Transition name="fade-tab" mode="out-in">
           <div v-if="tab === 'overview'" key="overview">
-            <textarea class="description-input" :disabled="!canEditThisTask" :value="liveTask.description" placeholder="Добавьте описание задачи..."
-              @change="updateField('description', $event.target.value)" />
+            <RichTextEditor
+              :model-value="liveTask.description"
+              :editable="canEditThisTask"
+              placeholder="Добавьте описание задачи..."
+              @update:model-value="updateDescription"
+            />
           </div>
 
           <div v-else-if="tab === 'checklist'" key="checklist" class="checklist-tab">
@@ -385,9 +394,6 @@ const HISTORY_ICON = {
 .tab-content { padding: 16px 20px; flex: 1; overflow-y: auto; }
 .fade-tab-enter-active, .fade-tab-leave-active { transition: opacity 0.12s ease; }
 .fade-tab-enter-from, .fade-tab-leave-to { opacity: 0; }
-
-.description-input { width: 100%; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; min-height: 90px; font-size: 13.5px; outline: none; }
-.description-input:focus { border-color: var(--color-primary); }
 
 .progress-bar-track { height: 6px; background: #eef1f7; border-radius: 4px; margin-bottom: 12px; overflow: hidden; }
 .progress-bar-fill { height: 100%; background: var(--color-primary); border-radius: 4px; transition: width 0.2s ease; }
