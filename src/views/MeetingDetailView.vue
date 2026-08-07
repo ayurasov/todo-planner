@@ -23,7 +23,7 @@ const isAdmin = useIsAdmin()
 
 const editing = ref(false)
 const editDraft = ref({
-  title: '', date: '', time: '', description: '', link: '', attendeeIds: [],
+  title: '', date: '', time: '', description: '', link: '', attendeeIds: [], color: '#4f7cff',
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
 })
 
@@ -105,6 +105,7 @@ function startEdit() {
     description: meeting.value.description || '',
     link: meeting.value.link || '',
     attendeeIds: [...(meeting.value.attendeeIds || [])],
+    color: meeting.value.color || '#4f7cff',
     recurrenceEnabled: !!meeting.value.recurrence,
     recurrenceFreq: meeting.value.recurrence?.freq || 'weekly',
     recurrenceWeekdays: [...(meeting.value.recurrence?.weekdays || [])],
@@ -141,6 +142,7 @@ async function saveEdit() {
     description: editDraft.value.description.trim(),
     link: editDraft.value.link.trim(),
     attendeeIds: [...editDraft.value.attendeeIds],
+    color: editDraft.value.color,
     recurrence,
   })
   editing.value = false
@@ -153,6 +155,12 @@ async function removeMeeting() {
   }
   await meetingsStore.removeMeeting(props.id)
   router.push('/meetings')
+}
+
+function toggleArchived() {
+  if (!meeting.value) return
+  if (meeting.value.archived) meetingsStore.unarchiveMeeting(meeting.value.id)
+  else meetingsStore.archiveMeeting(meeting.value.id)
 }
 </script>
 
@@ -167,12 +175,20 @@ async function removeMeeting() {
       <div v-if="canManageMeeting" class="header-actions">
         <button class="btn btn-sm" @click="openSummaryParser"><AppIcon name="layers" :size="13" /> Разбор резюме в задачи</button>
         <button class="btn btn-sm" @click="startEdit"><AppIcon name="edit" :size="13" /> Редактировать</button>
-        <button class="btn btn-sm btn-danger" @click="removeMeeting"><AppIcon name="trash" :size="13" /> Удалить</button>
+        <button
+          class="btn btn-ghost btn-icon btn-sm" :title="meeting.archived ? 'Вернуть из архива' : 'Архивировать'"
+          @click="toggleArchived"
+        ><AppIcon :name="meeting.archived ? 'undo' : 'copy'" :size="14" /></button>
+        <button class="btn btn-sm btn-danger" @click="removeMeeting"><AppIcon name="trash" :size="13" /> удалить</button>
       </div>
     </div>
 
     <div class="meeting-header card">
-      <h2 class="meeting-title"><AppIcon name="calendar" :size="17" /> {{ meeting.title }}</h2>
+      <h2 class="meeting-title">
+        <span class="meeting-color-dot" :style="{ background: meeting.color || '#4f7cff' }" />
+        <AppIcon name="calendar" :size="17" /> {{ meeting.title }}
+        <span v-if="meeting.archived" class="tag archived-tag">В архиве</span>
+      </h2>
       <div class="meeting-meta meeting-meta-wrap">
         <span class="meta-item"><AppIcon name="alarm" :size="12" /> {{ formatDateTime(meeting.date) }}</span>
         <span class="meeting-recurrence meta-item"><AppIcon name="repeat" :size="12" /> {{ recurrenceLabel }}</span>
@@ -267,13 +283,17 @@ async function removeMeeting() {
               <label>Время</label>
               <input v-model="editDraft.time" type="time" />
             </div>
+            <div class="field-group color-field">
+              <label>Цвет</label>
+              <input v-model="editDraft.color" type="color" />
+            </div>
           </div>
           <div class="field-group">
             <label>Ссылка на звонок</label>
             <input v-model="editDraft.link" placeholder="https://meet.example.com/..." />
           </div>
           <div class="field-group recurrence-section">
-            <label>Тип встречи</label>
+            <label>тип встречи</label>
             <div class="segmented-row">
               <button class="segmented-btn" :class="{ active: !editDraft.recurrenceEnabled }" @click="editDraft.recurrenceEnabled = false">Разовая</button>
               <button class="segmented-btn" :class="{ active: editDraft.recurrenceEnabled }" @click="editDraft.recurrenceEnabled = true">Регулярная</button>
@@ -284,7 +304,7 @@ async function removeMeeting() {
             <div class="segmented-row recurrence-type-row">
               <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'daily' }" @click="editDraft.recurrenceFreq = 'daily'">Каждый день</button>
               <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'weekly' }" @click="editDraft.recurrenceFreq = 'weekly'">Раз в неделю</button>
-              <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'biweekly' }" @click="editDraft.recurrenceFreq = 'biweekly'">Раз в 2 недели</button>
+              <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'biweekly' }" @click="editDraft.recurrenceFreq = 'biweekly'">раз в 2 недели</button>
             </div>
             <div v-if="editDraft.recurrenceFreq !== 'daily'" class="weekday-picker">
               <button
@@ -320,10 +340,12 @@ async function removeMeeting() {
 <style scoped>
 .view-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .back-btn { padding-left: 4px; display: inline-flex; align-items: center; gap: 4px; }
-.header-actions { display: flex; gap: 8px; }
+.header-actions { display: flex; gap: 8px; align-items: center; }
 
 .meeting-header { padding: 16px 18px; margin-bottom: 18px; }
 .meeting-title { margin: 0 0 6px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
+.meeting-color-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.archived-tag { background: #eef1f7; color: var(--color-text-muted); font-weight: 500; }
 .meeting-meta { display: flex; gap: 10px; font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 8px; }
 .meeting-meta-wrap { flex-wrap: wrap; }
 .meta-item { display: inline-flex; align-items: center; gap: 5px; }
@@ -348,6 +370,8 @@ async function removeMeeting() {
 .field-group input, .field-group textarea { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
 .field-row { display: flex; gap: 12px; }
 .field-row .field-group { flex: 1; }
+.color-field { flex: 0 0 auto; }
+.color-field input[type=color] { padding: 2px; width: 40px; height: 32px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-border); }
 .attendee-picker { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
 .attendee-option { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 2px; cursor: pointer; }
