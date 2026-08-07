@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useViewStore } from '../../stores/viewStore'
 import { useUiStore } from '../../stores/uiStore'
@@ -41,13 +41,15 @@ function toggleMeetings() {
 
 // Используется общая логика drag-n-drop с живым предпросмотром (useDragReorder) — та же,
 // что и на страницах управления списками/встречами, чтобы сортировка в меню
-// была синхронизирована с порядком на страницах.
+// была синхронизирована с порядком на страницах. Важно: useDragReorder внутри делает
+// sourceItemsRef.value, поэтому сюда надо передавать игенно computed(), а не простую стрелочную
+// функцию — иначе обращение к `.value` упадёт с ошибкой.
 const listsDrag = useDragReorder(
-  () => listsStore.activeLists,
+  computed(() => listsStore.activeLists),
   (orderedIds) => listsStore.reorderLists(orderedIds),
 )
 const meetingsDrag = useDragReorder(
-  () => meetingsStore.activeMeetings,
+  computed(() => meetingsStore.activeMeetings),
   (orderedIds) => meetingsStore.reorderMeetings(orderedIds),
 )
 </script>
