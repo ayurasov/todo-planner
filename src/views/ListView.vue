@@ -4,14 +4,12 @@ import { useTasksStore } from '../stores/tasksStore'
 import { useListsStore } from '../stores/listsStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
-import ListSettingsModal from '../components/common/ListSettingsModal.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 
 const props = defineProps({ id: { type: String, required: true } })
 const tasksStore = useTasksStore()
 const listsStore = useListsStore()
-const showSettings = ref(false)
 
 const list = computed(() => listsStore.byId(props.id))
 const rankedRoots = computed(() => tasksStore.rankedTasksForList(props.id).filter((t) => !t.parentTaskId))
@@ -37,14 +35,12 @@ function toggleArchived() {
         class="btn btn-ghost btn-icon" :title="list?.archived ? 'Вернуть из архива' : 'Архивировать список'"
         @click="toggleArchived"
       ><AppIcon :name="list?.archived ? 'undo' : 'copy'" :size="15" /></button>
-      <button class="btn btn-ghost btn-icon" title="Настроить список" @click="showSettings = true"><AppIcon name="settings" :size="15" /></button>
     </div>
   </div>
   <p v-if="list?.description" class="list-description">{{ list.description }}</p>
   <QuickFiltersBar :task-count="rankedRoots.length" />
   <QuickAddTaskRow :list-id="id" />
   <TaskListPanel :tasks="rankedRoots" empty-text="В этом списке пока нет задач" />
-  <ListSettingsModal v-if="showSettings && list" :list="list" @close="showSettings = false" />
 </template>
 
 <style scoped>
