@@ -80,7 +80,10 @@ const occurrences = computed(() => meetingsStore.occurrencesOf(props.id))
 // Невыполненные задачи серии — аккуратно привязаны к своей подвстрече:
 // каждая подвстреча со своими незакрытыми задачами формирует отдельную
 // секцию с деликатной отметкой даты слева, задачи внутри секции не
-// смешиваются со сплошным потоком остальных подвстреч.
+// смешиваются со сплошным потоком остальных подвстреч. Внутри секции
+// список рендерится в flat-режиме (без бабла-заголовка "Не выполнено"),
+// так как сам факт нахождения в этом блоке уже говорит, что задачи не
+// выполнены — дублирующий заголовок избыточен.
 const unfinishedGroupsByOccurrence = computed(() => {
   if (!isRecurring.value) return []
   const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
@@ -326,10 +329,10 @@ function toggleArchived() {
           <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row">
             <div class="series-occ-marker">
               <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
-              <span class="series-occ-count">{{ group.count }}</span>
+              <span class="series-occ-count">({{ group.count }})</span>
             </div>
             <div class="series-occ-tasks">
-              <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
+              <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" :flat="true" />
             </div>
           </div>
         </div>
@@ -572,22 +575,22 @@ function toggleArchived() {
 .empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }
 
 .series-alert {
-  padding: 14px 16px; margin-bottom: 14px; border: 1px solid #f3c5c8; background: linear-gradient(180deg, #fff7f7 0%, #fff 100%);
+  padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--color-border); background: var(--color-surface);
 }
 .series-alert.empty { border-color: var(--color-border); background: var(--color-surface); }
 .series-alert-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.series-alert-title { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--color-danger); }
+.series-alert-title { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--color-text); }
 .series-alert-subtitle { font-size: 12.5px; color: var(--color-text-muted); margin-top: 4px; }
 .series-alert-count {
   min-width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--color-danger); color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
+  background: #eef1f7; color: var(--color-text); font-weight: 700; font-size: 13px; flex-shrink: 0;
 }
-.series-occ-list { display: flex; flex-direction: column; gap: 10px; }
-.series-occ-row { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 12px; align-items: start; }
-.series-occ-marker { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; }
+.series-occ-list { display: flex; flex-direction: column; gap: 8px; }
+.series-occ-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; align-items: start; }
+.series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px; text-align: center; }
 .series-occ-date { font-size: 11.5px; font-weight: 600; color: var(--color-text-muted); line-height: 1.3; }
-.series-occ-count { font-size: 11px; font-weight: 700; color: var(--color-danger); }
-.series-occ-tasks { min-width: 0; border-left: 2px solid #f1d2d5; padding-left: 10px; }
+.series-occ-count { font-size: 11px; font-weight: 700; color: var(--color-text-muted); }
+.series-occ-tasks { min-width: 0; border-left: 2px solid var(--color-border); padding-left: 4px; }
 
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
 .occurrence-card { padding: 12px 14px; }
