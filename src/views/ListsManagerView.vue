@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import { useListsStore } from '../stores/listsStore'
 import { useUsersStore } from '../stores/usersStore'
 import { useTasksStore } from '../stores/tasksStore'
@@ -7,6 +8,7 @@ import { ListRole } from '../domain/entities/enums'
 import ListSettingsModal from '../components/common/ListSettingsModal.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 
+const router = useRouter()
 const listsStore = useListsStore()
 const usersStore = useUsersStore()
 const tasksStore = useTasksStore()
@@ -34,6 +36,22 @@ const rows = computed(() => listsStore.lists.map((list) => ({
 async function handleCreate(payload) {
   await listsStore.createList(payload)
   showCreate.value = false
+}
+
+// Раньше удалить список было вообще нельзя: MockListRepository.remove() существовал,
+// но listsStore не имел соответствующего action и, главное, в UI вообще не было
+// кнопки удаления. Задачи удаляемого списка отвязываются (listId = null),
+// по аналогии с удалением встречи в MeetingDetailView.vue, а не удаляются вместе со списком.
+async function removeList(list) {
+  const taskCount = tasksStore.tasks.filter((t) => t.listId === list.id).length
+  const msg = taskCount
+    ? `Удалить список «${list.title}»? ${taskCount} задач(и) останутся, но потеряют привязку к нему.`
+    : `Удалить список «${list.title}»?`
+  if (!confirm(msg)) return
+  for (const t of tasksStore.tasks.filter((x) => x.listId === list.id)) {
+    await tasksStore.updateTaskField(t.id, 'listId', null)
+  }
+  await listsStore.removeList(list.id)
 }
 
 function openMemberPicker(listId) {
@@ -73,7 +91,10 @@ function availableUsers(listId) {
           <strong>{{ row.list.title }}</strong>
           <span class="list-card-meta">{{ row.taskCount }} задач · {{ row.members.length }} участников</span>
         </div>
-        <button class="btn btn-ghost btn-icon btn-sm" title="Настроить" @click="editingList = row.list"><AppIcon name="settings" :size="14" /></button>
+        <div class="list-card-head-actions">
+          <button class="btn btn-ghost btn-icon btn-sm" title="Настроить" @click="editingList = row.list"><AppIcon name="settings" :size="14" /></button>
+          <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить список" @click="removeList(row.list)"><AppIcon name="trash" :size="14" /></button>
+        </div>
       </div>
 
       <p v-if="row.list.description" class="list-card-desc">{{ row.list.description }}</p>
@@ -129,6 +150,9 @@ function availableUsers(listId) {
 .list-card-title { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .list-card-meta { font-size: 11.5px; color: var(--color-text-muted); }
 .list-card-desc { margin: 0; font-size: 12.5px; color: var(--color-text-muted); }
+.list-card-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.btn-danger-ghost { color: var(--color-danger); }
+.btn-danger-ghost:hover { background: #fdeceb; }
 .meeting-badge { font-size: 12px; background: #eef2ff; color: var(--color-primary-dark); border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; gap: 8px; }
 .meeting-link { color: var(--color-primary); font-weight: 600; text-decoration: none; }
 .members-section { border-top: 1px solid var(--color-border); padding-top: 10px; }
