@@ -173,7 +173,7 @@ function toggleArchived() {
         <button class="btn btn-ghost btn-sm back-btn" @click="router.push('/meetings')"><AppIcon name="chevronLeft" :size="13" /> Встречи</button>
       </div>
       <div v-if="canManageMeeting" class="header-actions">
-        <button class="btn btn-sm" @click="openSummaryParser"><AppIcon name="layers" :size="13" /> Разбор резюме в задачи</button>
+        <button class="btn btn-ghost btn-icon btn-sm" title="Разбор резюме в задачи" @click="openSummaryParser"><AppIcon name="layers" :size="14" /></button>
         <button class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click="startEdit"><AppIcon name="edit" :size="14" /></button>
         <button
           class="btn btn-ghost btn-icon btn-sm" :title="meeting.archived ? 'Вернуть из архива' : 'Архивировать'"
