@@ -2,10 +2,39 @@ import { ListRepository } from '../contracts/ListRepository'
 import { LocalStorageAdapter } from '../storage/LocalStorageAdapter'
 import { seedLists, seedMemberships } from './seedData'
 import { nextId } from '../../domain/entities/factories'
-import { ListRole } from '../../domain/entities/enums'
+import { ListRole, GroupByMode, SortField } from '../../domain/entities/enums'
 
 const listsStorage = new LocalStorageAdapter('lists')
 const membershipsStorage = new LocalStorageAdapter('memberships')
+
+// Дефолтные settings нового списка. Раньше create() не проставлял это поле
+// вовсе (list.settings оставался undefined), а ListSettingsModal.vue сразу
+// обращается к form.allowedViews.indexOf(...) и другим полям settings без
+// доп. проверок — открытие настроек свежесозданного списка бросало
+// TypeError и «вешало» страницу. Теперь любой новый список создаётся уже
+// с полным набором настроек, идентичным тому, что ожидает форма.
+function defaultListSettings() {
+  return {
+    icon: 'folder',
+    allowComments: true,
+    allowGuestViewers: false,
+    defaultGroupBy: GroupByMode.NONE,
+    defaultSortField: SortField.SCORE,
+    showCompletedByDefault: false,
+    autoArchiveDoneAfterDays: 0,
+    requireDueDateOnCreate: false,
+    allowedViews: ['list', 'tree', 'grouped'],
+    recurringMeeting: {
+      enabled: false,
+      title: '',
+      description: '',
+      link: '',
+      dayOfWeek: 'monday',
+      time: '10:00',
+      frequency: 'weekly',
+    },
+  }
+}
 
 export class MockListRepository extends ListRepository {
   constructor() {
@@ -37,7 +66,18 @@ export class MockListRepository extends ListRepository {
   }
 
   async create(listData) {
-    const list = { id: nextId('list'), description: '', color: '#4f7cff', isShared: false, defaultView: 'list', createdAt: new Date().toISOString(), ownerIds: [], ...listData }
+    const { settings: settingsPatch, ...rest } = listData
+    const list = {
+      id: nextId('list'),
+      description: '',
+      color: '#4f7cff',
+      isShared: false,
+      defaultView: 'list',
+      createdAt: new Date().toISOString(),
+      ownerIds: [],
+      ...rest,
+      settings: { ...defaultListSettings(), ...(settingsPatch || {}) },
+    }
     this._lists.push(list)
     if (listData.ownerIds) {
       for (const ownerId of listData.ownerIds) {
