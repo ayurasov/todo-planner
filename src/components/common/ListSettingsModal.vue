@@ -2,6 +2,7 @@
 import { reactive, watch } from 'vue'
 import { useListsStore } from '../../stores/listsStore'
 import { GroupByMode, SortField, GROUP_LABEL, SORT_LABEL, WEEKDAY_LABEL, MEETING_FREQ_LABEL } from '../../domain/entities/enums'
+import AppIcon from './AppIcon.vue'
 
 const props = defineProps({ list: { type: Object, required: true } })
 const emit = defineEmits(['close'])
@@ -58,7 +59,7 @@ function toggleView(view) {
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Настройки списка</h3>
-        <button class="btn btn-ghost btn-sm" @click="emit('close')">✕</button>
+        <button class="btn btn-ghost btn-sm" @click="emit('close')"><AppIcon name="close" :size="13" /></button>
       </div>
 
       <div class="modal-body">
