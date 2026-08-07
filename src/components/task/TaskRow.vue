@@ -11,6 +11,7 @@ import { useClickOutside } from '../../composables/useClickOutside'
 import { getInitials, getAvatarColor } from '../../utils/avatar'
 import PriorityBadge from './PriorityBadge.vue'
 import TaskContextMenu from './TaskContextMenu.vue'
+import AppIcon from '../common/AppIcon.vue'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -206,7 +207,7 @@ function closeContextMenu() {
       @contextmenu="openContextMenu"
     >
       <button v-if="children.length" class="expand-btn" @click="expanded = !expanded">
-        {{ expanded ? '▾' : '▸' }}
+        <AppIcon :name="expanded ? 'chevronDown' : 'chevronRight'" :size="12" />
       </button>
       <span v-else class="expand-spacer" />
 
@@ -228,26 +229,27 @@ function closeContextMenu() {
           @keyup.escape="cancelEditTitle"
         />
         <span v-else class="task-title" :class="{ 'wrap-title': prefs.wrapLongTitles, 'truncate-title': !prefs.wrapLongTitles }" @click="emit('open', task)" @dblclick.stop="startEditTitle">
-          <span v-if="task.pinned" class="pin-icon">📌</span>
+          <span v-if="task.pinned" class="pin-icon"><AppIcon name="pin" :size="12" /></span>
           {{ task.title }}
-          <span v-if="prefs.showSubtaskCount && children.length" class="mini-count">🔗{{ children.length }}</span>
+          <span v-if="prefs.showSubtaskCount && children.length" class="mini-count"><AppIcon name="link" :size="11" />{{ children.length }}</span>
           <span
             v-if="prefs.showChecklistProgress && (checklistCount?.length || checklistExpanded)"
             class="mini-count mini-count-clickable"
             @click.stop="toggleChecklistExpand"
           >
-            ☑{{ checklistCount?.filter(i => i.done).length || 0 }}/{{ checklistCount?.length || 0 }} {{ checklistExpanded ? '▾' : '▸' }}
+            <AppIcon name="checklist" :size="11" />{{ checklistCount?.filter(i => i.done).length || 0 }}/{{ checklistCount?.length || 0 }}
+            <AppIcon :name="checklistExpanded ? 'chevronDown' : 'chevronRight'" :size="10" />
           </span>
-          <span v-if="prefs.showCommentsCount && commentsCount" class="mini-count">💬{{ commentsCount }}</span>
+          <span v-if="prefs.showCommentsCount && commentsCount" class="mini-count"><AppIcon name="message" :size="11" />{{ commentsCount }}</span>
         </span>
         <div class="task-meta" v-if="!editingTitle">
           <PriorityBadge :priority="task.priority" />
-          <span v-if="prefs.showDueDate && task.dueDate" class="due-date" :class="{ 'due-overdue': overdue }" title="Крайний срок">🗓 {{ relativeDay(task.dueDate) }}</span>
-          <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`">✓ {{ formatDate(task.completedAt) }}</span>
-          <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`Последнее изменение: ${formatDate(task.updatedAt)}`">✎ {{ relativeTimeAgo(task.updatedAt) }}</span>
+          <span v-if="prefs.showDueDate && task.dueDate" class="due-date" :class="{ 'due-overdue': overdue }" title="Крайний срок"><AppIcon name="calendar" :size="11" /> {{ relativeDay(task.dueDate) }}</span>
+          <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`"><AppIcon name="check" :size="11" /> {{ formatDate(task.completedAt) }}</span>
+          <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`Последнее изменение: ${formatDate(task.updatedAt)}`"><AppIcon name="edit" :size="11" /> {{ relativeTimeAgo(task.updatedAt) }}</span>
           <span v-if="prefs.showListBadgeInMyTasks && list" class="tag list-badge" :style="{ background: list.color + '22', color: list.color }">{{ list.title }}</span>
           <span v-if="prefs.showTags && task.tags?.length" class="tag" v-for="tag in task.tags" :key="tag">{{ tag }}</span>
-          <span v-if="prefs.showWatchers && task.watcherIds?.length" class="tag watcher-tag">👁 {{ task.watcherIds.length }}</span>
+          <span v-if="prefs.showWatchers && task.watcherIds?.length" class="tag watcher-tag"><AppIcon name="eye" :size="11" /> {{ task.watcherIds.length }}</span>
           <span v-if="prefs.showScoreDebug && task.__score !== undefined" class="tag score-tag">score {{ task.__score.toFixed(2) }}</span>
         </div>
       </div>
@@ -265,10 +267,10 @@ function closeContextMenu() {
       </div>
 
       <div class="task-quick-actions">
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить подзадачу" @click.stop="startAddSubtask">＋</button>
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Закрепить" @click.stop="togglePin">📌</button>
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Отложить на день" @click.stop="snooze">⏰</button>
-        <button class="btn btn-ghost btn-sm" title="Ещё" @click.stop="openContextMenu($event)">⋯</button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить подзадачу" @click.stop="startAddSubtask"><AppIcon name="plus" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Закрепить" @click.stop="togglePin"><AppIcon name="pin" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Отложить на день" @click.stop="snooze"><AppIcon name="alarm" :size="13" /></button>
+        <button class="btn btn-ghost btn-sm" title="Ещё" @click.stop="openContextMenu($event)"><AppIcon name="more" :size="13" /></button>
       </div>
     </div>
 
@@ -288,7 +290,7 @@ function closeContextMenu() {
         >
           <span class="assign-avatar" :style="{ background: getAvatarColor(u.name) }">{{ getInitials(u.name) }}</span>
           {{ u.name }}
-          <span v-if="task.assigneeId === u.id" class="assign-check">✓</span>
+          <span v-if="task.assigneeId === u.id" class="assign-check"><AppIcon name="check" :size="12" /></span>
         </button>
         <button class="assign-option" @click="quickAssign(null)">
           <span class="assign-avatar assign-avatar-empty">—</span> Без исполнителя
@@ -300,7 +302,7 @@ function closeContextMenu() {
       <div v-for="item in checklistItems" :key="item.id" class="inline-checklist-item">
         <input type="checkbox" :checked="item.done" @change="toggleChecklistDone(item.id)" />
         <span :class="{ done: item.done }">{{ item.title }}</span>
-        <button class="btn btn-ghost btn-sm" @click="removeInlineChecklistItem(item.id)">✕</button>
+        <button class="btn btn-ghost btn-sm" @click="removeInlineChecklistItem(item.id)"><AppIcon name="close" :size="11" /></button>
       </div>
       <div class="inline-checklist-add">
         <input
@@ -316,7 +318,7 @@ function closeContextMenu() {
     <div v-if="expanded && (children.length || addingSubtask)" class="task-children">
       <TaskRow v-for="child in children" :key="child.id" :task="child" :depth="depth + 1" :bubble-mode="bubbleMode" @open="emit('open', $event)" />
       <div v-if="addingSubtask" class="subtask-add-row" :style="{ paddingLeft: `${28 + (depth + 1) * 22}px` }">
-        <span class="subtask-add-icon">↳</span>
+        <span class="subtask-add-icon"><AppIcon name="link" :size="11" /></span>
         <input
           ref="subtaskInputEl"
           v-model="subtaskDraft"
@@ -356,7 +358,7 @@ function closeContextMenu() {
 .task-row.overdue .due-date { color: var(--color-danger); font-weight: 600; }
 .task-row.bubble-overdue { background: rgba(229, 72, 77, 0.07); }
 .task-row.bubble-no-due { box-shadow: inset 3px 0 0 var(--color-text-muted); }
-.expand-btn { border: none; background: none; cursor: pointer; width: 16px; color: var(--color-text-muted); font-size: 12px; }
+.expand-btn { border: none; background: none; cursor: pointer; width: 16px; color: var(--color-text-muted); display: flex; align-items: center; justify-content: center; }
 .expand-spacer { width: 16px; display: inline-block; }
 .task-checkbox { accent-color: var(--color-primary); cursor: pointer; }
 .task-checkbox:disabled { cursor: not-allowed; opacity: 0.45; }
@@ -368,15 +370,16 @@ function closeContextMenu() {
   font-size: 13.5px; font-weight: 500; border: 1px solid var(--color-primary); border-radius: 5px;
   padding: 3px 6px; width: 100%; outline: none;
 }
-.mini-count { font-size: 11px; color: var(--color-text-muted); }
+.pin-icon { display: flex; color: #c67d16; }
+.mini-count { font-size: 11px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 3px; }
 .mini-count-clickable { cursor: pointer; padding: 1px 5px; border-radius: 4px; }
 .mini-count-clickable:hover { background: #eef1f7; color: var(--color-text); }
 .task-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.due-date { font-size: 11.5px; color: var(--color-text-muted); }
-.date-meta { font-size: 11px; color: var(--color-text-muted); opacity: 0.75; white-space: nowrap; }
+.due-date { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 3px; }
+.date-meta { font-size: 11px; color: var(--color-text-muted); opacity: 0.75; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
 .date-meta-done { color: #1e9e4d; opacity: 0.85; }
 .list-badge { font-weight: 600; }
-.watcher-tag, .score-tag { background: #f4f0ff; color: #7c5cd6; }
+.watcher-tag, .score-tag { background: #f4f0ff; color: #7c5cd6; display: inline-flex; align-items: center; gap: 3px; }
 .task-assignee { width: 26px; flex-shrink: 0; position: relative; }
 .avatar-btn { border: none; background: none; padding: 0; cursor: pointer; display: flex; border-radius: 50%; }
 .avatar-btn-disabled { cursor: default; }
@@ -403,12 +406,12 @@ function closeContextMenu() {
   display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 700;
 }
 .assign-avatar-empty { background: #d9dde8; color: var(--color-text-muted); }
-.assign-check { margin-left: auto; color: var(--color-primary); font-weight: 700; }
+.assign-check { margin-left: auto; color: var(--color-primary); font-weight: 700; display: flex; }
 .task-quick-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
 .task-row:hover .task-quick-actions { opacity: 1; }
 .task-children { border-left: 1px solid var(--color-border); margin-left: 20px; }
 .subtask-add-row { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #fafbfe; }
-.subtask-add-icon { color: var(--color-text-muted); font-size: 12px; }
+.subtask-add-icon { color: var(--color-text-muted); display: flex; }
 .subtask-add-input {
   flex: 1; border: 1px dashed var(--color-border); border-radius: 6px; padding: 5px 8px;
   font-size: 13px; outline: none; background: var(--color-surface);
