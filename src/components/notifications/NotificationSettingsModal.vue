@@ -1,6 +1,7 @@
 <script setup>
 import { useNotificationsStore } from '../../stores/notificationsStore'
 import { NOTIFICATION_LABEL } from '../../domain/entities/enums'
+import AppIcon from '../common/AppIcon.vue'
 
 const emit = defineEmits(['close'])
 const notificationsStore = useNotificationsStore()
@@ -22,7 +23,7 @@ function setThreshold(e) {
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Настройки уведомлений</h3>
-        <button class="btn btn-ghost btn-sm" @click="emit('close')">✕</button>
+        <button class="btn btn-ghost btn-sm" @click="emit('close')"><AppIcon name="close" :size="13" /></button>
       </div>
 
       <div class="modal-body">
