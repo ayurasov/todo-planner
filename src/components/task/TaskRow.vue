@@ -248,6 +248,7 @@ function closeContextMenu() {
         <div class="task-meta" v-if="!editingTitle">
           <PriorityBadge :priority="task.priority" />
           <span v-if="prefs.showDueDate && task.dueDate" class="due-date" :class="{ 'due-overdue': overdue }" title="Крайний срок"><AppIcon name="calendar" :size="11" /> {{ relativeDay(task.dueDate) }}</span>
+          <span v-if="prefs.showCreatedDate && task.createdAt" class="date-meta" :title="`Создано: ${formatDate(task.createdAt)}`"><AppIcon name="plus" :size="11" /> создано {{ relativeTimeAgo(task.createdAt) }}</span>
           <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`"><AppIcon name="check" :size="11" /> {{ formatDate(task.completedAt) }}</span>
           <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`Последнее изменение: ${formatDate(task.updatedAt)}`"><AppIcon name="edit" :size="11" /> {{ relativeTimeAgo(task.updatedAt) }}</span>
           <span v-if="prefs.showListBadgeInMyTasks && list" class="tag list-badge" :style="{ background: list.color + '22', color: list.color }">{{ list.title }}</span>
