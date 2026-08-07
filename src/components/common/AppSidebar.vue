@@ -58,8 +58,11 @@ const meetingsDrag = useDragReorder(
   <aside class="sidebar scroll-thin" :class="{ collapsed: uiStore.sidebarCollapsed }">
     <div class="sidebar-top">
       <div class="sidebar-logo">
-        <AppIcon name="checklist" :size="18" />
-        <span v-if="!uiStore.sidebarCollapsed">Планировщик</span>
+        <AppIcon name="brandMark" :size="22" class="brand-icon" />
+        <div v-if="!uiStore.sidebarCollapsed" class="brand-text">
+          <span class="brand-name">По Делу</span>
+          <span class="brand-tagline">Менеджер задач и списков</span>
+        </div>
       </div>
       <button class="collapse-btn" :title="uiStore.sidebarCollapsed ? 'Развернуть меню' : 'Свернуть меню'" @click="uiStore.toggleSidebar()">
         <AppIcon :name="uiStore.sidebarCollapsed ? 'chevronRight' : 'chevronLeft'" :size="14" />
@@ -186,6 +189,7 @@ const meetingsDrag = useDragReorder(
       <router-link to="/settings" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Настройки' : ''">
         <AppIcon name="settings" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Настройки</span>
       </router-link>
+      <div v-if="!uiStore.sidebarCollapsed" class="sidebar-copyright">© Alexander Yurasov</div>
     </div>
   </aside>
 </template>
@@ -199,7 +203,11 @@ const meetingsDrag = useDragReorder(
 .sidebar.collapsed { width: 60px; padding: 16px 8px; }
 .sidebar-top { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 16px; gap: 6px; }
 .sidebar.collapsed .sidebar-top { flex-direction: column; gap: 10px; }
-.sidebar-logo { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; }
+.sidebar-logo { display: flex; align-items: center; gap: 9px; white-space: nowrap; overflow: hidden; }
+.brand-icon { color: var(--color-primary); flex-shrink: 0; }
+.brand-text { display: flex; flex-direction: column; overflow: hidden; }
+.brand-name { font-weight: 700; font-size: 15px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
+.brand-tagline { font-size: 10.5px; color: var(--color-text-muted); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .collapse-btn {
   border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 7px; width: 24px; height: 24px;
   display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-muted); flex-shrink: 0;
@@ -237,4 +245,5 @@ const meetingsDrag = useDragReorder(
   margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border);
   display: flex; flex-direction: column; gap: 2px;
 }
+.sidebar-copyright { font-size: 10.5px; color: var(--color-text-muted); text-align: center; padding: 8px 6px 2px; opacity: 0.75; }
 </style>
