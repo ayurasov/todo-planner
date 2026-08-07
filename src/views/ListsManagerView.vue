@@ -5,6 +5,7 @@ import { useListsStore } from '../stores/listsStore'
 import { useUsersStore } from '../stores/usersStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { ListRole } from '../domain/entities/enums'
+import { useDragReorder } from '../composables/useDragReorder'
 import ListSettingsModal from '../components/common/ListSettingsModal.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 
@@ -19,7 +20,6 @@ const memberPickerListId = ref(null)
 const memberPickerUserId = ref(null)
 const memberPickerRole = ref(ListRole.VIEWER)
 const showArchived = ref(false)
-const draggingId = ref(null)
 
 const ROLE_LABEL = { owner: 'Владелец', editor: 'Редактор', assignee: 'Исполнитель', viewer: 'Наблюдатель' }
 const ROLE_COLOR = { owner: '#e5484d', editor: '#4f7cff', assignee: '#1e9e4d', viewer: '#9aa3b2' }
@@ -31,7 +31,15 @@ const blankList = computed(() => ({ title: '', description: '', color: '#4f7cff'
 
 const visibleLists = computed(() => (showArchived.value ? listsStore.archivedLists : listsStore.activeLists))
 
-const rows = computed(() => visibleLists.value.map((list) => ({
+// Единая логика drag-n-drop с живым предпросмотром (см. useDragReorder) —
+// при перетаскивании соседние карточки сразу раздвигаются на новое место,
+// а не только после отпускания мыши, и есть зона для сброса в конец списка.
+const { draggingId, displayItems, startDrag, dragOver, dragOverEnd, endDrag, cancelDrag } = useDragReorder(
+  visibleLists,
+  (orderedIds) => listsStore.reorderLists(orderedIds),
+)
+
+const rows = computed(() => displayItems.value.map((list) => ({
   list,
   members: listsStore.memberships[list.id] || [],
   taskCount: tasksStore.tasks.filter((t) => t.listId === list.id).length,
@@ -87,25 +95,6 @@ function availableUsers(listId) {
   const memberIds = new Set((listsStore.memberships[listId] || []).map((m) => m.userId))
   return usersStore.users.filter((u) => !memberIds.has(u.id))
 }
-
-function onDragStart(listId) {
-  draggingId.value = listId
-}
-
-function onDragOver(event) {
-  event.preventDefault()
-}
-
-async function onDrop(targetId) {
-  if (!draggingId.value || draggingId.value === targetId) { draggingId.value = null; return }
-  const ids = visibleLists.value.map((l) => l.id)
-  const from = ids.indexOf(draggingId.value)
-  const to = ids.indexOf(targetId)
-  if (from === -1 || to === -1) { draggingId.value = null; return }
-  ids.splice(to, 0, ids.splice(from, 1)[0])
-  draggingId.value = null
-  await listsStore.reorderLists(ids)
-}
 </script>
 
 <template>
@@ -124,14 +113,16 @@ async function onDrop(targetId) {
 
   <p v-if="!rows.length" class="empty-state">{{ showArchived ? 'В архиве пока пусто.' : 'Списков пока нет — создайте первый.' }}</p>
 
-  <div class="lists-grid">
+  <TransitionGroup tag="div" name="fade" class="lists-grid" @dragleave.self="dragOverEnd" @dragover.prevent @drop="endDrag">
     <div
-      v-for="row in rows" :key="row.list.id" class="card list-card"
+      v-for="row in rows" :key="row.list.id" class="card list-card fade-move"
       :class="{ dragging: draggingId === row.list.id }"
       draggable="true"
-      @dragstart="onDragStart(row.list.id)"
-      @dragover="onDragOver"
-      @drop="onDrop(row.list.id)"
+      @dragstart="startDrag(row.list.id)"
+      @dragenter.prevent="dragOver(row.list.id)"
+      @dragover.prevent
+      @dragend="cancelDrag"
+      @drop.stop="endDrag"
     >
       <div class="list-card-head">
         <span class="drag-handle" title="Перетащить для сортировки"><AppIcon name="menu" :size="14" /></span>
@@ -189,7 +180,7 @@ async function onDrop(targetId) {
         </div>
       </div>
     </div>
-  </div>
+  </TransitionGroup>
 
   <ListSettingsModal v-if="editingList" :list="editingList" @close="editingList = null" />
   <ListSettingsModal v-if="showCreate" :list="blankList" create-mode @close="showCreate = false" @create="handleCreate" />
@@ -202,9 +193,9 @@ async function onDrop(targetId) {
 .header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .header-actions .active { background: #eef2ff; border-color: #cfd8ff; color: var(--color-primary-dark); }
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
-.lists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+.lists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; min-height: 40px; }
 .list-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.list-card.dragging { opacity: 0.5; }
+.list-card.dragging { opacity: 0.35; }
 .list-card-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
 .drag-handle { color: var(--color-text-muted); cursor: grab; padding-top: 8px; flex-shrink: 0; }
 .list-icon-badge { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -231,15 +222,9 @@ async function onDrop(targetId) {
 .chip-remove { border: none; background: none; cursor: pointer; color: var(--color-text-muted); padding: 0 2px; display: flex; align-items: center; flex-shrink: 0; }
 .add-member-btn { border-radius: 16px; }
 
-/*
- * Раньше .member-picker был жёстким `display:flex` без переноса — на узкой
- * карточке (грид-колонка 340px) два <select> + кнопка «Добавить» суммарно
- * шире доступного места и выходили за границу карточки, визуально «срезаясь»
- * соседней карточкой грида (у карточек нет overflow, поэтому это не скролл,
- * а натуральный выход контента за пределы поля — то, что выглядело багой).
- * flex-wrap + min-width:0 на самих select позволяет им сжиматься и
- * переноситься на новую строку, а не вылезать за пределы карточки.
- */
+/* .member-picker переносит содержимое на новую строку внутри карточки
+ * (flex-wrap + min-width:0 на select), а не вылезает за её правый край,
+ * как это было раньше на узких карточках грида. */
 .member-picker { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; max-width: 100%; }
 .member-picker select { border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 12px; min-width: 0; flex: 1 1 120px; max-width: 100%; }
 .member-picker .btn { flex-shrink: 0; }
