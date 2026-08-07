@@ -8,6 +8,7 @@ import { useTaskPermissions } from '../../composables/usePermissions'
 import { useAssignableUsers } from '../../composables/useAssignableUsers'
 import { TaskPriority, PRIORITY_LABEL } from '../../domain/entities/enums'
 import AppIcon from '../common/AppIcon.vue'
+import ConfirmModal from '../common/ConfirmModal.vue'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -23,6 +24,11 @@ const prefs = usePreferencesStore()
 const menuEl = ref(null)
 const mounted = ref(false)
 const measuredSize = ref({ w: 264, h: 0 })
+
+// Подтверждение удаления вынесено в отдельное состояние — пока confirmDeleteOpen
+// открыт, контекстное меню уже скрыто (close() вызван раньше), а клик вне области
+// самого ConfirmModal (через @click.self) закрывает его без удаления.
+const confirmDeleteOpen = ref(false)
 
 useClickOutside(menuEl, () => emit('close'))
 onMounted(() => {
@@ -121,10 +127,20 @@ function duplicate() {
   close()
 }
 
-function remove() {
-  if (confirm('Удалить задачу и все подзадачи?')) {
-    tasksStore.removeTask(props.task.id)
-  }
+// Раньше подтверждение шло через window.confirm() — теперь открываем
+// ConfirmModal и держим меню видимым до явного решения пользователя.
+function askRemove() {
+  confirmDeleteOpen.value = true
+}
+
+function confirmRemove() {
+  tasksStore.removeTask(props.task.id)
+  confirmDeleteOpen.value = false
+  close()
+}
+
+function cancelRemove() {
+  confirmDeleteOpen.value = false
   close()
 }
 
@@ -140,11 +156,10 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
   <Teleport to="body">
     <Transition name="menu-pop">
       <div ref="menuEl" v-if="mounted" class="ctx-menu" :style="style" @click.stop @contextmenu.prevent>
-        <div class="ctx-header">
-          <span class="ctx-title">{{ task.title }}</span>
-        </div>
-
         <div class="ctx-section">
+          <button class="ctx-item" @click="openDetail">
+            <span class="ctx-icon icon-neutral"><AppIcon name="detail" :size="13" /></span> Открыть детали
+          </button>
           <button v-if="canToggleStatus" class="ctx-item ctx-item-primary" @click="toggleComplete">
             <span class="ctx-icon" :class="isDone ? 'icon-neutral' : 'icon-success'"><AppIcon :name="isDone ? 'undo' : 'check'" :size="13" /></span>
             {{ isDone ? 'Вернуть в работу' : 'Завершить' }}
@@ -159,12 +174,15 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
             <span class="ctx-icon icon-neutral"><AppIcon name="checklist" :size="13" /></span>
             {{ hasChecklist ? (checklistExpanded ? 'Скрыть чек-лист' : 'Раскрыть чек-лист') : 'Добавить чек-лист' }}
           </button>
-          <button class="ctx-item" @click="openDetail">
-            <span class="ctx-icon icon-neutral"><AppIcon name="detail" :size="13" /></span> Открыть детали
-          </button>
           <button v-if="canEditThisTask" class="ctx-item" @click="togglePin">
             <span class="ctx-icon" :class="task.pinned ? 'icon-warning' : 'icon-neutral'"><AppIcon name="pin" :size="13" /></span>
             {{ task.pinned ? 'Открепить' : 'Закрепить' }}
+          </button>
+          <button v-if="canEditThisTask" class="ctx-item" @click="duplicate">
+            <span class="ctx-icon icon-neutral"><AppIcon name="copy" :size="13" /></span> Дублировать
+          </button>
+          <button v-if="canDeleteThisTask" class="ctx-item ctx-item-danger" @click="askRemove">
+            <span class="ctx-icon icon-danger"><AppIcon name="trash" :size="13" /></span> Удалить
           </button>
           <button v-if="canEditThisTask && isSubtask" class="ctx-item" @click="toggleStandalone">
             <span class="ctx-icon icon-neutral"><AppIcon :name="task.displayStandalone ? 'standaloneOff' : 'standaloneOn'" :size="13" /></span>
@@ -221,25 +239,19 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
             </button>
           </div>
         </div>
-
-        <div class="ctx-divider" />
-
-        <div class="ctx-section">
-          <button class="ctx-item" @click="duplicate">
-            <span class="ctx-icon icon-neutral"><AppIcon name="copy" :size="13" /></span> Дублировать
-          </button>
-        </div>
         </template>
-
-        <div v-if="canDeleteThisTask" class="ctx-divider" />
-        <div v-if="canDeleteThisTask" class="ctx-section">
-          <button class="ctx-item ctx-item-danger" @click="remove">
-            <span class="ctx-icon icon-danger"><AppIcon name="trash" :size="13" /></span> Удалить
-          </button>
-        </div>
       </div>
     </Transition>
   </Teleport>
+
+  <ConfirmModal
+    v-if="confirmDeleteOpen"
+    title="Удалить задачу?"
+    :message="`«${task.title}» и все её подзадачи будут удалены без возможности восстановления.`"
+    confirm-text="Удалить"
+    @confirm="confirmRemove"
+    @cancel="cancelRemove"
+  />
 </template>
 
 <style scoped>
@@ -254,12 +266,6 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
 .menu-pop-enter-from { opacity: 0; transform: scale(0.96) translateY(-4px); }
 .menu-pop-leave-active { transition: opacity 0.1s ease; }
 .menu-pop-leave-to { opacity: 0; }
-
-.ctx-header { padding: 8px 12px 6px; }
-.ctx-title {
-  font-size: 12px; font-weight: 600; color: var(--color-text-muted);
-  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-}
 
 .ctx-section { padding: 2px 2px; display: flex; flex-direction: column; gap: 1px; }
 .ctx-item {
