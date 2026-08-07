@@ -36,30 +36,10 @@ const isAdmin = useIsAdmin()
       <router-link to="/lists-manager" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Списки' : ''">
         <AppIcon name="folder" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Списки</span>
       </router-link>
-      <router-link to="/recurring" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Повторяющиеся' : ''">
-        <AppIcon name="repeat" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Повторяющиеся</span>
-      </router-link>
       <router-link to="/history" class="nav-item" :title="uiStore.sidebarCollapsed ? 'История' : ''">
         <AppIcon name="history" :size="15" /><span v-if="!uiStore.sidebarCollapsed">История</span>
       </router-link>
     </nav>
-
-    <div class="sidebar-section">
-      <div v-if="!uiStore.sidebarCollapsed" class="sidebar-section-title">
-        Мои списки
-        <router-link to="/lists-manager" class="manage-link" title="Управление списками"><AppIcon name="settings" :size="12" /></router-link>
-      </div>
-      <router-link
-        v-for="list in listsStore.lists"
-        :key="list.id"
-        :to="`/lists/${list.id}`"
-        class="nav-item nav-item-list"
-        :title="uiStore.sidebarCollapsed ? list.title : ''"
-      >
-        <span class="list-dot" :style="{ background: list.color }" />
-        <span v-if="!uiStore.sidebarCollapsed">{{ list.title }}</span>
-      </router-link>
-    </div>
 
     <div v-if="viewStore.savedViews.length" class="sidebar-section">
       <div v-if="!uiStore.sidebarCollapsed" class="sidebar-section-title">Сохранённые представления</div>
