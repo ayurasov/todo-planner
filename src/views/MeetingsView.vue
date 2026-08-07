@@ -179,6 +179,17 @@ async function saveEdit() {
   })
   editingMeetingId.value = null
 }
+
+// Удаление встречи прямо из списка (раньше было доступно только внутри детальной
+// страницы встречи) — задачи встречи не удаляются, только теряют привязку к ней,
+// по аналогии с removeMeeting() в MeetingDetailView.vue и removeList() в ListsManagerView.vue.
+async function removeMeeting(meeting) {
+  if (!confirm(`Удалить встречу «${meeting.title}»? Задачи останутся, но потеряют привязку к ней.`)) return
+  for (const t of tasksStore.tasks.filter((x) => x.meetingId === meeting.id)) {
+    await tasksStore.updateTaskField(t.id, 'meetingId', null)
+  }
+  await meetingsStore.removeMeeting(meeting.id)
+}
 </script>
 
 <template>
@@ -188,8 +199,8 @@ async function saveEdit() {
       <h2>Встречи</h2>
     </div>
     <div class="header-actions">
-      <button class="btn btn-ghost btn-sm" :class="{ active: showArchived }" @click="showArchived = !showArchived">
-        <AppIcon name="folder" :size="13" /> {{ showArchived ? 'К активным' : 'Архив' }}
+      <button class="btn btn-ghost btn-icon" :class="{ active: showArchived }" :title="showArchived ? 'К активным' : 'Архив'" @click="showArchived = !showArchived">
+        <AppIcon name="folder" :size="14" />
       </button>
       <button v-if="!showArchived" class="btn btn-sm btn-primary" @click="openCreateForm"><AppIcon name="plus" :size="13" /> Новая встреча</button>
     </div>
@@ -237,11 +248,12 @@ async function saveEdit() {
         <a v-if="m.link" :href="m.link" target="_blank" class="tag link-tag" @click.stop><AppIcon name="link" :size="11" /> Звонок</a>
         <span v-if="m.attendeeIds?.length" class="tag attendees-tag"><AppIcon name="users" :size="11" /> {{ m.attendeeIds.length }}</span>
         <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag"><AppIcon name="check" :size="11" /> {{ taskCountByMeeting[m.id] }} задач</span>
-        <button class="btn btn-ghost btn-sm edit-meeting-btn" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
+        <button class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
         <button
-          class="btn btn-ghost btn-sm" :title="m.archived ? 'Вернуть из архива' : 'Архивировать'"
+          class="btn btn-ghost btn-icon btn-sm" :title="m.archived ? 'Вернуть из архива' : 'Архивировать'"
           @click.stop="m.archived ? meetingsStore.unarchiveMeeting(m.id) : meetingsStore.archiveMeeting(m.id)"
         ><AppIcon :name="m.archived ? 'undo' : 'copy'" :size="12" /></button>
+        <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click.stop="removeMeeting(m)"><AppIcon name="trash" :size="12" /></button>
       </div>
     </div>
   </TransitionGroup>
@@ -403,13 +415,14 @@ async function saveEdit() {
   margin: 0; font-size: 12.5px; color: var(--color-text-muted);
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
 }
-.meeting-card-meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.meeting-card-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .meeting-card-date { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
 .task-count-tag { background: #eef1f7; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
 .attendees-tag { background: #f4f0ff; color: #7c5cd6; display: inline-flex; align-items: center; gap: 4px; }
 .link-tag { background: #eaf0ff; color: var(--color-primary-dark); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
 .link-tag:hover { text-decoration: underline; }
-.edit-meeting-btn { padding: 3px 7px; }
+.btn-danger-ghost { color: var(--color-danger); }
+.btn-danger-ghost:hover { background: #fdeceb; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { width: 440px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
