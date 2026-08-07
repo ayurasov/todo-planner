@@ -7,6 +7,10 @@ import { DensityMode, GroupByMode, SortField, ColorCodeMode } from '../domain/en
  * ведения ежедневных листов (аналог "Customize" в Asana/ClickUp/Todoist):
  * плотность строк, группировка, сортировка, цветовая маркировка, видимые поля,
  * показывать/скрывать выполненные и комментарии.
+ *
+ * Сама функция "Debug ranking score" (показ технического числа __score в строке
+ * задачи) была чисто отладочным инструментом разработчика и удалена по решению заказчика:
+ * ключ showScoreDebug и связанный UI теперь отсутствуют. Алгоритм ranking score не трогается.
  */
 const DEFAULT_PREFS = {
   density: DensityMode.COMFORTABLE,
@@ -22,7 +26,7 @@ const DEFAULT_PREFS = {
   showDueDate: true,
   showCompletedDate: true,
   showLastUpdatedDate: true,
-  showScoreDebug: false,
+  showCreatedDate: true,
   showWatchers: false,
   showListBadgeInMyTasks: true,
   compactAvatars: false,
@@ -35,11 +39,8 @@ const DEFAULT_PREFS = {
 
 export const usePreferencesStore = defineStore('preferences', {
   // Важно: сохранённое ранее в localStorage состояние может не содержать ключей,
-  // добавленных в DEFAULT_PREFS позже (например, showCompletedDate/showLastUpdatedDate
-  // появились после первого релиза) — простая перезапись `{ ...loaded }` оставляла бы
-  // такие поля как undefined (чекбокс в UI выглядел бы снятым, хотя "по стандарту"
-  // должен быть отмечен). Поэтому мёрджим дефолты и загруженное значение, отдавая
-  // приоритет тому, что реально сохранил пользователь.
+  // добавленных в DEFAULT_PREFS позже — простая перезапись `{ ...loaded }` оставляла бы
+  // такие поля как undefined. Поэтому мёрджим дефолты и загруженное значение.
   state: () => ({ ...DEFAULT_PREFS, ...preferencesStorage.load(DEFAULT_PREFS) }),
   actions: {
     set(key, value) {
