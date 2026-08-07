@@ -34,7 +34,13 @@ const DEFAULT_PREFS = {
 }
 
 export const usePreferencesStore = defineStore('preferences', {
-  state: () => ({ ...preferencesStorage.load(DEFAULT_PREFS) }),
+  // Важно: сохранённое ранее в localStorage состояние может не содержать ключей,
+  // добавленных в DEFAULT_PREFS позже (например, showCompletedDate/showLastUpdatedDate
+  // появились после первого релиза) — простая перезапись `{ ...loaded }` оставляла бы
+  // такие поля как undefined (чекбокс в UI выглядел бы снятым, хотя "по стандарту"
+  // должен быть отмечен). Поэтому мёрджим дефолты и загруженное значение, отдавая
+  // приоритет тому, что реально сохранил пользователь.
+  state: () => ({ ...DEFAULT_PREFS, ...preferencesStorage.load(DEFAULT_PREFS) }),
   actions: {
     set(key, value) {
       this[key] = value
