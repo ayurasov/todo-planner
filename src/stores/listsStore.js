@@ -6,6 +6,10 @@ export const useListsStore = defineStore('lists', {
   state: () => ({ lists: [], memberships: {}, loaded: false }),
   getters: {
     byId: (state) => (id) => state.lists.find((l) => l.id === id) || null,
+    // Списки везде выводятся в порядке order (ручная сортировка drag-n-drop),
+    // активные/архивные разделены, чтобы архив не мешался с актуальными списками.
+    activeLists: (state) => [...state.lists].filter((l) => !l.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    archivedLists: (state) => [...state.lists].filter((l) => l.archived).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
   },
   actions: {
     async load() {
@@ -29,7 +33,10 @@ export const useListsStore = defineStore('lists', {
 
     async createList(payload) {
       const usersStore = useUsersStore()
-      const list = await listRepository.create({ ...payload, ownerIds: [usersStore.currentUser.id] })
+      // Новый список всегда ставится последним в своей группе (order),
+      // иначе он бы всегда получал order: 0 и перескакивал все остальные.
+      const maxOrder = this.lists.reduce((max, l) => Math.max(max, l.order ?? 0), -1)
+      const list = await listRepository.create({ ...payload, ownerIds: [usersStore.currentUser.id], order: maxOrder + 1 })
       this.lists.push(list)
       this.memberships[list.id] = await listRepository.getMembers(list.id)
       return list
@@ -42,6 +49,24 @@ export const useListsStore = defineStore('lists', {
       await listRepository.remove(id)
       this.lists = this.lists.filter((l) => l.id !== id)
       delete this.memberships[id]
+    },
+
+    async archiveList(id) {
+      return this.updateList(id, { archived: true })
+    },
+
+    async unarchiveList(id) {
+      return this.updateList(id, { archived: false })
+    },
+
+    // Пересчитывает order всех списков в переданном массиве согласно новому
+    // порядку (используется после drag-n-drop) и сохраняет каждый через updateList.
+    async reorderLists(orderedIds) {
+      await Promise.all(orderedIds.map((id, index) => {
+        const list = this.byId(id)
+        if (!list || list.order === index) return Promise.resolve()
+        return this.updateList(id, { order: index })
+      }))
     },
 
     async addMember(listId, userId, role) {
