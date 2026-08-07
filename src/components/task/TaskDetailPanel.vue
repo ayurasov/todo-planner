@@ -9,6 +9,7 @@ import { usePreferencesStore } from '../../stores/preferencesStore'
 import { TaskPriority, TaskStatus, PRIORITY_LABEL } from '../../domain/entities/enums'
 import { formatDateTime, formatDate } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
+import AppIcon from '../common/AppIcon.vue'
 
 const props = defineProps({ task: { type: Object, required: true } })
 const emit = defineEmits(['close'])
@@ -127,8 +128,8 @@ const HISTORY_LABEL = {
   assignee_changed: 'Изменён исполнитель', rescheduled: 'Перенесён срок', completed: 'Выполнена', reopened: 'Возвращена в работу',
 }
 const HISTORY_ICON = {
-  created: '＋', field_changed: '✎', commented: '💬', assignee_changed: '👤',
-  rescheduled: '📅', completed: '✓', reopened: '↺',
+  created: 'plus', field_changed: 'edit', commented: 'message', assignee_changed: 'team',
+  rescheduled: 'calendar', completed: 'check', reopened: 'undo',
 }
 </script>
 
@@ -138,18 +139,18 @@ const HISTORY_ICON = {
       <div class="detail-panel card scroll-thin">
         <div class="panel-header">
           <div class="header-top">
-            <span v-if="isSubtask && parentTask" class="parent-crumb">↳ {{ parentTask.title }}</span>
+            <span v-if="isSubtask && parentTask" class="parent-crumb">↓ {{ parentTask.title }}</span>
             <div class="header-actions">
-              <button v-if="canDeleteThisTask" class="btn btn-ghost close-btn btn-danger" title="Удалить задачу" @click="requestDelete">✖</button>
-              <button class="btn btn-ghost close-btn" @click="emit('close')">✕</button>
+              <button v-if="canDeleteThisTask" class="btn btn-ghost close-btn btn-danger" title="Удалить задачу" @click="requestDelete"><AppIcon name="trash" :size="15" /></button>
+              <button class="btn btn-ghost close-btn" @click="emit('close')"><AppIcon name="close" :size="15" /></button>
             </div>
           </div>
           <div class="meta-crumbs">
             <div v-if="parentList" class="list-crumb">
-              📋 <span class="list-crumb-title">{{ parentList.title }}</span>
+              <AppIcon name="folder" :size="13" /> <span class="list-crumb-title">{{ parentList.title }}</span>
             </div>
             <div v-if="linkedMeeting" class="meeting-crumb">
-              📅 <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
+              <AppIcon name="calendar" :size="13" /> <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
               <span class="meeting-crumb-date">{{ formatDateTime(linkedMeeting.date) }}</span>
             </div>
           </div>
@@ -163,9 +164,9 @@ const HISTORY_ICON = {
             @keyup.escape="cancelEditTitle"
           />
           <h2 v-else class="title-display" :class="{ 'title-readonly': !canEditThisTask }" @click="canEditThisTask && startEditTitle()">
-            <span v-if="liveTask.pinned" class="pin-icon">📌</span>{{ liveTask.title }}
+            <span v-if="liveTask.pinned" class="pin-icon"><AppIcon name="pin" :size="15" /></span>{{ liveTask.title }}
           </h2>
-          <p v-if="!canEditThisTask" class="readonly-banner">👁 Только просмотр — {{ permissionReason }}</p>
+          <p v-if="!canEditThisTask" class="readonly-banner"><AppIcon name="eye" :size="12" /> Только просмотр — {{ permissionReason }}</p>
         </div>
 
         <div class="field-row">
@@ -207,7 +208,7 @@ const HISTORY_ICON = {
                     {{ currentAssignee ? currentAssignee.name.charAt(0) : '—' }}
                   </span>
                   <span>{{ currentAssignee ? currentAssignee.name : 'Не назначен' }}</span>
-                  <span class="chevron">▾</span>
+                  <span class="chevron"><AppIcon name="chevronDown" :size="10" /></span>
                 </button>
                 <div v-if="assigneeMenuOpen" class="assignee-dropdown card scroll-thin">
                   <button v-for="u in usersStore.users" :key="u.id" class="assignee-option" :class="{ active: liveTask.assigneeId === u.id }" @click="assign(u.id)">
@@ -226,8 +227,8 @@ const HISTORY_ICON = {
           </div>
 
           <div v-if="(prefs.showCompletedDate && liveTask.completedAt) || (prefs.showLastUpdatedDate && liveTask.updatedAt)" class="dates-meta-row">
-            <span v-if="prefs.showCompletedDate && liveTask.completedAt" class="dates-meta-item dates-meta-done">✓ Выполнено: {{ formatDate(liveTask.completedAt) }}</span>
-            <span v-if="prefs.showLastUpdatedDate && liveTask.updatedAt" class="dates-meta-item">✎ Изменено: {{ formatDate(liveTask.updatedAt) }}</span>
+            <span v-if="prefs.showCompletedDate && liveTask.completedAt" class="dates-meta-item dates-meta-done"><AppIcon name="check" :size="11" /> Выполнено: {{ formatDate(liveTask.completedAt) }}</span>
+            <span v-if="prefs.showLastUpdatedDate && liveTask.updatedAt" class="dates-meta-item"><AppIcon name="edit" :size="11" /> Изменено: {{ formatDate(liveTask.updatedAt) }}</span>
           </div>
         </div>
 
@@ -257,7 +258,7 @@ const HISTORY_ICON = {
             <div v-for="item in checklist" :key="item.id" class="checklist-item">
               <input type="checkbox" :checked="item.done" :disabled="!canEditThisTask" @change="tasksStore.toggleChecklistItem(liveTask.id, item.id)" />
               <span :class="{ done: item.done }">{{ item.title }}</span>
-              <button v-if="canEditThisTask" class="btn btn-ghost btn-sm remove-btn" @click="tasksStore.removeChecklistItem(liveTask.id, item.id)">✕</button>
+              <button v-if="canEditThisTask" class="btn btn-ghost btn-sm remove-btn" @click="tasksStore.removeChecklistItem(liveTask.id, item.id)"><AppIcon name="close" :size="11" /></button>
             </div>
             <div v-if="canEditThisTask" class="checklist-add">
               <input v-model="newChecklistTitle" placeholder="Новый пункт чек-листа" @keyup.enter="addChecklistItem" />
@@ -290,7 +291,7 @@ const HISTORY_ICON = {
 
           <div v-else-if="tab === 'history'" key="history" class="history-tab">
             <div v-for="entry in timeline" :key="entry.id" class="history-entry">
-              <span class="history-icon">{{ HISTORY_ICON[entry.type] || '•' }}</span>
+              <span class="history-icon"><AppIcon :name="HISTORY_ICON[entry.type] || 'more'" :size="12" /></span>
               <div class="history-body">
                 <span class="history-type">{{ HISTORY_LABEL[entry.type] || entry.type }}</span>
                 <span class="history-detail" v-if="entry.field">{{ entry.field }}: {{ entry.oldValue }} → {{ entry.newValue }}</span>
@@ -325,12 +326,12 @@ const HISTORY_ICON = {
 .title-display:hover { background: #f6f7fb; }
 .title-readonly { cursor: default; }
 .title-readonly:hover { background: none; }
-.readonly-banner { font-size: 12px; color: var(--color-text-muted); background: #f1f3f9; border-radius: 8px; padding: 6px 10px; margin: 0 0 12px; }
+.readonly-banner { font-size: 12px; color: var(--color-text-muted); background: #f1f3f9; border-radius: 8px; padding: 6px 10px; margin: 0 0 12px; display: flex; align-items: center; gap: 6px; }
 .title-edit-input { width: 100%; font-size: 18px; font-weight: 650; border: 1.5px solid var(--color-primary); border-radius: 8px; padding: 6px 8px; margin: 4px 0 12px; outline: none; }
 
 .field-row { display: flex; flex-direction: column; gap: 12px; padding: 4px 20px 16px; border-bottom: 1px solid var(--color-border); }
 .dates-meta-row { display: flex; gap: 14px; padding: 0 20px 14px; font-size: 11.5px; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); }
-.dates-meta-item { opacity: 0.8; }
+.dates-meta-item { opacity: 0.8; display: inline-flex; align-items: center; gap: 4px; }
 .dates-meta-done { color: #1e9e4d; }
 .field-block { display: flex; flex-direction: column; gap: 6px; }
 .field-block-inline { flex-direction: row; gap: 20px; }
@@ -357,7 +358,7 @@ const HISTORY_ICON = {
   display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700; flex-shrink: 0;
 }
 .assignee-avatar.empty { background: #d9dde8; color: var(--color-text-muted); }
-.chevron { color: var(--color-text-muted); font-size: 10px; }
+.chevron { color: var(--color-text-muted); display: flex; }
 .assignee-dropdown {
   position: absolute; top: 100%; left: 0; margin-top: 4px; width: 200px; z-index: 20;
   padding: 5px; max-height: 220px; overflow-y: auto; box-shadow: var(--shadow-2);
@@ -405,7 +406,7 @@ const HISTORY_ICON = {
 .notes-tab textarea:focus { border-color: var(--color-primary); }
 
 .history-entry { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--color-border); }
-.history-icon { width: 24px; height: 24px; border-radius: 7px; background: #eef1f7; display: flex; align-items: center; justify-content: center; font-size: 11px; flex-shrink: 0; }
+.history-icon { width: 24px; height: 24px; border-radius: 7px; background: #eef1f7; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-text-muted); }
 .history-body { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
 .history-type { font-weight: 600; }
 .history-detail { color: var(--color-text); }
@@ -420,7 +421,7 @@ const HISTORY_ICON = {
 .comment-box { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .comment-box textarea { border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; resize: vertical; font-size: 13px; outline: none; }
 .comment-box textarea:focus { border-color: var(--color-primary); }
-.pin-icon { font-size: 15px; }
+.pin-icon { display: flex; color: #c67d16; }
 .meeting-crumb,
 .list-crumb {
   display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-text-muted);
