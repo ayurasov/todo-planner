@@ -51,8 +51,6 @@ const taskCountByMeeting = computed(() => {
   return map
 })
 
-// Архивные встречи скрыты по умолчанию — как и архивные списки в ListsManagerView,
-// убраны из активного списка, но доступны через переключатель «Архив».
 const baseMeetings = computed(() => (showArchived.value ? meetingsStore.archivedMeetings : meetingsStore.activeMeetings))
 
 const filteredMeetings = computed(() => {
@@ -72,9 +70,6 @@ const filteredMeetings = computed(() => {
   return list
 })
 
-// Главная страница встреч по-умолчанию отсортирована по дате (ближайшие важнее), но
-// если пользователь хотя бы раз перетаскивал встречи, дальше работает ручный порядок
-// (аналогично activeLists/reorderLists в listsStore) — это согласованное поведение со списками.
 const { draggingId, displayItems: displayMeetings, startDrag, dragOver, dragOverEnd, endDrag, cancelDrag } = useDragReorder(
   filteredMeetings,
   (orderedIds) => meetingsStore.reorderMeetings(orderedIds),
@@ -135,7 +130,7 @@ function startEdit(meeting) {
     link: meeting.link || '',
     attendeeIds: [...(meeting.attendeeIds || [])],
     color: meeting.color || '#4f7cff',
-    recurrenceEnabled: !!meeting.recurrence,
+    recurrenceEnabled: !!meeting.recurrence?.freq,
     recurrenceFreq: meeting.recurrence?.freq || 'weekly',
     recurrenceWeekdays: [...(meeting.recurrence?.weekdays || [])],
   }
@@ -181,9 +176,6 @@ async function saveEdit() {
   editingMeetingId.value = null
 }
 
-// Удаление встречи прямо из списка (раньше было доступно только внутри детальной
-// страницы встречи) — задачи встречи не удаляются, только теряют привязку к ней,
-// по аналогии с removeMeeting() в MeetingDetailView.vue и removeList() в ListsManagerView.vue.
 async function removeMeeting(meeting) {
   if (!confirm(`Удалить встречу «${meeting.title}»? Задачи останутся, но потеряют привязку к ней.`)) return
   for (const t of tasksStore.tasks.filter((x) => x.meetingId === meeting.id)) {
@@ -192,13 +184,14 @@ async function removeMeeting(meeting) {
   await meetingsStore.removeMeeting(meeting.id)
 }
 
-// Описание теперь хранится как HTML (RichTextEditor) — для однострочного превью
-// карточки в списке встреч нужен plain text без тегов, иначе разметка сломает
-// -webkit-line-clamp и покажет пользователю сырой HTML.
 function stripHtml(html) {
   const div = document.createElement('div')
   div.innerHTML = html || ''
   return div.textContent || div.innerText || ''
+}
+
+function isRecurringMeeting(meeting) {
+  return !!meeting?.recurrence?.freq
 }
 </script>
 
@@ -244,12 +237,12 @@ function stripHtml(html) {
     >
       <span class="drag-handle" title="Перетащить для сортировки" @click.stop><AppIcon name="menu" :size="14" /></span>
       <span class="meeting-color-dot" :style="{ background: m.color || '#4f7cff' }" />
-      <AppIcon class="meeting-type-icon" :name="m.recurrence ? 'repeat' : 'calendar'" :size="14" :title="m.recurrence ? 'Регулярная встреча' : 'Разовая встреча'" />
+      <AppIcon class="meeting-type-icon" :name="isRecurringMeeting(m) ? 'repeat' : 'calendar'" :size="14" :title="isRecurringMeeting(m) ? 'Регулярная встреча' : 'Разовая встреча'" />
       <div class="meeting-card-main">
         <div class="meeting-card-title-row">
           <h3 class="meeting-card-title">{{ m.title }}</h3>
-          <span class="tag recurrence-badge" :class="{ 'recurrence-badge-recurring': m.recurrence }">
-            <AppIcon v-if="m.recurrence" name="repeat" :size="11" /><span v-else>·</span> {{ formatMeetingRecurrence(m.recurrence) }}
+          <span class="tag recurrence-badge" :class="{ 'recurrence-badge-recurring': isRecurringMeeting(m) }">
+            <AppIcon v-if="isRecurringMeeting(m)" name="repeat" :size="11" /><span v-else><AppIcon name="calendar" :size="11" /></span> {{ formatMeetingRecurrence(m.recurrence) }}
           </span>
         </div>
         <p v-if="m.description" class="meeting-card-desc">{{ stripHtml(m.description) }}</p>
