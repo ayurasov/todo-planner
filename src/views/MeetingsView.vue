@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { useMeetingsStore } from '../stores/meetingsStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
+import { useDragReorder } from '../composables/useDragReorder'
 import { formatDateTime, formatMeetingRecurrence } from '../utils/formatters'
 import AppIcon from '../components/common/AppIcon.vue'
 
@@ -16,11 +17,12 @@ const searchQuery = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const showCreateForm = ref(false)
-const draft = ref({ title: '', date: '', time: '', description: '', link: '', attendeeIds: [] })
+const showArchived = ref(false)
+const draft = ref({ title: '', date: '', time: '', description: '', link: '', attendeeIds: [], color: '#4f7cff' })
 
 const editingMeetingId = ref(null)
 const editDraft = ref({
-  title: '', date: '', time: '', description: '', link: '', attendeeIds: [],
+  title: '', date: '', time: '', description: '', link: '', attendeeIds: [], color: '#4f7cff',
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
 })
 
@@ -48,8 +50,12 @@ const taskCountByMeeting = computed(() => {
   return map
 })
 
+// Архивные встречи скрыты по умолчанию — как и архивные списки в ListsManagerView,
+// убраны из активного списка, но доступны через переключатель «Архив».
+const baseMeetings = computed(() => (showArchived.value ? meetingsStore.archivedMeetings : meetingsStore.activeMeetings))
+
 const filteredMeetings = computed(() => {
-  let list = meetingsStore.sortedByDate
+  let list = baseMeetings.value
   if (searchQuery.value.trim()) {
     const q = searchQuery.value.trim().toLowerCase()
     list = list.filter((m) => m.title.toLowerCase().includes(q))
@@ -64,6 +70,14 @@ const filteredMeetings = computed(() => {
   }
   return list
 })
+
+// Главная страница встреч по-умолчанию отсортирована по дате (ближайшие важнее), но
+// если пользователь хотя бы раз перетаскивал встречи, дальше работает ручный порядок
+// (аналогично activeLists/reorderLists в listsStore) — это согласованное поведение со списками.
+const { draggingId, displayItems: displayMeetings, startDrag, dragOver, dragOverEnd, endDrag, cancelDrag } = useDragReorder(
+  filteredMeetings,
+  (orderedIds) => meetingsStore.reorderMeetings(orderedIds),
+)
 
 function resetFilters() {
   searchQuery.value = ''
@@ -80,6 +94,7 @@ function openCreateForm() {
     description: '',
     link: '',
     attendeeIds: [],
+    color: '#4f7cff',
   }
   showCreateForm.value = true
 }
@@ -99,6 +114,7 @@ async function submitCreate() {
     description: draft.value.description.trim(),
     link: draft.value.link.trim(),
     attendeeIds: [...draft.value.attendeeIds],
+    color: draft.value.color,
   })
   showCreateForm.value = false
   router.push(`/meetings/${meeting.id}`)
@@ -117,6 +133,7 @@ function startEdit(meeting) {
     description: meeting.description || '',
     link: meeting.link || '',
     attendeeIds: [...(meeting.attendeeIds || [])],
+    color: meeting.color || '#4f7cff',
     recurrenceEnabled: !!meeting.recurrence,
     recurrenceFreq: meeting.recurrence?.freq || 'weekly',
     recurrenceWeekdays: [...(meeting.recurrence?.weekdays || [])],
@@ -157,6 +174,7 @@ async function saveEdit() {
     description: editDraft.value.description.trim(),
     link: editDraft.value.link.trim(),
     attendeeIds: [...editDraft.value.attendeeIds],
+    color: editDraft.value.color,
     recurrence,
   })
   editingMeetingId.value = null
@@ -169,7 +187,12 @@ async function saveEdit() {
       <span class="list-icon"><AppIcon name="calendar" :size="18" /></span>
       <h2>Встречи</h2>
     </div>
-    <button class="btn btn-sm btn-primary" @click="openCreateForm"><AppIcon name="plus" :size="13" /> Новая встреча</button>
+    <div class="header-actions">
+      <button class="btn btn-ghost btn-sm" :class="{ active: showArchived }" @click="showArchived = !showArchived">
+        <AppIcon name="folder" :size="13" /> {{ showArchived ? 'К активным' : 'Архив' }}
+      </button>
+      <button v-if="!showArchived" class="btn btn-sm btn-primary" @click="openCreateForm"><AppIcon name="plus" :size="13" /> Новая встреча</button>
+    </div>
   </div>
 
   <div class="filters-bar card">
@@ -183,11 +206,23 @@ async function saveEdit() {
   </div>
 
   <div v-if="!filteredMeetings.length" class="empty-state">
-    Встреч пока нет — создайте первую с помощью кнопки выше.
+    {{ showArchived ? 'В архиве пока пусто.' : 'Встреч пока нет — создайте первую с помощью кнопки выше.' }}
   </div>
 
-  <div class="meetings-list">
-    <div v-for="m in filteredMeetings" :key="m.id" class="meeting-card card" @click="openMeeting(m.id)">
+  <TransitionGroup tag="div" name="fade" class="meetings-list" @dragleave.self="dragOverEnd" @dragover.prevent @drop="endDrag">
+    <div
+      v-for="m in displayMeetings" :key="m.id" class="meeting-card card fade-move"
+      :class="{ dragging: draggingId === m.id }"
+      draggable="true"
+      @dragstart="startDrag(m.id)"
+      @dragenter.prevent="dragOver(m.id)"
+      @dragover.prevent
+      @dragend="cancelDrag"
+      @drop.stop="endDrag"
+      @click="openMeeting(m.id)"
+    >
+      <span class="drag-handle" title="Перетащить для сортировки" @click.stop><AppIcon name="menu" :size="14" /></span>
+      <span class="meeting-color-dot" :style="{ background: m.color || '#4f7cff' }" />
       <div class="meeting-card-main">
         <div class="meeting-card-title-row">
           <h3 class="meeting-card-title">{{ m.title }}</h3>
@@ -203,11 +238,15 @@ async function saveEdit() {
         <span v-if="m.attendeeIds?.length" class="tag attendees-tag"><AppIcon name="users" :size="11" /> {{ m.attendeeIds.length }}</span>
         <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag"><AppIcon name="check" :size="11" /> {{ taskCountByMeeting[m.id] }} задач</span>
         <button class="btn btn-ghost btn-sm edit-meeting-btn" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
+        <button
+          class="btn btn-ghost btn-sm" :title="m.archived ? 'Вернуть из архива' : 'Архивировать'"
+          @click.stop="m.archived ? meetingsStore.unarchiveMeeting(m.id) : meetingsStore.archiveMeeting(m.id)"
+        ><AppIcon :name="m.archived ? 'undo' : 'copy'" :size="12" /></button>
       </div>
     </div>
-  </div>
+  </TransitionGroup>
 
-  <div v-if="showCreateForm" class="modal-overlay">
+  <div v-if="showCreateForm" class="modal-overlay" @click.self="showCreateForm = false">
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Новая встреча</h3>
@@ -226,6 +265,10 @@ async function saveEdit() {
           <div class="field-group">
             <label>Время</label>
             <input v-model="draft.time" type="time" />
+          </div>
+          <div class="field-group color-field">
+            <label>Цвет</label>
+            <input v-model="draft.color" type="color" />
           </div>
         </div>
         <div class="field-group">
@@ -253,7 +296,7 @@ async function saveEdit() {
     </div>
   </div>
 
-  <div v-if="editingMeetingId" class="modal-overlay">
+  <div v-if="editingMeetingId" class="modal-overlay" @click.self="closeEdit">
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Редактировать встречу</h3>
@@ -273,13 +316,17 @@ async function saveEdit() {
             <label>Время</label>
             <input v-model="editDraft.time" type="time" />
           </div>
+          <div class="field-group color-field">
+            <label>Цвет</label>
+            <input v-model="editDraft.color" type="color" />
+          </div>
         </div>
         <div class="field-group">
           <label>Ссылка на звонок</label>
           <input v-model="editDraft.link" placeholder="https://meet.example.com/..." />
         </div>
         <div class="field-group recurrence-section">
-          <label>Тип встречи</label>
+          <label>тип встречи</label>
           <div class="segmented-row">
             <button class="segmented-btn" :class="{ active: !editDraft.recurrenceEnabled }" @click="editDraft.recurrenceEnabled = false">Разовая</button>
             <button class="segmented-btn" :class="{ active: editDraft.recurrenceEnabled }" @click="editDraft.recurrenceEnabled = true">Регулярная</button>
@@ -289,8 +336,8 @@ async function saveEdit() {
           <label>Периодичность</label>
           <div class="segmented-row recurrence-type-row">
             <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'daily' }" @click="editDraft.recurrenceFreq = 'daily'">Каждый день</button>
-            <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'weekly' }" @click="editDraft.recurrenceFreq = 'weekly'">Раз в неделю</button>
-            <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'biweekly' }" @click="editDraft.recurrenceFreq = 'biweekly'">Раз в 2 недели</button>
+            <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'weekly' }" @click="editDraft.recurrenceFreq = 'weekly'">раз в неделю</button>
+            <button class="segmented-btn" :class="{ active: editDraft.recurrenceFreq === 'biweekly' }" @click="editDraft.recurrenceFreq = 'biweekly'">раз в 2 недели</button>
           </div>
           <div v-if="editDraft.recurrenceFreq !== 'daily'" class="weekday-picker">
             <button
@@ -327,6 +374,8 @@ async function saveEdit() {
 .view-title { display: flex; align-items: center; gap: 8px; }
 .view-title h2 { margin: 0; font-size: 19px; }
 .list-icon { display: flex; color: var(--color-primary); }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.header-actions .active { background: #eef2ff; border-color: #cfd8ff; color: var(--color-primary-dark); }
 
 .filters-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 14px; }
 .search-input { flex: 1; border: none; outline: none; font-size: 13px; background: transparent; }
@@ -336,12 +385,15 @@ async function saveEdit() {
 
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
 
-.meetings-list { display: flex; flex-direction: column; gap: 8px; }
+.meetings-list { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
 .meeting-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 12px 14px; cursor: pointer; transition: box-shadow 0.12s ease, border-color 0.12s ease;
 }
 .meeting-card:hover { border-color: var(--color-primary); box-shadow: 0 2px 8px rgba(79,124,255,0.08); }
+.meeting-card.dragging { opacity: 0.35; }
+.drag-handle { color: var(--color-text-muted); cursor: grab; flex-shrink: 0; }
+.meeting-color-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
 .meeting-card-main { min-width: 0; flex: 1; }
 .meeting-card-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
 .meeting-card-title { margin: 0; font-size: 14px; font-weight: 600; }
@@ -369,6 +421,8 @@ async function saveEdit() {
 .field-group input, .field-group textarea { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
 .field-row { display: flex; gap: 12px; }
 .field-row .field-group { flex: 1; }
+.color-field { flex: 0 0 auto; }
+.color-field input[type=color] { padding: 2px; width: 40px; height: 32px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-border); }
 .attendee-picker { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow-y: auto; border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
 .attendee-option { display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 3px 2px; cursor: pointer; }
