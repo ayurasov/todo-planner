@@ -19,9 +19,9 @@ export const seedUsers = [
 ]
 
 export const seedLists = [
-  createList({ id: 'list_1', title: 'ERP-проект: интеграция', description: 'Внедрение Odoo, интеграции', ownerIds: ['user_1'], isShared: true }),
-  createList({ id: 'list_2', title: 'Личные задачи', description: 'Личный список', ownerIds: ['user_1'], isShared: false }),
-  createList({ id: 'list_3', title: 'Команда — операционка', description: 'Текущие задачи команды', ownerIds: ['user_1', 'user_2'], isShared: true }),
+  createList({ id: 'list_1', title: 'ERP-проект: интеграция', description: 'Внедрение Odoo, интеграции', ownerIds: ['user_1'], isShared: true, order: 0 }),
+  createList({ id: 'list_2', title: 'Личные задачи', description: 'Личный список', ownerIds: ['user_1'], isShared: false, order: 1 }),
+  createList({ id: 'list_3', title: 'Команда — операционка', description: 'Текущие задачи команды', ownerIds: ['user_1', 'user_2'], isShared: true, order: 2 }),
 ]
 
 export const seedMemberships = [
@@ -104,6 +104,6 @@ export const seedRecurrenceTemplates = [
 ]
 
 export const seedMeetings = [
-  createMeeting({ id: 'meeting_1', title: 'Планёрка по ERP-проекту', date: iso(-2, 10), description: 'Синхронизация статусов интеграции Odoo, обсуждение блокеров.', createdBy: 'user_1' }),
-  createMeeting({ id: 'meeting_2', title: 'Еженедельный ревью команды', date: iso(1, 11), description: 'Обзор текущих задач и приоритетов на неделю.', createdBy: 'user_1' }),
+  createMeeting({ id: 'meeting_1', title: 'Планёрка по ERP-проекту', date: iso(-2, 10), description: 'Синхронизация статусов интеграции Odoo, обсуждение блокеров.', createdBy: 'user_1', order: 0 }),
+  createMeeting({ id: 'meeting_2', title: 'Еженедельный ревью команды', date: iso(1, 11), description: 'Обзор текущих задач и приоритетов на неделю.', createdBy: 'user_1', order: 1 }),
 ]
