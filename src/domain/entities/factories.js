@@ -13,7 +13,7 @@ export function createUser({ id, name, email, timezone = 'Europe/Moscow', avatar
 export function createList({
   id, title, description = '', color = '#4f7cff', ownerIds = [], isShared = false,
   defaultView = 'list', createdAt = new Date().toISOString(),
-  settings = {},
+  settings = {}, archived = false, order = 0,
 }) {
   const defaultSettings = {
     allowComments: true,
@@ -24,7 +24,7 @@ export function createList({
     autoArchiveDoneAfterDays: 30,
     requireDueDateOnCreate: false,
     allowedViews: ['list', 'tree', 'grouped'],
-    icon: '📋',
+    icon: 'folder',
     recurringMeeting: {
       enabled: false,
       title: '',
@@ -37,7 +37,7 @@ export function createList({
   }
   return {
     id: id || nextId('list'), title, description, color, ownerIds, isShared, defaultView, createdAt,
-    settings: { ...defaultSettings, ...settings },
+    settings: { ...defaultSettings, ...settings }, archived, order,
   }
 }
 
@@ -67,8 +67,9 @@ export function createTask({
 export function createMeeting({
   id, title, date, description = '', createdBy = null,
   createdAt = new Date().toISOString(), attendeeIds = [],
+  color = '#4f7cff', archived = false, order = 0, link = '', recurrence = null,
 }) {
-  return { id: id || nextId('meeting'), title, date, description, createdBy, createdAt, attendeeIds }
+  return { id: id || nextId('meeting'), title, date, description, createdBy, createdAt, attendeeIds, color, archived, order, link, recurrence }
 }
 
 export function createChecklistItem({ id, taskId, title, done = false, order = 0, recurrenceScope = 'instance_only' }) {
