@@ -31,6 +31,40 @@ function completionBucket(task) {
   return 'late'
 }
 
+/**
+ * Общая фильтрация задач и записей истории под панель фильтров аналитики
+ * (интервал дат по createdAt задачи/события, набор списков, набор встреч).
+ * Пустые массивы listIds/meetingIds означают «без ограничения по этому измерению».
+ * Применяется единообразно ко всем графикам и таблицам, включая индивидуальную статистику.
+ */
+export function filterTasksAndHistory(tasks, historyEntries, { dateFrom, dateTo, listIds = [], meetingIds = [] } = {}) {
+  const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null
+  const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : null
+  const hasListFilter = listIds.length > 0
+  const hasMeetingFilter = meetingIds.length > 0
+
+  const inRange = (iso) => {
+    if (!iso) return false
+    const ts = new Date(iso).getTime()
+    if (fromTs !== null && ts < fromTs) return false
+    if (toTs !== null && ts > toTs) return false
+    return true
+  }
+
+  const matchesTask = (t) => {
+    if (!inRange(t.createdAt)) return false
+    if (hasListFilter && !listIds.includes(t.listId)) return false
+    if (hasMeetingFilter && !meetingIds.includes(t.meetingId)) return false
+    return true
+  }
+
+  const filteredTasks = tasks.filter(matchesTask)
+  const taskIds = new Set(filteredTasks.map((t) => t.id))
+  const filteredHistory = historyEntries.filter((e) => taskIds.has(e.taskId) && inRange(e.timestamp))
+
+  return { tasks: filteredTasks, history: filteredHistory }
+}
+
 export function buildOverviewStats(tasks, historyEntries) {
   const created = tasks.length
   const completed = tasks.filter((t) => t.status === TaskStatus.DONE).length
@@ -66,9 +100,9 @@ export function buildTimeline(tasks, field) {
 
 /**
  * Статистика по каждому исполнителю (assigneeId) + "создано" из истории (actorId события CREATED).
- * Возвращает Map<userId, stats>, где stats совместима с buildUserDetail (кроме timeline).
+ * Возвращает массив, отсортированный по имени — currentUserId (если передан) всегда закреплён первой строкой.
  */
-export function buildPerAssigneeStats(tasks, historyEntries, users) {
+export function buildPerAssigneeStats(tasks, historyEntries, users, currentUserId = null) {
   const result = new Map()
   const ensure = (userId) => {
     if (!result.has(userId)) {
@@ -98,12 +132,22 @@ export function buildPerAssigneeStats(tasks, historyEntries, users) {
     else if (b === 'late') s.late += 1
   }
 
+  if (currentUserId) ensure(currentUserId)
+
   for (const s of result.values()) {
     s.completionRate = s.assigned ? Math.round((s.completed / s.assigned) * 100) : 0
     s.onTimeRate = s.completed ? Math.round(((s.early + s.onTime) / s.completed) * 100) : 0
   }
 
-  return [...result.values()].sort((a, b) => (users.find((u) => u.id === b.userId)?.name || '').localeCompare(users.find((u) => u.id === a.userId)?.name || ''))
+  const rows = [...result.values()].sort(
+    (a, b) => (users.find((u) => u.id === b.userId)?.name || '').localeCompare(users.find((u) => u.id === a.userId)?.name || ''),
+  )
+
+  if (!currentUserId) return rows
+  const selfIdx = rows.findIndex((r) => r.userId === currentUserId)
+  if (selfIdx === -1) return rows
+  const [self] = rows.splice(selfIdx, 1)
+  return [self, ...rows]
 }
 
 /**
