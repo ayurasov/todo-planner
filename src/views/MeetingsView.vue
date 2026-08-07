@@ -5,6 +5,7 @@ import { useMeetingsStore } from '../stores/meetingsStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
 import { formatDateTime, formatMeetingRecurrence } from '../utils/formatters'
+import AppIcon from '../components/common/AppIcon.vue'
 
 const router = useRouter()
 const meetingsStore = useMeetingsStore()
@@ -161,10 +162,10 @@ async function saveEdit() {
 <template>
   <div class="view-header">
     <div class="view-title">
-      <span class="list-icon">📅</span>
+      <span class="list-icon"><AppIcon name="calendar" :size="18" /></span>
       <h2>Встречи</h2>
     </div>
-    <button class="btn btn-sm btn-primary" @click="openCreateForm">+ Новая встреча</button>
+    <button class="btn btn-sm btn-primary" @click="openCreateForm"><AppIcon name="plus" :size="13" /> Новая встреча</button>
   </div>
 
   <div class="filters-bar card">
@@ -187,16 +188,16 @@ async function saveEdit() {
         <div class="meeting-card-title-row">
           <h3 class="meeting-card-title">{{ m.title }}</h3>
           <span class="tag recurrence-badge" :class="{ 'recurrence-badge-recurring': m.recurrence }">
-            {{ m.recurrence ? '🔁' : '·' }} {{ formatMeetingRecurrence(m.recurrence) }}
+            <AppIcon v-if="m.recurrence" name="repeat" :size="11" /><span v-else>·</span> {{ formatMeetingRecurrence(m.recurrence) }}
           </span>
         </div>
         <p v-if="m.description" class="meeting-card-desc">{{ m.description }}</p>
       </div>
       <div class="meeting-card-meta">
-        <span class="meeting-card-date">🕐 {{ formatDateTime(m.date) }}</span>
-        <span v-if="m.attendeeIds?.length" class="tag attendees-tag">👥 {{ m.attendeeIds.length }}</span>
-        <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag">✓ {{ taskCountByMeeting[m.id] }} задач</span>
-        <button class="btn btn-ghost btn-sm edit-meeting-btn" title="Редактировать встречу" @click.stop="startEdit(m)">✎</button>
+        <span class="meeting-card-date"><AppIcon name="alarm" :size="11" /> {{ formatDateTime(m.date) }}</span>
+        <span v-if="m.attendeeIds?.length" class="tag attendees-tag"><AppIcon name="users" :size="11" /> {{ m.attendeeIds.length }}</span>
+        <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag"><AppIcon name="check" :size="11" /> {{ taskCountByMeeting[m.id] }} задач</span>
+        <button class="btn btn-ghost btn-sm edit-meeting-btn" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
       </div>
     </div>
   </div>
@@ -205,7 +206,7 @@ async function saveEdit() {
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Новая встреча</h3>
-        <button class="btn btn-ghost btn-sm" @click="showCreateForm = false">✕</button>
+        <button class="btn btn-ghost btn-sm" @click="showCreateForm = false"><AppIcon name="close" :size="13" /></button>
       </div>
       <div class="modal-body">
         <div class="field-group">
@@ -247,7 +248,7 @@ async function saveEdit() {
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Редактировать встречу</h3>
-        <button class="btn btn-ghost btn-sm" @click="closeEdit">✕</button>
+        <button class="btn btn-ghost btn-sm" @click="closeEdit"><AppIcon name="close" :size="13" /></button>
       </div>
       <div class="modal-body">
         <div class="field-group">
@@ -312,7 +313,7 @@ async function saveEdit() {
 .view-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .view-title { display: flex; align-items: center; gap: 8px; }
 .view-title h2 { margin: 0; font-size: 19px; }
-.list-icon { font-size: 18px; }
+.list-icon { display: flex; color: var(--color-primary); }
 
 .filters-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 14px; }
 .search-input { flex: 1; border: none; outline: none; font-size: 13px; background: transparent; }
@@ -331,16 +332,16 @@ async function saveEdit() {
 .meeting-card-main { min-width: 0; flex: 1; }
 .meeting-card-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
 .meeting-card-title { margin: 0; font-size: 14px; font-weight: 600; }
-.recurrence-badge { background: #eef1f7; color: var(--color-text-muted); font-weight: 500; }
+.recurrence-badge { background: #eef1f7; color: var(--color-text-muted); font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
 .recurrence-badge-recurring { background: #eef2ff; color: var(--color-primary-dark); font-weight: 600; }
 .meeting-card-desc {
   margin: 0; font-size: 12.5px; color: var(--color-text-muted);
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
 }
 .meeting-card-meta { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
-.meeting-card-date { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; }
-.task-count-tag { background: #eef1f7; color: var(--color-text-muted); }
-.attendees-tag { background: #f4f0ff; color: #7c5cd6; }
+.meeting-card-date { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+.task-count-tag { background: #eef1f7; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
+.attendees-tag { background: #f4f0ff; color: #7c5cd6; display: inline-flex; align-items: center; gap: 4px; }
 .edit-meeting-btn { padding: 3px 7px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
