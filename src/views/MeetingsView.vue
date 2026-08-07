@@ -7,6 +7,7 @@ import { useUsersStore } from '../stores/usersStore'
 import { useDragReorder } from '../composables/useDragReorder'
 import { formatDateTime, formatMeetingRecurrence } from '../utils/formatters'
 import AppIcon from '../components/common/AppIcon.vue'
+import RichTextEditor from '../components/common/RichTextEditor.vue'
 
 const router = useRouter()
 const meetingsStore = useMeetingsStore()
@@ -111,7 +112,7 @@ async function submitCreate() {
   const meeting = await meetingsStore.createMeeting({
     title: draft.value.title.trim(),
     date: isoDate,
-    description: draft.value.description.trim(),
+    description: draft.value.description,
     link: draft.value.link.trim(),
     attendeeIds: [...draft.value.attendeeIds],
     color: draft.value.color,
@@ -171,7 +172,7 @@ async function saveEdit() {
   await meetingsStore.updateMeeting(editingMeetingId.value, {
     title: editDraft.value.title.trim(),
     date: isoDate,
-    description: editDraft.value.description.trim(),
+    description: editDraft.value.description,
     link: editDraft.value.link.trim(),
     attendeeIds: [...editDraft.value.attendeeIds],
     color: editDraft.value.color,
@@ -189,6 +190,15 @@ async function removeMeeting(meeting) {
     await tasksStore.updateTaskField(t.id, 'meetingId', null)
   }
   await meetingsStore.removeMeeting(meeting.id)
+}
+
+// Описание теперь хранится как HTML (RichTextEditor) — для однострочного превью
+// карточки в списке встреч нужен plain text без тегов, иначе разметка сломает
+// -webkit-line-clamp и покажет пользователю сырой HTML.
+function stripHtml(html) {
+  const div = document.createElement('div')
+  div.innerHTML = html || ''
+  return div.textContent || div.innerText || ''
 }
 </script>
 
@@ -234,6 +244,7 @@ async function removeMeeting(meeting) {
     >
       <span class="drag-handle" title="Перетащить для сортировки" @click.stop><AppIcon name="menu" :size="14" /></span>
       <span class="meeting-color-dot" :style="{ background: m.color || '#4f7cff' }" />
+      <AppIcon class="meeting-type-icon" :name="m.recurrence ? 'repeat' : 'calendar'" :size="14" :title="m.recurrence ? 'Регулярная встреча' : 'Разовая встреча'" />
       <div class="meeting-card-main">
         <div class="meeting-card-title-row">
           <h3 class="meeting-card-title">{{ m.title }}</h3>
@@ -241,7 +252,7 @@ async function removeMeeting(meeting) {
             <AppIcon v-if="m.recurrence" name="repeat" :size="11" /><span v-else>·</span> {{ formatMeetingRecurrence(m.recurrence) }}
           </span>
         </div>
-        <p v-if="m.description" class="meeting-card-desc">{{ m.description }}</p>
+        <p v-if="m.description" class="meeting-card-desc">{{ stripHtml(m.description) }}</p>
       </div>
       <div class="meeting-card-meta">
         <span class="meeting-card-date"><AppIcon name="alarm" :size="11" /> {{ formatDateTime(m.date) }}</span>
@@ -289,7 +300,7 @@ async function removeMeeting(meeting) {
         </div>
         <div class="field-group">
           <label>Описание (опционально)</label>
-          <textarea v-model="draft.description" rows="3" placeholder="Тема, контекст..." />
+          <RichTextEditor v-model="draft.description" placeholder="Тема, контекст..." />
         </div>
         <div class="field-group">
           <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
@@ -361,7 +372,7 @@ async function removeMeeting(meeting) {
         </div>
         <div class="field-group">
           <label>Описание</label>
-          <textarea v-model="editDraft.description" rows="3" />
+          <RichTextEditor v-model="editDraft.description" placeholder="Тема, контекст..." />
         </div>
         <div class="field-group">
           <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
@@ -406,6 +417,7 @@ async function removeMeeting(meeting) {
 .meeting-card.dragging { opacity: 0.35; }
 .drag-handle { color: var(--color-text-muted); cursor: grab; flex-shrink: 0; }
 .meeting-color-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.meeting-type-icon { color: var(--color-text-muted); flex-shrink: 0; }
 .meeting-card-main { min-width: 0; flex: 1; }
 .meeting-card-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 2px; }
 .meeting-card-title { margin: 0; font-size: 14px; font-weight: 600; }
