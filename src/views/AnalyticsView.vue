@@ -4,14 +4,20 @@ import * as echarts from 'echarts'
 import { useTasksStore } from '../stores/tasksStore'
 import { useHistoryStore } from '../stores/historyStore'
 import { useUsersStore } from '../stores/usersStore'
+import { useListsStore } from '../stores/listsStore'
+import { useMeetingsStore } from '../stores/meetingsStore'
 import AppIcon from '../components/common/AppIcon.vue'
+import SearchMultiSelect from '../components/common/SearchMultiSelect.vue'
+import { DATE_RANGE_PRESETS, DEFAULT_DATE_RANGE_PRESET, presetToRange } from '../utils/dateRangePresets'
 import {
-  buildOverviewStats, buildTimeline, buildPerAssigneeStats, buildUserDetail,
+  buildOverviewStats, buildTimeline, buildPerAssigneeStats, buildUserDetail, filterTasksAndHistory,
 } from '../domain/analytics/taskAnalytics'
 
 const tasksStore = useTasksStore()
 const historyStore = useHistoryStore()
 const usersStore = useUsersStore()
+const listsStore = useListsStore()
+const meetingsStore = useMeetingsStore()
 
 const timelineEl = ref(null)
 const bucketsEl = ref(null)
@@ -22,11 +28,24 @@ let userTimelineChart = null
 
 const selectedUserId = ref(null)
 
+// --- Общие фильтры аналитики ---
+const datePreset = ref(DEFAULT_DATE_RANGE_PRESET)
+const customFrom = ref('')
+const customTo = ref('')
+const filterListIds = ref([])
+const filterMeetingIds = ref([])
+const assigneeSearch = ref('')
+const assigneeSort = ref({ field: 'name', dir: 'asc' })
+
 onMounted(async () => {
   if (!tasksStore.loaded) await tasksStore.load()
   if (!usersStore.loaded) await usersStore.load()
+  if (!listsStore.loaded) await listsStore.load()
+  if (!meetingsStore.loaded) await meetingsStore.load()
   await historyStore.loadGlobalLog(tasksStore.tasks.map((t) => t.id))
   selectedUserId.value = usersStore.currentUser?.id || null
+  const initialRange = presetToRange(DEFAULT_DATE_RANGE_PRESET)
+  if (initialRange) { customFrom.value = initialRange.from; customTo.value = initialRange.to }
   await nextTick()
   timelineChart = echarts.init(timelineEl.value)
   bucketsChart = echarts.init(bucketsEl.value)
@@ -41,15 +60,84 @@ function resizeAll() {
   timelineChart?.resize(); bucketsChart?.resize(); userTimelineChart?.resize()
 }
 
-const overview = computed(() => buildOverviewStats(tasksStore.tasks, historyStore.globalLog))
+function setPreset(preset) {
+  datePreset.value = preset
+  const range = presetToRange(preset)
+  if (range) { customFrom.value = range.from; customTo.value = range.to }
+}
 
-const createdTimeline = computed(() => buildTimeline(tasksStore.tasks, 'createdAt'))
-const completedTimeline = computed(() => buildTimeline(tasksStore.tasks.filter((t) => t.status === 'done'), 'completedAt'))
+function onCustomDateChange() {
+  datePreset.value = 'custom'
+}
 
-const perAssignee = computed(() => buildPerAssigneeStats(tasksStore.tasks, historyStore.globalLog, usersStore.users))
+const hasActiveFilters = computed(() => (
+  datePreset.value !== DEFAULT_DATE_RANGE_PRESET || filterListIds.value.length || filterMeetingIds.value.length
+))
+
+function resetFilters() {
+  setPreset(DEFAULT_DATE_RANGE_PRESET)
+  filterListIds.value = []
+  filterMeetingIds.value = []
+}
+
+const listOptions = computed(() => listsStore.lists.map((l) => ({ id: l.id, label: l.title })))
+const meetingOptions = computed(() => meetingsStore.meetings.map((m) => ({ id: m.id, label: m.title })))
+
+// --- Единая точка фильтрации, применяется ко всей странице, включая индивидуальный разрез ---
+const filtered = computed(() => filterTasksAndHistory(tasksStore.tasks, historyStore.globalLog, {
+  dateFrom: customFrom.value || null,
+  dateTo: customTo.value || null,
+  listIds: filterListIds.value,
+  meetingIds: filterMeetingIds.value,
+}))
+
+const overview = computed(() => buildOverviewStats(filtered.value.tasks, filtered.value.history))
+
+const createdTimeline = computed(() => buildTimeline(filtered.value.tasks, 'createdAt'))
+const completedTimeline = computed(() => buildTimeline(filtered.value.tasks.filter((t) => t.status === 'done'), 'completedAt'))
+
+const perAssigneeRaw = computed(() => buildPerAssigneeStats(filtered.value.tasks, filtered.value.history, usersStore.users, usersStore.currentUser?.id))
+
+const ASSIGNEE_SORT_FIELDS = [
+  { value: 'name', label: 'Имя' },
+  { value: 'created', label: 'Создал' },
+  { value: 'assigned', label: 'Назначено' },
+  { value: 'completed', label: 'Завершено' },
+  { value: 'onTimeRate', label: '% в срок' },
+  { value: 'open', label: 'В работе' },
+  { value: 'rescheduled', label: 'Переносы' },
+]
+
+function setAssigneeSort(field) {
+  if (assigneeSort.value.field === field) {
+    assigneeSort.value = { field, dir: assigneeSort.value.dir === 'asc' ? 'desc' : 'asc' }
+  } else {
+    assigneeSort.value = { field, dir: field === 'name' ? 'asc' : 'desc' }
+  }
+}
+
+// Текущий пользователь всегда закреплён первой строкой (см. buildPerAssigneeStats),
+// сортировка и поиск применяются только к остальным строкам таблицы.
+const perAssignee = computed(() => {
+  const currentId = usersStore.currentUser?.id
+  const self = perAssigneeRaw.value.find((r) => r.userId === currentId)
+  let rest = perAssigneeRaw.value.filter((r) => r.userId !== currentId)
+
+  const q = assigneeSearch.value.trim().toLowerCase()
+  if (q) rest = rest.filter((r) => (userName(r.userId) || '').toLowerCase().includes(q))
+
+  const { field, dir } = assigneeSort.value
+  const mul = dir === 'asc' ? 1 : -1
+  rest = [...rest].sort((a, b) => {
+    if (field === 'name') return mul * (userName(a.userId) || '').localeCompare(userName(b.userId) || '')
+    return mul * ((a[field] ?? 0) - (b[field] ?? 0))
+  })
+
+  return self ? [self, ...rest] : rest
+})
 
 const userOptions = computed(() => usersStore.users)
-const userDetail = computed(() => (selectedUserId.value ? buildUserDetail(selectedUserId.value, tasksStore.tasks, historyStore.globalLog) : null))
+const userDetail = computed(() => (selectedUserId.value ? buildUserDetail(selectedUserId.value, filtered.value.tasks, filtered.value.history) : null))
 const isSelf = computed(() => selectedUserId.value === usersStore.currentUser?.id)
 
 const BUCKET_LABEL = { early: 'Заранее', on_time: 'В срок', late: 'С опозданием', no_due: 'Без срока' }
@@ -120,6 +208,35 @@ function userName(id) {
     </div>
   </div>
 
+  <div class="card filters-panel">
+    <div class="filters-row">
+      <div class="filter-group" role="group" aria-label="Интервал">
+        <button
+          v-for="p in DATE_RANGE_PRESETS" :key="p.value" v-show="p.value !== 'custom'"
+          class="filter-btn" :class="{ active: datePreset === p.value }"
+          @click="setPreset(p.value)"
+        >{{ p.label }}</button>
+      </div>
+
+      <div class="custom-range" :class="{ active: datePreset === 'custom' }">
+        <input v-model="customFrom" type="date" title="С" @change="onCustomDateChange" />
+        <span class="range-sep">—</span>
+        <input v-model="customTo" type="date" title="По" @change="onCustomDateChange" />
+      </div>
+
+      <SearchMultiSelect
+        v-model="filterListIds" :options="listOptions"
+        placeholder="Все списки" search-placeholder="Поиск по спискам..."
+      />
+      <SearchMultiSelect
+        v-model="filterMeetingIds" :options="meetingOptions"
+        placeholder="Все встречи" search-placeholder="Поиск по встречам..."
+      />
+
+      <button v-if="hasActiveFilters" class="btn btn-ghost btn-sm reset-btn" @click="resetFilters">Сбросить фильтры</button>
+    </div>
+  </div>
+
   <div class="stat-cards">
     <div class="card stat-card">
       <span class="stat-value">{{ overview.created }}</span>
@@ -155,26 +272,38 @@ function userName(id) {
   </div>
 
   <div class="card table-card">
-    <h4>Статистика по исполнителям</h4>
+    <div class="table-card-header">
+      <h4>Статистика по исполнителям</h4>
+      <input v-model="assigneeSearch" class="assignee-search" placeholder="Поиск по исполнителю..." />
+    </div>
     <table class="analytics-table">
       <thead>
         <tr>
-          <th>Исполнитель</th><th>Создал</th><th>Назначено</th><th>Завершено</th><th>% в срок</th><th>В работе</th><th>Переносы</th>
+          <th
+            v-for="f in ASSIGNEE_SORT_FIELDS" :key="f.value" class="sortable-th"
+            @click="setAssigneeSort(f.value)"
+          >
+            {{ f.label }}
+            <AppIcon v-if="assigneeSort.field === f.value" :name="assigneeSort.dir === 'asc' ? 'chevronUp' : 'chevronDown'" :size="10" />
+          </th>
         </tr>
       </thead>
       <tbody>
         <tr
           v-for="row in perAssignee" :key="row.userId"
-          :class="{ active: selectedUserId === row.userId }"
+          :class="{ active: selectedUserId === row.userId, 'self-row': row.userId === usersStore.currentUser?.id }"
           @click="selectedUserId = row.userId"
         >
-          <td class="user-cell">{{ userName(row.userId) }}</td>
+          <td class="user-cell">{{ userName(row.userId) }}{{ row.userId === usersStore.currentUser?.id ? ' (Я)' : '' }}</td>
           <td>{{ row.created }}</td>
           <td>{{ row.assigned }}</td>
           <td>{{ row.completed }}</td>
           <td>{{ row.onTimeRate }}%</td>
           <td>{{ row.open }}</td>
           <td>{{ row.rescheduled }}</td>
+        </tr>
+        <tr v-if="!perAssignee.length">
+          <td colspan="7" class="empty-row">Ничего не найдено</td>
         </tr>
       </tbody>
     </table>
@@ -184,12 +313,12 @@ function userName(id) {
     <div class="user-detail-header">
       <h4>Детально по исполнителю</h4>
       <select v-model="selectedUserId" class="user-select">
-        <option v-for="u in userOptions" :key="u.id" :value="u.id">{{ u.name }}{{ u.id === usersStore.currentUser?.id ? ' (я)' : '' }}</option>
+        <option v-for="u in userOptions" :key="u.id" :value="u.id">{{ u.name }}{{ u.id === usersStore.currentUser?.id ? ' (Я)' : '' }}</option>
       </select>
     </div>
 
     <template v-if="userDetail">
-      <p v-if="isSelf" class="self-hint"><AppIcon name="star" :size="12" /> Ваша личная статистика — развёрнутый разбор по всем вашим задачам.</p>
+      <p v-if="isSelf" class="self-hint"><AppIcon name="star" :size="12" /> Ваша личная статистика — развёрнутый разбор по всем вашим задачам (с учётом фильтров выше).</p>
       <div class="user-stat-cards">
         <div class="mini-stat"><span class="mini-value">{{ userDetail.assignedCount }}</span><span class="mini-label">Назначено задач</span></div>
         <div class="mini-stat"><span class="mini-value">{{ userDetail.createdCount }}</span><span class="mini-label">Создано задач</span></div>
@@ -219,6 +348,20 @@ function userName(id) {
 .view-title h2 { margin: 0; font-size: 19px; }
 .list-icon { display: flex; color: var(--color-primary); }
 
+.filters-panel { padding: 10px 12px; margin-bottom: 14px; }
+.filters-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
+.filter-btn {
+  border: none; background: transparent; padding: 5px 10px; border-radius: 6px;
+  font-size: 12.5px; color: var(--color-text-muted); cursor: pointer; white-space: nowrap;
+}
+.filter-btn.active { background: var(--color-surface); color: var(--color-text); font-weight: 600; box-shadow: var(--shadow-1); }
+.custom-range { display: flex; align-items: center; gap: 6px; border: 1px solid var(--color-border); border-radius: 8px; padding: 4px 8px; }
+.custom-range.active { border-color: var(--color-primary); }
+.custom-range input { border: none; outline: none; font-size: 12.5px; background: transparent; }
+.range-sep { color: var(--color-text-muted); font-size: 12px; }
+.reset-btn { margin-left: auto; }
+
 .stat-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
 .stat-card { padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
 .stat-value { font-size: 22px; font-weight: 700; }
@@ -230,14 +373,21 @@ function userName(id) {
 .chart-el { width: 100%; height: 220px; }
 
 .table-card { padding: 14px 16px; margin-bottom: 14px; }
-.table-card h4 { margin: 0 0 10px; font-size: 13px; color: var(--color-text-muted); }
+.table-card-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.table-card-header h4 { margin: 0; font-size: 13px; color: var(--color-text-muted); }
+.assignee-search { border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 12.5px; min-width: 200px; }
 .analytics-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .analytics-table th { text-align: left; padding: 6px 8px; color: var(--color-text-muted); font-weight: 600; border-bottom: 1px solid var(--color-border); }
+.sortable-th { cursor: pointer; user-select: none; display: table-cell; white-space: nowrap; }
+.sortable-th:hover { color: var(--color-text); }
 .analytics-table td { padding: 7px 8px; border-bottom: 1px solid var(--color-border); }
 .analytics-table tbody tr { cursor: pointer; }
 .analytics-table tbody tr:hover { background: #f7f9fc; }
 .analytics-table tbody tr.active { background: #eef2ff; }
+.analytics-table tbody tr.self-row { background: #fafbfe; }
+.analytics-table tbody tr.self-row.active { background: #eef2ff; }
 .user-cell { font-weight: 600; }
+.empty-row { text-align: center; color: var(--color-text-muted); padding: 14px; }
 
 .user-detail-card { padding: 14px 16px; }
 .user-detail-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
