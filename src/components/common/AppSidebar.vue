@@ -1,11 +1,9 @@
 <script setup>
-import { useListsStore } from '../../stores/listsStore'
 import { useViewStore } from '../../stores/viewStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useIsAdmin } from '../../composables/usePermissions'
 import AppIcon from './AppIcon.vue'
 
-const listsStore = useListsStore()
 const viewStore = useViewStore()
 const uiStore = useUiStore()
 const isAdmin = useIsAdmin()
