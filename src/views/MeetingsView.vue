@@ -16,11 +16,11 @@ const searchQuery = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 const showCreateForm = ref(false)
-const draft = ref({ title: '', date: '', time: '', description: '', attendeeIds: [] })
+const draft = ref({ title: '', date: '', time: '', description: '', link: '', attendeeIds: [] })
 
 const editingMeetingId = ref(null)
 const editDraft = ref({
-  title: '', date: '', time: '', description: '', attendeeIds: [],
+  title: '', date: '', time: '', description: '', link: '', attendeeIds: [],
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
 })
 
@@ -78,6 +78,7 @@ function openCreateForm() {
     date: now.toISOString().slice(0, 10),
     time: now.toTimeString().slice(0, 5),
     description: '',
+    link: '',
     attendeeIds: [],
   }
   showCreateForm.value = true
@@ -96,6 +97,7 @@ async function submitCreate() {
     title: draft.value.title.trim(),
     date: isoDate,
     description: draft.value.description.trim(),
+    link: draft.value.link.trim(),
     attendeeIds: [...draft.value.attendeeIds],
   })
   showCreateForm.value = false
@@ -113,6 +115,7 @@ function startEdit(meeting) {
     date: d.toISOString().slice(0, 10),
     time: d.toTimeString().slice(0, 5),
     description: meeting.description || '',
+    link: meeting.link || '',
     attendeeIds: [...(meeting.attendeeIds || [])],
     recurrenceEnabled: !!meeting.recurrence,
     recurrenceFreq: meeting.recurrence?.freq || 'weekly',
@@ -152,6 +155,7 @@ async function saveEdit() {
     title: editDraft.value.title.trim(),
     date: isoDate,
     description: editDraft.value.description.trim(),
+    link: editDraft.value.link.trim(),
     attendeeIds: [...editDraft.value.attendeeIds],
     recurrence,
   })
@@ -195,6 +199,7 @@ async function saveEdit() {
       </div>
       <div class="meeting-card-meta">
         <span class="meeting-card-date"><AppIcon name="alarm" :size="11" /> {{ formatDateTime(m.date) }}</span>
+        <a v-if="m.link" :href="m.link" target="_blank" class="tag link-tag" @click.stop><AppIcon name="link" :size="11" /> Звонок</a>
         <span v-if="m.attendeeIds?.length" class="tag attendees-tag"><AppIcon name="users" :size="11" /> {{ m.attendeeIds.length }}</span>
         <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag"><AppIcon name="check" :size="11" /> {{ taskCountByMeeting[m.id] }} задач</span>
         <button class="btn btn-ghost btn-sm edit-meeting-btn" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
@@ -224,8 +229,12 @@ async function saveEdit() {
           </div>
         </div>
         <div class="field-group">
+          <label>Ссылка на звонок (опционально)</label>
+          <input v-model="draft.link" placeholder="https://meet.example.com/..." />
+        </div>
+        <div class="field-group">
           <label>Описание (опционально)</label>
-          <textarea v-model="draft.description" rows="3" placeholder="Тема, ссылка на созвон, контекст..." />
+          <textarea v-model="draft.description" rows="3" placeholder="Тема, контекст..." />
         </div>
         <div class="field-group">
           <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
@@ -264,6 +273,10 @@ async function saveEdit() {
             <label>Время</label>
             <input v-model="editDraft.time" type="time" />
           </div>
+        </div>
+        <div class="field-group">
+          <label>Ссылка на звонок</label>
+          <input v-model="editDraft.link" placeholder="https://meet.example.com/..." />
         </div>
         <div class="field-group recurrence-section">
           <label>Тип встречи</label>
@@ -342,6 +355,8 @@ async function saveEdit() {
 .meeting-card-date { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
 .task-count-tag { background: #eef1f7; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
 .attendees-tag { background: #f4f0ff; color: #7c5cd6; display: inline-flex; align-items: center; gap: 4px; }
+.link-tag { background: #eaf0ff; color: var(--color-primary-dark); text-decoration: none; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.link-tag:hover { text-decoration: underline; }
 .edit-meeting-btn { padding: 3px 7px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
