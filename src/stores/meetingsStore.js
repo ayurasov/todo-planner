@@ -17,11 +17,13 @@ export const useMeetingsStore = defineStore('meetings', {
      * Отсортированные по дате occurrences конкретной регулярной встречи (включая
      * первую, дата которой равна meeting.date). Для разовой встречи — пустой массив,
      * так как понятие occurrence к ней неприменимо (см. MeetingDetailView).
+     * Сортировка — от последней (самой новой) подвстречи к первой: пользователю
+     * важнее видеть свежие итоги встреч сверху, а не пролистывать всю историю серии.
      */
     occurrencesOf: (state) => (meetingId) => {
       const meeting = state.meetings.find((m) => m.id === meetingId)
       if (!meeting || !meeting.recurrence) return []
-      return [...(meeting.occurrences || [])].sort((a, b) => new Date(a.date) - new Date(b.date))
+      return [...(meeting.occurrences || [])].sort((a, b) => new Date(b.date) - new Date(a.date))
     },
   },
   actions: {
