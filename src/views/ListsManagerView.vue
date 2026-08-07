@@ -13,8 +13,6 @@ const tasksStore = useTasksStore()
 
 const showCreate = ref(false)
 const editingList = ref(null)
-const newListTitle = ref('')
-const newListColor = ref('#4f7cff')
 const memberPickerListId = ref(null)
 const memberPickerUserId = ref(null)
 const memberPickerRole = ref(ListRole.VIEWER)
@@ -22,16 +20,19 @@ const memberPickerRole = ref(ListRole.VIEWER)
 const ROLE_LABEL = { owner: 'Владелец', editor: 'Редактор', assignee: 'Исполнитель', viewer: 'Наблюдатель' }
 const ROLE_COLOR = { owner: '#e5484d', editor: '#4f7cff', assignee: '#1e9e4d', viewer: '#9aa3b2' }
 
+// Пустая заготовка списка для ListSettingsModal в режиме создания — та же
+// форма, что используется для редактирования, чтобы не поддерживать два
+// разных UI для создания и настройки списка (см. запрос пользователя).
+const blankList = computed(() => ({ title: '', description: '', color: '#4f7cff', settings: {} }))
+
 const rows = computed(() => listsStore.lists.map((list) => ({
   list,
   members: listsStore.memberships[list.id] || [],
   taskCount: tasksStore.tasks.filter((t) => t.listId === list.id).length,
 })))
 
-async function createList() {
-  if (!newListTitle.value.trim()) return
-  await listsStore.createList({ title: newListTitle.value.trim(), color: newListColor.value })
-  newListTitle.value = ''
+async function handleCreate(payload) {
+  await listsStore.createList(payload)
   showCreate.value = false
 }
 
@@ -59,26 +60,20 @@ function availableUsers(listId) {
       <h2>Управление списками</h2>
       <p class="subtitle">Единая страница для создания списков, настройки доступа и параметров — вместо разрозненных настроек по каждому списку.</p>
     </div>
-    <button class="btn btn-primary" @click="showCreate = !showCreate"><AppIcon name="plus" :size="14" /> Новый список</button>
-  </div>
-
-  <div v-if="showCreate" class="card create-form">
-    <input v-model="newListTitle" placeholder="Название списка" @keyup.enter="createList" />
-    <input v-model="newListColor" type="color" />
-    <button class="btn btn-primary btn-sm" @click="createList">Создать</button>
+    <button class="btn btn-primary" @click="showCreate = true"><AppIcon name="plus" :size="14" /> Новый список</button>
   </div>
 
   <div class="lists-grid">
     <div v-for="row in rows" :key="row.list.id" class="card list-card">
       <div class="list-card-head">
         <span class="list-icon-badge" :style="{ background: row.list.color + '22', color: row.list.color }">
-          <AppIcon name="folder" :size="16" />
+          <AppIcon :name="row.list.settings?.icon || 'folder'" :size="16" />
         </span>
         <div class="list-card-title">
           <strong>{{ row.list.title }}</strong>
           <span class="list-card-meta">{{ row.taskCount }} задач · {{ row.members.length }} участников</span>
         </div>
-        <button class="btn btn-ghost btn-sm" @click="editingList = row.list"><AppIcon name="settings" :size="13" /> Настроить</button>
+        <button class="btn btn-ghost btn-icon btn-sm" title="Настроить" @click="editingList = row.list"><AppIcon name="settings" :size="14" /></button>
       </div>
 
       <p v-if="row.list.description" class="list-card-desc">{{ row.list.description }}</p>
@@ -120,14 +115,13 @@ function availableUsers(listId) {
   </div>
 
   <ListSettingsModal v-if="editingList" :list="editingList" @close="editingList = null" />
+  <ListSettingsModal v-if="showCreate" :list="blankList" create-mode @close="showCreate = false" @create="handleCreate" />
 </template>
 
 <style scoped>
 .view-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; gap: 20px; }
 .view-header h2 { margin: 0 0 4px; font-size: 19px; }
 .subtitle { margin: 0; font-size: 12.5px; color: var(--color-text-muted); max-width: 480px; }
-.create-form { padding: 14px; display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
-.create-form input[type="text"], .create-form input:not([type]) { border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 10px; flex: 1; }
 .lists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
 .list-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .list-card-head { display: flex; align-items: flex-start; gap: 10px; }
