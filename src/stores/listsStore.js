@@ -35,6 +35,15 @@ export const useListsStore = defineStore('lists', {
       return list
     },
 
+    // Repository.remove(id) уже был реализован в MockListRepository, но никто его
+    // не вызывал — в store не было соответствующего action, а в UI отсутствовала
+    // кнопка удаления — поэтому списки было невозможно удалить.
+    async removeList(id) {
+      await listRepository.remove(id)
+      this.lists = this.lists.filter((l) => l.id !== id)
+      delete this.memberships[id]
+    },
+
     async addMember(listId, userId, role) {
       const membership = await listRepository.addMember(listId, userId, role)
       this.memberships[listId] = await listRepository.getMembers(listId)
