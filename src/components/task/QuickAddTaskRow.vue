@@ -1,38 +1,64 @@
 <script setup>
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, watch } from 'vue'
 import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
+import { useMeetingsStore } from '../../stores/meetingsStore'
 import { useAssignableUsers } from '../../composables/useAssignableUsers'
 import { useClickOutside } from '../../composables/useClickOutside'
 import { getInitials, getAvatarColor } from '../../utils/avatar'
+import AppIcon from '../common/AppIcon.vue'
 
 const props = defineProps({
   // listId необязателен: базово задача создаётся без списка. Автоматическая
   // подстановка listId происходит только тогда, когда компонент используется
   // непосредственно внутри конкретного списка (ListView передаёт свой id).
   listId: { type: String, default: null },
-  // meetingId — аналогично: если компонент используется на экране встречи,
-  // новая задача автоматически привязывается к этой встрече, а выбор
-  // исполнителя ограничивается её участниками (useAssignableUsers).
+  // meetingId — если задан (например, на экране конкретной встречи), поле
+  // встречи скрывается и жёстко фиксируется на этой встрече. Если не задан —
+  // пользователь может сам выбрать любую из существующих встреч в выпадающем
+  // списке (раньше такой возможности не было вообще: новая задача либо не
+  // привязывалась к встрече, либо привязка работала только через служебный
+  // context из другого места приложения).
   meetingId: { type: String, default: null },
   placeholder: { type: String, default: 'Добавить задачу — Enter, чтобы продолжить' },
 })
 
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
+const meetingsStore = useMeetingsStore()
 const draft = ref('')
 const inputEl = ref(null)
 const active = ref(false)
 
+const selectedMeetingId = ref(props.meetingId || null)
+const meetingPickerOpen = ref(false)
+const meetingPickerEl = ref(null)
+useClickOutside(meetingPickerEl, () => { meetingPickerOpen.value = false })
+const selectedMeeting = computed(() => (selectedMeetingId.value ? meetingsStore.meetingById(selectedMeetingId.value) : null))
+
+function pickMeeting(id) {
+  selectedMeetingId.value = id
+  meetingPickerOpen.value = false
+}
+
 // Список кандидатов на исполнителя — если задача создаётся в контексте встречи,
 // то только из её участников (если они настроены) — см. useAssignableUsers.
-const assignableUsers = useAssignableUsers(() => ({ meetingId: props.meetingId }))
+const assignableUsers = useAssignableUsers(() => ({ meetingId: selectedMeetingId.value }))
 const selectedAssigneeId = ref(usersStore.currentUser?.id || null)
 const assignPickerOpen = ref(false)
 const assignPickerEl = ref(null)
 useClickOutside(assignPickerEl, () => { assignPickerOpen.value = false })
 
 const selectedAssignee = computed(() => usersStore.byId(selectedAssigneeId.value))
+
+// Если пользователь сменил встречу и текущий исполнитель больше не входит
+// в список участников этой встречи — сбрасываем, чтобы не создать задачу
+// с исполнителем, не имеющим отношения к выбранной встрече.
+watch(assignableUsers, (users) => {
+  if (selectedAssigneeId.value && !users.some((u) => u.id === selectedAssigneeId.value)) {
+    selectedAssigneeId.value = null
+  }
+})
 
 function pickAssignee(userId) {
   selectedAssigneeId.value = userId
@@ -50,7 +76,7 @@ async function commit(keepOpen = true) {
     await tasksStore.createTask({
       listId: props.listId,
       title,
-      meetingId: props.meetingId,
+      meetingId: selectedMeetingId.value,
       assigneeId: selectedAssigneeId.value,
     })
   }
@@ -75,6 +101,34 @@ async function commit(keepOpen = true) {
       @keyup.escape="commit(false)"
       @blur="commit(false)"
     />
+
+    <div v-if="!props.meetingId" ref="meetingPickerEl" class="quick-assign">
+      <button
+        class="quick-assign-btn"
+        :title="selectedMeeting ? `Встреча: ${selectedMeeting.title}` : 'Привязать к встрече'"
+        @mousedown.prevent="meetingPickerOpen = !meetingPickerOpen"
+      >
+        <AppIcon name="calendar" :size="13" />
+        <span class="quick-assign-label">{{ selectedMeeting ? selectedMeeting.title : 'Встреча' }}</span>
+      </button>
+      <div v-if="meetingPickerOpen" class="quick-assign-dropdown card scroll-thin" @mousedown.prevent>
+        <button class="quick-assign-option" @click="pickMeeting(null)">
+          <span class="quick-assign-avatar quick-assign-avatar-empty">—</span> Без встречи
+          <span v-if="!selectedMeetingId" class="quick-assign-check">✓</span>
+        </button>
+        <button
+          v-for="m in meetingsStore.sortedByDate" :key="m.id"
+          class="quick-assign-option" :class="{ active: selectedMeetingId === m.id }"
+          @click="pickMeeting(m.id)"
+        >
+          <AppIcon name="calendar" :size="13" />
+          {{ m.title }}
+          <span v-if="selectedMeetingId === m.id" class="quick-assign-check">✓</span>
+        </button>
+        <div v-if="!meetingsStore.sortedByDate.length" class="quick-assign-empty">Нет созданных встреч</div>
+      </div>
+    </div>
+
     <div ref="assignPickerEl" class="quick-assign">
       <button
         class="quick-assign-btn"
@@ -139,4 +193,5 @@ async function commit(keepOpen = true) {
 .quick-assign-option:hover { background: #eef1f7; }
 .quick-assign-option.active { background: #eef2ff; color: var(--color-primary-dark); font-weight: 600; }
 .quick-assign-check { margin-left: auto; color: var(--color-primary); font-weight: 700; }
+.quick-assign-empty { padding: 8px; font-size: 12px; color: var(--color-text-muted); text-align: center; }
 </style>
