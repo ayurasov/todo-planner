@@ -54,6 +54,10 @@ async function removeList(list) {
   await listsStore.removeList(list.id)
 }
 
+function openList(listId) {
+  router.push(`/lists/${listId}`)
+}
+
 function openMemberPicker(listId) {
   memberPickerListId.value = memberPickerListId.value === listId ? null : listId
   memberPickerUserId.value = null
@@ -84,14 +88,15 @@ function availableUsers(listId) {
   <div class="lists-grid">
     <div v-for="row in rows" :key="row.list.id" class="card list-card">
       <div class="list-card-head">
-        <span class="list-icon-badge" :style="{ background: row.list.color + '22', color: row.list.color }">
+        <button class="list-icon-badge list-icon-badge-btn" :style="{ background: row.list.color + '22', color: row.list.color }" title="Открыть список" @click="openList(row.list.id)">
           <AppIcon :name="row.list.settings?.icon || 'folder'" :size="16" />
-        </span>
+        </button>
         <div class="list-card-title">
-          <strong>{{ row.list.title }}</strong>
+          <button class="list-title-btn" title="Открыть список" @click="openList(row.list.id)">{{ row.list.title }}</button>
           <span class="list-card-meta">{{ row.taskCount }} задач · {{ row.members.length }} участников</span>
         </div>
         <div class="list-card-head-actions">
+          <button class="btn btn-ghost btn-icon btn-sm" title="Открыть список" @click="openList(row.list.id)"><AppIcon name="chevronRight" :size="14" /></button>
           <button class="btn btn-ghost btn-icon btn-sm" title="Настроить" @click="editingList = row.list"><AppIcon name="settings" :size="14" /></button>
           <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить список" @click="removeList(row.list)"><AppIcon name="trash" :size="14" /></button>
         </div>
@@ -101,7 +106,7 @@ function availableUsers(listId) {
 
       <div v-if="row.list.settings?.recurringMeeting?.enabled" class="meeting-badge">
         <AppIcon name="calendar" :size="13" /> {{ row.list.settings.recurringMeeting.title || 'Регулярная встреча' }}
-        <a v-if="row.list.settings.recurringMeeting.link" :href="row.list.settings.recurringMeeting.link" target="_blank" class="meeting-link">Ссылка</a>
+        <a v-if="row.list.settings.recurringMeeting.link" :href="row.list.settings.recurringMeeting.link" target="_blank" class="meeting-link" @click.stop>Ссылка</a>
       </div>
 
       <div class="members-section">
@@ -147,7 +152,11 @@ function availableUsers(listId) {
 .list-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .list-card-head { display: flex; align-items: flex-start; gap: 10px; }
 .list-icon-badge { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.list-card-title { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.list-icon-badge-btn { border: none; cursor: pointer; padding: 0; }
+.list-icon-badge-btn:hover { filter: brightness(0.95); }
+.list-card-title { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.list-title-btn { border: none; background: none; padding: 0; text-align: left; font-weight: 700; font-size: 14px; cursor: pointer; color: var(--color-text); }
+.list-title-btn:hover { color: var(--color-primary); text-decoration: underline; }
 .list-card-meta { font-size: 11.5px; color: var(--color-text-muted); }
 .list-card-desc { margin: 0; font-size: 12.5px; color: var(--color-text-muted); }
 .list-card-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
