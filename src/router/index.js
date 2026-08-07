@@ -11,6 +11,7 @@ const routes = [
   { path: '/meetings/:id', name: 'meeting-detail', component: () => import('../views/MeetingDetailView.vue'), props: true },
   { path: '/lists-manager', name: 'lists-manager', component: () => import('../views/ListsManagerView.vue') },
   { path: '/history', name: 'history', component: () => import('../views/HistoryView.vue') },
+  { path: '/analytics', name: 'analytics', component: () => import('../views/AnalyticsView.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
   {
     path: '/settings/users',
