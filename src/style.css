@@ -27,12 +27,26 @@ body { background: var(--color-bg); color: var(--color-text); font-size: 14px; }
 button { font-family: inherit; cursor: pointer; }
 input, textarea, select { font-family: inherit; font-size: 14px; }
 
+/*
+ * Базовая кнопка. Раньше .btn не задавал flex-раскладку — из-за этого
+ * кнопки вида "<AppIcon /> Текст" (SVG + текстовый узел) рендерились как
+ * блочные/инлайновые элементы без общего выравнивания по строке, и в
+ * определённых контейнерах (flex column, узкие карточки) иконка и текст
+ * визуально расползались на две строки. Явный inline-flex + gap решает
+ * это для всех кнопок с иконкой во всём приложении одним правилом.
+ */
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   border-radius: var(--radius-sm);
   padding: 6px 12px;
   font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
   color: var(--color-text);
   transition: background 0.15s, border-color 0.15s;
 }
@@ -41,8 +55,14 @@ input, textarea, select { font-family: inherit; font-size: 14px; }
 .btn-primary:hover { background: var(--color-primary-dark); }
 .btn-ghost { border-color: transparent; background: transparent; }
 .btn-ghost:hover { background: #eef1f7; }
-.btn-sm { padding: 3px 8px; font-size: 12px; }
+.btn-sm { padding: 3px 8px; font-size: 12px; gap: 4px; }
 .btn-danger { color: var(--color-danger); }
+
+/* Квадратная icon-only кнопка (например, шестерёнка «Настроить») — без
+   текста рядом иконка должна быть отцентрована, а не иметь боковые паддинги
+   как у текстовых кнопок. */
+.btn-icon { padding: 6px; width: 30px; height: 30px; gap: 0; }
+.btn-icon.btn-sm { width: 26px; height: 26px; padding: 4px; }
 
 .card {
   background: var(--color-surface);
