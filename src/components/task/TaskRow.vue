@@ -1,10 +1,12 @@
 <script setup>
 import { ref, computed, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { useListsStore } from '../../stores/listsStore'
+import { useMeetingsStore } from '../../stores/meetingsStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
-import { relativeDay, isOverdue, relativeTimeAgo, formatDate } from '../../utils/formatters'
+import { relativeDay, isOverdue, relativeTimeAgo, formatDate, formatDateTime } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
 import { useAssignableUsers } from '../../composables/useAssignableUsers'
 import { useClickOutside } from '../../composables/useClickOutside'
@@ -20,9 +22,11 @@ const props = defineProps({
 })
 const emit = defineEmits(['open'])
 
+const router = useRouter()
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
 const listsStore = useListsStore()
+const meetingsStore = useMeetingsStore()
 const prefs = usePreferencesStore()
 
 const expanded = ref(true)
@@ -44,6 +48,21 @@ const assignee = computed(() => usersStore.byId(props.task.assigneeId))
 const list = computed(() => listsStore.byId(props.task.listId))
 const overdue = computed(() => isOverdue(props.task.dueDate, props.task.status))
 const isDone = computed(() => props.task.status === 'done')
+
+// Задача, созданная внутри конкретной подвстречи регулярной серии, должна нести
+// на себе метку "из какой встречи и когда" — иначе в общих списках (Мои задачи,
+// список) невозможно понять контекст её появления. occurrenceById ищет по всем
+// встречам сразу, поэтому здесь достаточно task.occurrenceId без meetingId.
+const occurrenceInfo = computed(() => (props.task.occurrenceId ? meetingsStore.occurrenceById(props.task.occurrenceId) : null))
+const occurrenceBadgeLabel = computed(() => {
+  if (!occurrenceInfo.value) return null
+  return `${occurrenceInfo.value.meeting.title} · ${formatDateTime(occurrenceInfo.value.occurrence.date)}`
+})
+
+function openOccurrenceMeeting() {
+  if (!occurrenceInfo.value) return
+  router.push(`/meetings/${occurrenceInfo.value.meeting.id}`)
+}
 
 const checklistItems = computed(() => tasksStore.checklistByTask[props.task.id])
 const checklistCount = checklistItems
@@ -252,6 +271,15 @@ function closeContextMenu() {
             <AppIcon name="calendar" :size="11" /> {{ task.dueDate ? relativeDay(task.dueDate) : 'срок не установлен' }}
           </span>
           <PriorityBadge :priority="task.priority" />
+          <!-- Бейдж подвстречи: показывает, к какому конкретному вхождению регулярной серии
+               относится задача (название встречи + дата/время этой подвстречи). Кликабелен —
+               ведёт на страницу встречи, чтобы можно было быстро увидеть остальной контекст. -->
+          <button
+            v-if="occurrenceBadgeLabel"
+            class="tag occurrence-badge"
+            :title="'Открыть встречу: ' + occurrenceBadgeLabel"
+            @click.stop="openOccurrenceMeeting"
+          ><AppIcon name="repeat" :size="11" /> {{ occurrenceBadgeLabel }}</button>
           <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`"><AppIcon name="check" :size="11" /> {{ formatDate(task.completedAt) }}</span>
           <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`Последнее изменение: ${formatDate(task.updatedAt)}`"><AppIcon name="edit" :size="11" /> {{ relativeTimeAgo(task.updatedAt) }}</span>
           <span v-if="prefs.showListBadgeInMyTasks && list" class="tag list-badge" :style="{ background: list.color + '22', color: list.color }">{{ list.title }}</span>
@@ -391,6 +419,13 @@ function closeContextMenu() {
 .date-meta-done { color: #1e9e4d; opacity: 0.85; }
 .list-badge { font-weight: 600; }
 .watcher-tag { background: #f4f0ff; color: #7c5cd6; display: inline-flex; align-items: center; gap: 3px; }
+/* Бейдж подвстречи выделен акцентным синим фоном (в отличие от нейтральных .tag),
+   чтобы сразу читался как ссылка на встречу, а не просто метаданные, и был кликабелен. */
+.occurrence-badge {
+  background: #eef2ff; color: var(--color-primary-dark); font-weight: 600; border: none; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 999px;
+}
+.occurrence-badge:hover { background: #dfe6ff; }
 .task-assignee { width: 26px; flex-shrink: 0; position: relative; }
 .avatar-btn { border: none; background: none; padding: 0; cursor: pointer; display: flex; border-radius: 50%; }
 .avatar-btn-disabled { cursor: default; }
