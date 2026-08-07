@@ -111,10 +111,6 @@ function snooze() {
   tasksStore.rescheduleTask(props.task.id, d.toISOString())
 }
 
-function togglePin() {
-  tasksStore.togglePin(props.task.id)
-}
-
 function startEditTitle() {
   titleDraft.value = props.task.title
   editingTitle.value = true
@@ -246,9 +242,16 @@ function closeContextMenu() {
           <span v-if="prefs.showCommentsCount && commentsCount" class="mini-count"><AppIcon name="message" :size="11" />{{ commentsCount }}</span>
         </span>
         <div class="task-meta" v-if="!editingTitle">
-          <PriorityBadge :priority="task.priority" />
-          <span v-if="prefs.showDueDate && task.dueDate" class="due-date" :class="{ 'due-overdue': overdue }" title="Крайний срок"><AppIcon name="calendar" :size="11" /> {{ relativeDay(task.dueDate) }}</span>
+          <!-- Порядок мета-полей: создано → срок (или "не установлен") → остальное.
+               Раньше срок шёл первым, а "создано" — где-то дальше по потоку.
+               Теперь дата создания всегда крайняя левая, следом — срок,
+               причём если срока нет, честно показываем "Срок: не установлен",
+               а не просто скрываем поле. -->
           <span v-if="prefs.showCreatedDate && task.createdAt" class="date-meta" :title="`Создано: ${formatDate(task.createdAt)}`"><AppIcon name="plus" :size="11" /> создано {{ relativeTimeAgo(task.createdAt) }}</span>
+          <span v-if="prefs.showDueDate" class="due-date" :class="{ 'due-overdue': overdue }" title="Крайний срок">
+            <AppIcon name="calendar" :size="11" /> {{ task.dueDate ? relativeDay(task.dueDate) : 'срок не установлен' }}
+          </span>
+          <PriorityBadge :priority="task.priority" />
           <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`"><AppIcon name="check" :size="11" /> {{ formatDate(task.completedAt) }}</span>
           <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`Последнее изменение: ${formatDate(task.updatedAt)}`"><AppIcon name="edit" :size="11" /> {{ relativeTimeAgo(task.updatedAt) }}</span>
           <span v-if="prefs.showListBadgeInMyTasks && list" class="tag list-badge" :style="{ background: list.color + '22', color: list.color }">{{ list.title }}</span>
@@ -269,11 +272,14 @@ function closeContextMenu() {
         </button>
       </div>
 
+      <!-- Иконки быстрых действий раньше показывались только по hover (opacity: 0 → 1),
+           из-за чего на touch-устройствах и при быстром сканировании списка их не было видно
+           вообще. Теперь они всегда видимы (opacity: 1), а на hover только чуть темнее фон. -->
       <div class="task-quick-actions">
         <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить подзадачу" @click.stop="startAddSubtask"><AppIcon name="plus" :size="13" /></button>
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Закрепить" @click.stop="togglePin"><AppIcon name="pin" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить чек-лист" @click.stop="toggleChecklistExpand"><AppIcon name="checklist" :size="13" /></button>
         <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Отложить на день" @click.stop="snooze"><AppIcon name="alarm" :size="13" /></button>
-        <button class="btn btn-ghost btn-sm" title="Ещё" @click.stop="openContextMenu($event)"><AppIcon name="more" :size="13" /></button>
+        <button class="btn btn-ghost btn-sm" title="Ещё" @click.stop="openContextMenu($event)"><AppIcon name="settings" :size="13" /></button>
       </div>
     </div>
 
@@ -412,8 +418,7 @@ function closeContextMenu() {
 }
 .assign-avatar-empty { background: #d9dde8; color: var(--color-text-muted); }
 .assign-check { margin-left: auto; color: var(--color-primary); font-weight: 700; display: flex; }
-.task-quick-actions { display: flex; gap: 2px; opacity: 0; transition: opacity 0.15s; }
-.task-row:hover .task-quick-actions { opacity: 1; }
+.task-quick-actions { display: flex; gap: 2px; opacity: 1; }
 .task-children { border-left: 1px solid var(--color-border); margin-left: 20px; }
 .subtask-add-row { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #fafbfe; }
 .subtask-add-icon { color: var(--color-text-muted); display: flex; }
