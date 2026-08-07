@@ -10,6 +10,7 @@ import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import AppIcon from '../components/common/AppIcon.vue'
+import RichTextEditor from '../components/common/RichTextEditor.vue'
 import { formatDateTime, formatMeetingRecurrence } from '../utils/formatters'
 import { meetingSummaryParser, MATCHED_PATTERN_LABEL } from '../services/MeetingSummaryParser'
 
@@ -34,6 +35,7 @@ const parseAttempted = ref(false)
 
 // Модалка отдельной подвстречи регулярной серии — показывает/редактирует описание,
 // ссылку на допматериалы и список задач исключительно этой конкретной встречи в серии.
+// Описание хранится и редактируется как HTML (см. RichTextEditor), а не как plain text.
 const activeOccurrence = ref(null)
 const occurrenceDraft = ref({ description: '', link: '' })
 const occurrenceEditing = ref(false)
@@ -125,15 +127,23 @@ function startEditOccurrence() {
 
 async function saveOccurrence() {
   await meetingsStore.updateOccurrence(props.id, activeOccurrence.value.id, {
-    description: occurrenceDraft.value.description.trim(),
+    description: occurrenceDraft.value.description,
     link: occurrenceDraft.value.link.trim(),
   })
   activeOccurrence.value = occurrences.value.find((o) => o.id === activeOccurrence.value.id) || null
   occurrenceEditing.value = false
 }
 
+// Для эвристики разбора резюме нужен plain text, а описание подвстречи/встречи
+// теперь может быть HTML — снимаем теги, чтобы regex-парсер не путался в разметке.
+function stripHtml(html) {
+  const div = document.createElement('div')
+  div.innerHTML = html || ''
+  return div.textContent || div.innerText || ''
+}
+
 function openSummaryParser() {
-  summaryText.value = meeting.value?.description || ''
+  summaryText.value = stripHtml(meeting.value?.description || '')
   parsedCandidates.value = []
   parseAttempted.value = false
   showSummaryParser.value = true
@@ -205,7 +215,7 @@ async function saveEdit() {
   await meetingsStore.updateMeeting(props.id, {
     title: editDraft.value.title.trim(),
     date: isoDate,
-    description: editDraft.value.description.trim(),
+    description: editDraft.value.description,
     link: editDraft.value.link.trim(),
     attendeeIds: [...editDraft.value.attendeeIds],
     color: editDraft.value.color,
@@ -257,7 +267,7 @@ function toggleArchived() {
     <div class="meeting-header card">
       <h2 class="meeting-title">
         <span class="meeting-color-dot" :style="{ background: meeting.color || '#4f7cff' }" />
-        <AppIcon name="calendar" :size="17" /> {{ meeting.title }}
+        <AppIcon :name="meeting.recurrence ? 'repeat' : 'calendar'" :size="17" /> {{ meeting.title }}
         <span v-if="meeting.archived" class="tag archived-tag">В архиве</span>
       </h2>
       <div class="meeting-meta meeting-meta-wrap">
@@ -266,7 +276,7 @@ function toggleArchived() {
         <a v-if="meeting.link" :href="meeting.link" target="_blank" rel="noopener" class="meta-item meeting-link"><AppIcon name="link" :size="12" /> Присоединиться к звонку</a>
         <span v-if="author">· Автор: {{ author.name }}</span>
       </div>
-      <p v-if="meeting.description" class="meeting-description">{{ meeting.description }}</p>
+      <div v-if="meeting.description" class="meeting-description rte-render" v-html="meeting.description" />
       <div v-if="attendees.length" class="meeting-attendees">
         <span class="attendees-label">Участники:</span>
         <span v-for="u in attendees" :key="u.id" class="tag attendee-tag">{{ u.name }}</span>
@@ -335,7 +345,7 @@ function toggleArchived() {
           <template v-if="occurrenceEditing">
             <div class="field-group">
               <label>Что обсуждалось</label>
-              <textarea v-model="occurrenceDraft.description" rows="5" placeholder="Заметки по этой встрече из серии..." />
+              <RichTextEditor v-model="occurrenceDraft.description" placeholder="Заметки по этой встрече из серии..." />
             </div>
             <div class="field-group">
               <label>Ссылка на доп. материалы</label>
@@ -343,7 +353,7 @@ function toggleArchived() {
             </div>
           </template>
           <template v-else>
-            <p v-if="activeOccurrence.description" class="occurrence-description-text">{{ activeOccurrence.description }}</p>
+            <div v-if="activeOccurrence.description" class="occurrence-description-text rte-render" v-html="activeOccurrence.description" />
             <p v-else class="empty-state-inline">Описание пока не заполнено</p>
             <a v-if="activeOccurrence.link" :href="activeOccurrence.link" target="_blank" rel="noopener" class="meta-item meeting-link"><AppIcon name="link" :size="12" /> Дополнительные материалы</a>
           </template>
@@ -355,7 +365,7 @@ function toggleArchived() {
           </template>
           <template v-else>
             <button class="btn btn-ghost" @click="closeOccurrence">Закрыть</button>
-            <button v-if="canManageMeeting" class="btn btn-primary" @click="startEditOccurrence">Заполнить описание</button>
+            <button v-if="canManageMeeting" class="btn btn-primary" @click="startEditOccurrence">{{ activeOccurrence.description ? 'Изменить описание' : 'Заполнить описание' }}</button>
           </template>
         </div>
       </div>
@@ -468,7 +478,7 @@ function toggleArchived() {
           </div>
           <div class="field-group">
             <label>Описание</label>
-            <textarea v-model="editDraft.description" rows="3" />
+            <RichTextEditor v-model="editDraft.description" placeholder="Тема, контекст..." />
           </div>
           <div class="field-group">
             <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
@@ -504,7 +514,8 @@ function toggleArchived() {
 .meeting-recurrence { color: var(--color-text); font-weight: 500; }
 .meeting-link { color: var(--color-primary); font-weight: 600; text-decoration: none; }
 .meeting-link:hover { text-decoration: underline; }
-.meeting-description { margin: 0 0 8px; font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; }
+.meeting-description { margin: 0 0 8px; font-size: 13px; color: var(--color-text); line-height: 1.5; }
+.rte-render :deep(ul), .rte-render :deep(ol) { padding-left: 20px; margin: 4px 0; }
 .meeting-attendees { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .attendees-label { font-size: 11.5px; color: var(--color-text-muted); }
 .attendee-tag { background: #f4f0ff; color: #7c5cd6; }
@@ -536,7 +547,7 @@ function toggleArchived() {
 .occurrence-sub { margin-bottom: 8px; }
 .occurrence-sub-label { font-size: 11.5px; font-weight: 600; color: var(--color-text-muted); padding: 2px 4px 6px; }
 .occurrence-sub-label-done { opacity: 0.75; }
-.occurrence-description-text { font-size: 13px; line-height: 1.55; white-space: pre-wrap; margin: 0 0 10px; }
+.occurrence-description-text { font-size: 13px; line-height: 1.55; margin: 0 0 10px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { width: 440px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
