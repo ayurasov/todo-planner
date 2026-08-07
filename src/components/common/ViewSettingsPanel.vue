@@ -59,7 +59,6 @@ function toggleSortDir() {
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showListBadgeInMyTasks" @change="prefs.toggle('showListBadgeInMyTasks')" /> Метка списка</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.highlightOverdue" @change="prefs.toggle('highlightOverdue')" /> Подсвечивать просроченные</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.wrapLongTitles" @change="prefs.toggle('wrapLongTitles')" /> Полный текст заголовков</label>
-        <label class="checkbox-row"><input type="checkbox" :checked="prefs.showScoreDebug" @change="prefs.toggle('showScoreDebug')" /> Debug ranking score</label>
       </div>
     </div>
 
