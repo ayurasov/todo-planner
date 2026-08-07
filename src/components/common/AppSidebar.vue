@@ -4,22 +4,27 @@ import { useRoute } from 'vue-router'
 import { useViewStore } from '../../stores/viewStore'
 import { useUiStore } from '../../stores/uiStore'
 import { useListsStore } from '../../stores/listsStore'
+import { useMeetingsStore } from '../../stores/meetingsStore'
 import { useIsAdmin } from '../../composables/usePermissions'
+import { useDragReorder } from '../../composables/useDragReorder'
 import AppIcon from './AppIcon.vue'
 
 const viewStore = useViewStore()
 const uiStore = useUiStore()
 const listsStore = useListsStore()
+const meetingsStore = useMeetingsStore()
 const isAdmin = useIsAdmin()
 const route = useRoute()
 
-// Подменю со списками открыто по умолчанию, если пользователь уже находится
-// на странице конкретного списка (прямой переход по ссылке / обновление страницы) —
-// иначе после захода в список сайдбар выглядел бы так, будто список "потерялся".
+// Подменю со списками/встречами открыто по умолчанию, если пользователь уже находится
+// на странице конкретного списка/встречи (прямой переход по URL / обновление страницы) —
+// иначе после захода внутрь сайдбар выглядел бы так, будто раздел «потерялся».
 const listsExpanded = ref(route.name === 'list-view')
+const meetingsExpanded = ref(route.name === 'meeting-detail')
 
 onMounted(async () => {
   if (!listsStore.loaded) await listsStore.load()
+  if (!meetingsStore.loaded) await meetingsStore.load()
 })
 
 function toggleLists() {
@@ -28,6 +33,23 @@ function toggleLists() {
   if (uiStore.sidebarCollapsed) return
   listsExpanded.value = !listsExpanded.value
 }
+
+function toggleMeetings() {
+  if (uiStore.sidebarCollapsed) return
+  meetingsExpanded.value = !meetingsExpanded.value
+}
+
+// Используется общая логика drag-n-drop с живым предпросмотром (useDragReorder) — та же,
+// что и на страницах управления списками/встречами, чтобы сортировка в меню
+// была синхронизирована с порядком на страницах.
+const listsDrag = useDragReorder(
+  () => listsStore.activeLists,
+  (orderedIds) => listsStore.reorderLists(orderedIds),
+)
+const meetingsDrag = useDragReorder(
+  () => meetingsStore.activeMeetings,
+  (orderedIds) => meetingsStore.reorderMeetings(orderedIds),
+)
 </script>
 
 <template>
@@ -49,9 +71,49 @@ function toggleLists() {
       <router-link to="/team-tasks" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Задачи команды' : ''">
         <AppIcon name="team" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Задачи команды</span>
       </router-link>
-      <router-link to="/meetings" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Встречи' : ''">
-        <AppIcon name="calendar" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Встречи</span>
-      </router-link>
+
+      <div class="nav-item-group">
+        <button
+          class="nav-item nav-item-btn nav-item-expandable"
+          :class="{ 'router-link-active': route.name === 'meetings' || route.name === 'meeting-detail' }"
+          :title="uiStore.sidebarCollapsed ? 'Встречи' : ''"
+          @click="toggleMeetings"
+        >
+          <router-link to="/meetings" class="nav-item-icon-link" @click.stop><AppIcon name="calendar" :size="15" /></router-link>
+          <span v-if="!uiStore.sidebarCollapsed" class="nav-item-label">Встречи</span>
+          <AppIcon
+            v-if="!uiStore.sidebarCollapsed"
+            :name="meetingsExpanded ? 'chevronDown' : 'chevronRight'"
+            :size="12"
+            class="expand-caret"
+          />
+        </button>
+
+        <TransitionGroup
+          v-if="meetingsExpanded && !uiStore.sidebarCollapsed"
+          tag="div" name="fade" class="nav-submenu"
+          @dragleave.self="meetingsDrag.dragOverEnd" @dragover.prevent @drop="meetingsDrag.endDrag"
+        >
+          <router-link
+            v-for="m in meetingsDrag.displayItems.value" :key="m.id"
+            :to="`/meetings/${m.id}`" class="nav-item nav-subitem fade-move"
+            :class="{ dragging: meetingsDrag.draggingId.value === m.id }"
+            draggable="true"
+            @dragstart="meetingsDrag.startDrag(m.id)"
+            @dragenter.prevent="meetingsDrag.dragOver(m.id)"
+            @dragover.prevent
+            @dragend="meetingsDrag.cancelDrag"
+            @drop.stop="meetingsDrag.endDrag"
+          >
+            <span class="list-dot" :style="{ background: m.color || '#4f7cff' }" />
+            <span class="nav-item-label">{{ m.title }}</span>
+          </router-link>
+          <div v-if="!meetingsDrag.displayItems.value.length" class="nav-submenu-empty">Встреч пока нет</div>
+          <router-link to="/meetings" class="nav-item nav-subitem nav-manage-item">
+            <AppIcon name="list" :size="13" /><span class="nav-item-label">Все встречи</span>
+          </router-link>
+        </TransitionGroup>
+      </div>
 
       <div class="nav-item-group">
         <button
@@ -70,19 +132,30 @@ function toggleLists() {
           />
         </button>
 
-        <div v-if="listsExpanded && !uiStore.sidebarCollapsed" class="nav-submenu">
+        <TransitionGroup
+          v-if="listsExpanded && !uiStore.sidebarCollapsed"
+          tag="div" name="fade" class="nav-submenu"
+          @dragleave.self="listsDrag.dragOverEnd" @dragover.prevent @drop="listsDrag.endDrag"
+        >
           <router-link
-            v-for="list in listsStore.lists" :key="list.id"
-            :to="`/lists/${list.id}`" class="nav-item nav-subitem"
+            v-for="list in listsDrag.displayItems.value" :key="list.id"
+            :to="`/lists/${list.id}`" class="nav-item nav-subitem fade-move"
+            :class="{ dragging: listsDrag.draggingId.value === list.id }"
+            draggable="true"
+            @dragstart="listsDrag.startDrag(list.id)"
+            @dragenter.prevent="listsDrag.dragOver(list.id)"
+            @dragover.prevent
+            @dragend="listsDrag.cancelDrag"
+            @drop.stop="listsDrag.endDrag"
           >
             <span class="list-dot" :style="{ background: list.color }" />
             <span class="nav-item-label">{{ list.title }}</span>
           </router-link>
-          <div v-if="!listsStore.lists.length" class="nav-submenu-empty">Списков пока нет</div>
+          <div v-if="!listsDrag.displayItems.value.length" class="nav-submenu-empty">Списков пока нет</div>
           <router-link to="/lists-manager" class="nav-item nav-subitem nav-manage-item">
             <AppIcon name="settings" :size="13" /><span class="nav-item-label">Управление списками</span>
           </router-link>
-        </div>
+        </TransitionGroup>
       </div>
 
       <router-link to="/history" class="nav-item" :title="uiStore.sidebarCollapsed ? 'История' : ''">
@@ -141,6 +214,7 @@ function toggleLists() {
 .sidebar.collapsed .nav-item { justify-content: center; padding: 8px; }
 .nav-item:hover { background: #eef1f7; }
 .nav-item.router-link-active { background: #e6ecff; color: var(--color-primary-dark); font-weight: 600; }
+.nav-item-icon-link { display: flex; color: inherit; }
 .list-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .nav-item-btn { cursor: pointer; }
 
@@ -148,10 +222,11 @@ function toggleLists() {
 .nav-item-expandable { justify-content: flex-start; }
 .nav-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
 .expand-caret { flex-shrink: 0; color: var(--color-text-muted); }
-.nav-submenu { display: flex; flex-direction: column; gap: 1px; padding-left: 14px; margin-top: 1px; margin-bottom: 2px; }
-.nav-subitem { font-size: 12.5px; padding: 6px 10px; }
+.nav-submenu { display: flex; flex-direction: column; gap: 1px; padding-left: 14px; margin-top: 1px; margin-bottom: 2px; min-height: 4px; }
+.nav-subitem { font-size: 12.5px; padding: 6px 10px; cursor: grab; }
+.nav-subitem.dragging { opacity: 0.35; }
 .nav-submenu-empty { font-size: 11.5px; color: var(--color-text-muted); padding: 5px 10px 5px 24px; }
-.nav-manage-item { color: var(--color-text-muted); border-top: 1px solid var(--color-border); margin-top: 3px; padding-top: 7px; }
+.nav-manage-item { color: var(--color-text-muted); border-top: 1px solid var(--color-border); margin-top: 3px; padding-top: 7px; cursor: pointer; }
 
 .sidebar-bottom {
   margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border);
