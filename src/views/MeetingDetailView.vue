@@ -5,6 +5,8 @@ import { useMeetingsStore } from '../stores/meetingsStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
 import { useListsStore } from '../stores/listsStore'
+import { usePreferencesStore } from '../stores/preferencesStore'
+import { useFiltersStore } from '../stores/filtersStore'
 import { useIsAdmin } from '../composables/usePermissions'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
@@ -20,6 +22,8 @@ const meetingsStore = useMeetingsStore()
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
 const listsStore = useListsStore()
+const prefs = usePreferencesStore()
+const filtersStore = useFiltersStore()
 const isAdmin = useIsAdmin()
 
 const editing = ref(false)
@@ -32,10 +36,8 @@ const showSummaryParser = ref(false)
 const summaryText = ref('')
 const parsedCandidates = ref([])
 const parseAttempted = ref(false)
+const selectedSummaryOccurrenceId = ref('all')
 
-// Модалка отдельной подвстречи регулярной серии — показывает/редактирует описание,
-// ссылку на допматериалы и список задач исключительно этой конкретной встречи в серии.
-// Описание хранится и редактируется как HTML (см. RichTextEditor), а не как plain text.
 const activeOccurrence = ref(null)
 const occurrenceDraft = ref({ description: '', link: '' })
 const occurrenceEditing = ref(false)
@@ -55,45 +57,81 @@ onMounted(async () => {
   if (!tasksStore.loaded) await tasksStore.load()
   if (!listsStore.loaded) await listsStore.load()
   if (!usersStore.loaded) await usersStore.load()
-  if (meeting.value?.recurrence) await meetingsStore.ensureOccurrences(props.id)
+  if (isRecurring.value) await meetingsStore.ensureOccurrences(props.id)
+  if (isRecurring.value) {
+    prefs.set('groupBy', 'assignee')
+    filtersStore.setStatus('all')
+  }
 })
 
 const meeting = computed(() => meetingsStore.meetingById(props.id))
 const author = computed(() => (meeting.value ? usersStore.byId(meeting.value.createdBy) : null))
-const isRecurring = computed(() => !!meeting.value?.recurrence)
-// Все задачи всей серии (для разовой встречи — просто все задачи встречи).
+const isRecurring = computed(() => !!meeting.value?.recurrence?.freq)
+const meetingTypeIcon = computed(() => (isRecurring.value ? 'repeat' : 'calendar'))
+const meetingTypeTitle = computed(() => (isRecurring.value ? 'Регулярная встреча' : 'Разовая встреча'))
 const meetingTasks = computed(() => tasksStore.tasks.filter((t) => t.meetingId === props.id && !t.parentTaskId))
 const attendees = computed(() => (meeting.value?.attendeeIds || []).map((id) => usersStore.byId(id)).filter(Boolean))
 const recurrenceLabel = computed(() => formatMeetingRecurrence(meeting.value?.recurrence))
-
-// Подвстречи серии, отсортированные по дате (первая — это дата самой meeting).
 const occurrences = computed(() => meetingsStore.occurrencesOf(props.id))
 
-// Правило 1: наверху всегда все невыполненные задачи серии, с пометкой,
-// с какой конкретной подвстречи они пришли.
 const unfinishedAcrossSeries = computed(() => {
   if (!isRecurring.value) return []
   return meetingTasks.value
     .filter((t) => t.status !== 'done' && t.status !== 'cancelled')
-    .map((t) => ({
-      task: t,
-      occurrence: occurrences.value.find((o) => o.id === t.occurrenceId) || null,
-    }))
-    .sort((a, b) => new Date(a.occurrence?.date || 0) - new Date(b.occurrence?.date || 0))
+    .sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0))
 })
 
-// Правило 2/3: перечисление всех подвстреч по порядку, внутри каждой —
-// свои задачи (в т.ч. те же невыполненные, что и наверху), разбитые на
-// выполненные/невыполненные. Если задач нет — подвстреча всё равно
-// показывается с явной подписью «задач на встрече нет».
+const unfinishedByOccurrence = computed(() => {
+  if (!isRecurring.value) return []
+  return occurrences.value
+    .map((occ) => {
+      const tasks = unfinishedAcrossSeries.value.filter((t) => t.occurrenceId === occ.id)
+      return { occurrence: occ, tasks, count: tasks.length }
+    })
+    .filter((g) => g.count)
+})
+
+const filteredMeetingTasks = computed(() => filtersStore.apply(meetingTasks.value))
+const recurringVisibleTasks = computed(() => {
+  if (!isRecurring.value) return []
+  let list = filteredMeetingTasks.value
+  const usingBubble = prefs.groupBy === 'bubble'
+  if (!prefs.showCompleted && !usingBubble) {
+    list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
+  }
+  return list
+})
+
 const occurrenceGroups = computed(() => {
   if (!isRecurring.value) return []
+  const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
   return occurrences.value.map((occ) => {
-    const tasks = meetingTasks.value.filter((t) => t.occurrenceId === occ.id)
+    const allTasks = recurringVisibleTasks.value
+      .filter((t) => t.occurrenceId === occ.id)
+      .sort((a, b) => {
+        if (prefs.sortField === 'updated_at') return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)
+        if (prefs.sortField === 'due_date') return new Date(a.dueDate || 8640000000000000) - new Date(b.dueDate || 8640000000000000)
+        return (a.title || '').localeCompare(b.title || '')
+      })
+
+    const byAssignee = {}
+    for (const task of allTasks) {
+      const key = task.assigneeId || 'none'
+      if (!byAssignee[key]) {
+        byAssignee[key] = {
+          key,
+          label: task.assigneeId ? usersStore.byId(task.assigneeId)?.name || 'Исполнитель' : 'Без исполнителя',
+          tasks: [],
+        }
+      }
+      byAssignee[key].tasks.push(task)
+    }
+
     return {
       occurrence: occ,
-      notDone: tasks.filter((t) => t.status !== 'done' && t.status !== 'cancelled'),
-      done: tasks.filter((t) => t.status === 'done' || t.status === 'cancelled'),
+      tasks: allTasks,
+      assigneeGroups: Object.values(byAssignee),
+      order: orderMap.get(occ.id) ?? 0,
     }
   })
 })
@@ -109,6 +147,8 @@ const canManageMeeting = computed(() => {
   }
   return false
 })
+
+const summaryOccurrenceOptions = computed(() => occurrences.value.map((o) => ({ id: o.id, label: formatDateTime(o.date) })))
 
 function openOccurrence(occ) {
   activeOccurrence.value = occ
@@ -134,16 +174,15 @@ async function saveOccurrence() {
   occurrenceEditing.value = false
 }
 
-// Для эвристики разбора резюме нужен plain text, а описание подвстречи/встречи
-// теперь может быть HTML — снимаем теги, чтобы regex-парсер не путался в разметке.
 function stripHtml(html) {
   const div = document.createElement('div')
   div.innerHTML = html || ''
   return div.textContent || div.innerText || ''
 }
 
-function openSummaryParser() {
-  summaryText.value = stripHtml(meeting.value?.description || '')
+function openSummaryParser(occurrence = null) {
+  selectedSummaryOccurrenceId.value = occurrence?.id || 'all'
+  summaryText.value = occurrence ? stripHtml(occurrence.description || '') : stripHtml(meeting.value?.description || '')
   parsedCandidates.value = []
   parseAttempted.value = false
   showSummaryParser.value = true
@@ -163,6 +202,7 @@ async function confirmCreateTasks() {
   for (const c of toCreate) {
     await tasksStore.createTask({
       meetingId: props.id,
+      occurrenceId: selectedSummaryOccurrenceId.value !== 'all' ? selectedSummaryOccurrenceId.value : null,
       title: c.title.trim(),
       assigneeId: c.assigneeGuess || null,
     })
@@ -181,7 +221,7 @@ function startEdit() {
     link: meeting.value.link || '',
     attendeeIds: [...(meeting.value.attendeeIds || [])],
     color: meeting.value.color || '#4f7cff',
-    recurrenceEnabled: !!meeting.value.recurrence,
+    recurrenceEnabled: !!meeting.value.recurrence?.freq,
     recurrenceFreq: meeting.value.recurrence?.freq || 'weekly',
     recurrenceWeekdays: [...(meeting.value.recurrence?.weekdays || [])],
   }
@@ -211,7 +251,7 @@ async function saveEdit() {
           : [],
       }
     : null
-  const wasRecurring = !!meeting.value.recurrence
+  const wasRecurring = !!meeting.value.recurrence?.freq
   await meetingsStore.updateMeeting(props.id, {
     title: editDraft.value.title.trim(),
     date: isoDate,
@@ -220,9 +260,6 @@ async function saveEdit() {
     attendeeIds: [...editDraft.value.attendeeIds],
     color: editDraft.value.color,
     recurrence,
-    // Правило 4: первая подвстреча серии — это дата, указанная в основной
-    // встрече. Если регулярность только что включена или дата изменилась —
-    // пересобираем occurrences с нуля, чтобы не остались устаревшие даты.
     occurrences: recurrence && (!wasRecurring || meeting.value.date !== isoDate) ? [] : undefined,
   })
   if (recurrence) await meetingsStore.ensureOccurrences(props.id)
@@ -254,7 +291,7 @@ function toggleArchived() {
         <button class="btn btn-ghost btn-sm back-btn" @click="router.push('/meetings')"><AppIcon name="chevronLeft" :size="13" /> Встречи</button>
       </div>
       <div v-if="canManageMeeting" class="header-actions">
-        <button class="btn btn-ghost btn-icon btn-sm" title="Разбор резюме в задачи" @click="openSummaryParser"><AppIcon name="layers" :size="14" /></button>
+        <button class="btn btn-ghost btn-icon btn-sm" title="Разбор резюме в задачи" @click="openSummaryParser()"><AppIcon name="layers" :size="14" /></button>
         <button class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click="startEdit"><AppIcon name="edit" :size="14" /></button>
         <button
           class="btn btn-ghost btn-icon btn-sm" :title="meeting.archived ? 'Вернуть из архива' : 'Архивировать'"
@@ -267,12 +304,12 @@ function toggleArchived() {
     <div class="meeting-header card">
       <h2 class="meeting-title">
         <span class="meeting-color-dot" :style="{ background: meeting.color || '#4f7cff' }" />
-        <AppIcon :name="meeting.recurrence ? 'repeat' : 'calendar'" :size="17" /> {{ meeting.title }}
+        <AppIcon :name="meetingTypeIcon" :size="17" /> {{ meeting.title }}
         <span v-if="meeting.archived" class="tag archived-tag">В архиве</span>
       </h2>
       <div class="meeting-meta meeting-meta-wrap">
         <span class="meta-item"><AppIcon name="alarm" :size="12" /> {{ formatDateTime(meeting.date) }}</span>
-        <span class="meeting-recurrence meta-item"><AppIcon name="repeat" :size="12" /> {{ recurrenceLabel }}</span>
+        <span class="meeting-recurrence meta-item"><AppIcon :name="meetingTypeIcon" :size="12" /> {{ recurrenceLabel }}</span>
         <a v-if="meeting.link" :href="meeting.link" target="_blank" rel="noopener" class="meta-item meeting-link"><AppIcon name="link" :size="12" /> Присоединиться к звонку</a>
         <span v-if="author">· Автор: {{ author.name }}</span>
       </div>
@@ -284,35 +321,52 @@ function toggleArchived() {
     </div>
 
     <template v-if="isRecurring">
-      <h3 class="tasks-title">Невыполненные задачи серии</h3>
-      <div v-if="!unfinishedAcrossSeries.length" class="empty-state-inline">Невыполненных задач по серии нет</div>
-      <div v-else class="task-list-panel card unfinished-panel">
-        <div v-for="row in unfinishedAcrossSeries" :key="row.task.id" class="unfinished-row">
-          <span class="unfinished-occ-tag" v-if="row.occurrence">{{ formatDateTime(row.occurrence.date) }}</span>
-          <div class="unfinished-task-wrap">
-            <TaskListPanel :tasks="[row.task]" :show-toolbar="false" />
+      <div class="series-alert card" :class="{ empty: !unfinishedAcrossSeries.length }">
+        <div class="series-alert-head">
+          <div>
+            <div class="series-alert-title"><AppIcon name="warning" :size="14" /> Невыполненные задачи серии</div>
+            <div class="series-alert-subtitle">
+              <template v-if="unfinishedAcrossSeries.length">Открытых задач: {{ unfinishedAcrossSeries.length }}</template>
+              <template v-else>По серии нет невыполненных задач</template>
+            </div>
           </div>
+          <span v-if="unfinishedAcrossSeries.length" class="series-alert-count">{{ unfinishedAcrossSeries.length }}</span>
         </div>
+        <template v-if="unfinishedByOccurrence.length">
+          <div class="series-occ-grid">
+            <aside class="series-occ-sidebar">
+              <div v-for="group in unfinishedByOccurrence" :key="group.occurrence.id" class="series-occ-chip">
+                <div class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</div>
+                <div class="series-occ-count">{{ group.count }}</div>
+              </div>
+            </aside>
+            <div class="series-occ-main">
+              <TaskListPanel :tasks="unfinishedAcrossSeries" :show-toolbar="false" :meeting-mode="true" />
+            </div>
+          </div>
+        </template>
       </div>
 
       <h3 class="tasks-title occurrences-title">Подвстречи серии</h3>
+      <QuickFiltersBar :task-count="recurringVisibleTasks.length" :meeting-mode="false" />
       <div class="occurrence-list">
         <div v-for="group in occurrenceGroups" :key="group.occurrence.id" class="occurrence-card card">
-          <button class="occurrence-header" @click="openOccurrence(group.occurrence)">
-            <span class="occurrence-date"><AppIcon name="calendar" :size="13" /> {{ formatDateTime(group.occurrence.date) }}</span>
-            <span v-if="group.occurrence.description" class="occurrence-has-desc"><AppIcon name="edit" :size="11" /> есть описание</span>
-            <span class="occurrence-open-hint">Открыть описание →</span>
-          </button>
+          <div class="occurrence-header-wrap">
+            <button class="occurrence-header" @click="openOccurrence(group.occurrence)">
+              <span class="occurrence-date"><AppIcon name="calendar" :size="13" /> {{ formatDateTime(group.occurrence.date) }}</span>
+              <span v-if="group.occurrence.description" class="occurrence-has-desc"><AppIcon name="edit" :size="11" /> описание заполнено</span>
+              <span class="occurrence-open-hint">{{ group.occurrence.description ? 'Открыть описание' : 'Заполнить описание' }} →</span>
+            </button>
+            <button v-if="canManageMeeting" class="btn btn-ghost btn-sm" @click="openSummaryParser(group.occurrence)">
+              <AppIcon name="layers" :size="13" /> Разбор резюме встречи в задачи
+            </button>
+          </div>
 
-          <div v-if="!group.notDone.length && !group.done.length" class="empty-state-inline">Задач на встрече нет</div>
+          <div v-if="!group.tasks.length" class="empty-state-inline">Задач на встрече нет</div>
           <template v-else>
-            <div v-if="group.notDone.length" class="occurrence-sub">
-              <div class="occurrence-sub-label">Не выполнено ({{ group.notDone.length }})</div>
-              <TaskListPanel :tasks="group.notDone" :show-toolbar="false" />
-            </div>
-            <div v-if="group.done.length" class="occurrence-sub">
-              <div class="occurrence-sub-label occurrence-sub-label-done">Выполнено ({{ group.done.length }})</div>
-              <TaskListPanel :tasks="group.done" :show-toolbar="false" />
+            <div v-for="assigneeGroup in group.assigneeGroups" :key="assigneeGroup.key" class="occurrence-sub">
+              <div class="occurrence-sub-label">{{ assigneeGroup.label }} ({{ assigneeGroup.tasks.length }})</div>
+              <TaskListPanel :tasks="assigneeGroup.tasks" :show-toolbar="false" :meeting-mode="true" />
             </div>
           </template>
 
@@ -336,7 +390,7 @@ function toggleArchived() {
     </template>
 
     <div v-if="activeOccurrence" class="modal-overlay" @click.self="closeOccurrence">
-      <div class="modal card scroll-thin">
+      <div class="modal modal-occurrence card scroll-thin">
         <div class="modal-header">
           <h3>Подвстреча · {{ formatDateTime(activeOccurrence.date) }}</h3>
           <button class="btn btn-ghost btn-sm" @click="closeOccurrence"><AppIcon name="close" :size="13" /></button>
@@ -365,7 +419,7 @@ function toggleArchived() {
           </template>
           <template v-else>
             <button class="btn btn-ghost" @click="closeOccurrence">Закрыть</button>
-            <button v-if="canManageMeeting" class="btn btn-primary" @click="startEditOccurrence">{{ activeOccurrence.description ? 'Изменить описание' : 'Заполнить описание' }}</button>
+            <button v-if="canManageMeeting" class="btn btn-primary" @click="startEditOccurrence">{{ activeOccurrence.description ? 'Изменить' : 'Заполнить' }}</button>
           </template>
         </div>
       </div>
@@ -381,8 +435,15 @@ function toggleArchived() {
           <p class="hint-text">
             Вставьте текстовое резюме встречи. Кандидатами в задачи считаются строки,
             начинающиеся с "-", "•", номера пункта, либо в формате "Имя: сделать...".
-            Его эвристика на основе regex, не NLP — ничего не создаётся без вашего подтверждения.
+            Ничего не создаётся без вашего подтверждения.
           </p>
+          <div v-if="isRecurring" class="field-group">
+            <label>Подвстреча для создаваемых задач</label>
+            <select v-model="selectedSummaryOccurrenceId">
+              <option value="all">Без привязки к подвстрече (общие задачи серии)</option>
+              <option v-for="opt in summaryOccurrenceOptions" :key="opt.id" :value="opt.id">{{ opt.label }}</option>
+            </select>
+          </div>
           <div class="field-group">
             <label>Текст резюме</label>
             <textarea v-model="summaryText" rows="8" placeholder="- Согласовать бюджет до пятницы&#10;Иван: подготовить презентацию&#10;1. Отправить письмо клиенту" />
@@ -527,36 +588,47 @@ function toggleArchived() {
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
 .empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }
 
-.unfinished-panel { padding: 6px; margin-bottom: 8px; }
-.unfinished-row { display: flex; align-items: flex-start; gap: 8px; padding: 4px 0; }
-.unfinished-occ-tag {
-  flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--color-primary-dark); background: #eef2ff;
-  border-radius: 6px; padding: 4px 7px; margin-top: 6px; white-space: nowrap;
+.series-alert {
+  padding: 14px 16px; margin-bottom: 14px; border: 1px solid #f3c5c8; background: linear-gradient(180deg, #fff7f7 0%, #fff 100%);
 }
-.unfinished-task-wrap { flex: 1; min-width: 0; }
+.series-alert.empty { border-color: var(--color-border); background: var(--color-surface); }
+.series-alert-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.series-alert-title { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--color-danger); }
+.series-alert-subtitle { font-size: 12.5px; color: var(--color-text-muted); margin-top: 4px; }
+.series-alert-count {
+  min-width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--color-danger); color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
+}
+.series-occ-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; align-items: start; }
+.series-occ-sidebar { display: flex; flex-direction: column; gap: 8px; }
+.series-occ-chip { border: 1px solid #f1d2d5; border-radius: 10px; background: #fff; padding: 8px 10px; }
+.series-occ-date { font-size: 12px; font-weight: 600; color: var(--color-text); }
+.series-occ-count { margin-top: 4px; color: var(--color-danger); font-size: 12px; font-weight: 700; }
+.series-occ-main { min-width: 0; }
 
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
 .occurrence-card { padding: 12px 14px; }
+.occurrence-header-wrap { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-bottom: 8px; }
 .occurrence-header {
-  display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: none; cursor: pointer;
-  padding: 4px 2px 10px; text-align: left;
+  display: flex; align-items: center; gap: 10px; flex: 1; border: none; background: none; cursor: pointer;
+  padding: 4px 2px 2px; text-align: left;
 }
 .occurrence-date { font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .occurrence-has-desc { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
 .occurrence-open-hint { margin-left: auto; font-size: 12px; color: var(--color-primary); font-weight: 600; }
 .occurrence-sub { margin-bottom: 8px; }
 .occurrence-sub-label { font-size: 11.5px; font-weight: 600; color: var(--color-text-muted); padding: 2px 4px 6px; }
-.occurrence-sub-label-done { opacity: 0.75; }
 .occurrence-description-text { font-size: 13px; line-height: 1.55; margin: 0 0 10px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { width: 440px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
+.modal-occurrence { width: 860px; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 10px; }
 .modal-header h3 { margin: 0; font-size: 15px; }
 .modal-body { padding: 4px 18px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
 .field-group { display: flex; flex-direction: column; gap: 4px; }
 .field-group label { font-size: 11.5px; color: var(--color-text-muted); }
-.field-group input, .field-group textarea { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
+.field-group input, .field-group textarea, .field-group select { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 8px; }
 .field-row { display: flex; gap: 12px; }
 .field-row .field-group { flex: 1; }
 .color-field { flex: 0 0 auto; }
