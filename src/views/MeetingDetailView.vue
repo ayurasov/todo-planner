@@ -58,8 +58,11 @@ onMounted(async () => {
   if (!listsStore.loaded) await listsStore.load()
   if (!usersStore.loaded) await usersStore.load()
   if (isRecurring.value) await meetingsStore.ensureOccurrences(props.id)
+  // Группировка по исполнителю внутри подвстреч больше не форсируется —
+  // задачи каждой подвстречи показываются простым списком без лишней
+  // иерархии; пользователь может сам включить нужную группировку в
+  // QuickFiltersBar/QuickToolbar, если это понадобится.
   if (isRecurring.value) {
-    prefs.set('groupBy', 'assignee')
     filtersStore.setStatus('all')
   }
 })
@@ -74,22 +77,25 @@ const attendees = computed(() => (meeting.value?.attendeeIds || []).map((id) => 
 const recurrenceLabel = computed(() => formatMeetingRecurrence(meeting.value?.recurrence))
 const occurrences = computed(() => meetingsStore.occurrencesOf(props.id))
 
-const unfinishedAcrossSeries = computed(() => {
+// Невыполненные задачи серии — аккуратно привязаны к своей подвстрече:
+// каждая подвстреча со своими незакрытыми задачами формирует отдельную
+// секцию с деликатной отметкой даты слева, задачи внутри секции не
+// смешиваются со сплошным потоком остальных подвстреч.
+const unfinishedGroupsByOccurrence = computed(() => {
   if (!isRecurring.value) return []
-  return meetingTasks.value
-    .filter((t) => t.status !== 'done' && t.status !== 'cancelled')
-    .sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0))
-})
-
-const unfinishedByOccurrence = computed(() => {
-  if (!isRecurring.value) return []
+  const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
   return occurrences.value
     .map((occ) => {
-      const tasks = unfinishedAcrossSeries.value.filter((t) => t.occurrenceId === occ.id)
-      return { occurrence: occ, tasks, count: tasks.length }
+      const tasks = meetingTasks.value
+        .filter((t) => t.occurrenceId === occ.id && t.status !== 'done' && t.status !== 'cancelled')
+        .sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0))
+      return { occurrence: occ, tasks, count: tasks.length, order: orderMap.get(occ.id) ?? 0 }
     })
     .filter((g) => g.count)
+    .sort((a, b) => a.order - b.order)
 })
+
+const unfinishedTotalCount = computed(() => unfinishedGroupsByOccurrence.value.reduce((sum, g) => sum + g.count, 0))
 
 const filteredMeetingTasks = computed(() => filtersStore.apply(meetingTasks.value))
 const recurringVisibleTasks = computed(() => {
@@ -102,38 +108,21 @@ const recurringVisibleTasks = computed(() => {
   return list
 })
 
+// Задачи каждой подвстречи — простой отсортированный список без
+// принудительной группировки по исполнителю. Пользовательские настройки
+// группировки/сортировки (QuickToolbar) применяются TaskListPanel
+// автоматически через prefs, так что искусственно строить byAssignee
+// здесь больше не нужно.
 const occurrenceGroups = computed(() => {
   if (!isRecurring.value) return []
   const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
-  return occurrences.value.map((occ) => {
-    const allTasks = recurringVisibleTasks.value
-      .filter((t) => t.occurrenceId === occ.id)
-      .sort((a, b) => {
-        if (prefs.sortField === 'updated_at') return new Date(b.updatedAt || 0) - new Date(a.updatedAt || 0)
-        if (prefs.sortField === 'due_date') return new Date(a.dueDate || 8640000000000000) - new Date(b.dueDate || 8640000000000000)
-        return (a.title || '').localeCompare(b.title || '')
-      })
-
-    const byAssignee = {}
-    for (const task of allTasks) {
-      const key = task.assigneeId || 'none'
-      if (!byAssignee[key]) {
-        byAssignee[key] = {
-          key,
-          label: task.assigneeId ? usersStore.byId(task.assigneeId)?.name || 'Исполнитель' : 'Без исполнителя',
-          tasks: [],
-        }
-      }
-      byAssignee[key].tasks.push(task)
-    }
-
-    return {
+  return occurrences.value
+    .map((occ) => ({
       occurrence: occ,
-      tasks: allTasks,
-      assigneeGroups: Object.values(byAssignee),
+      tasks: recurringVisibleTasks.value.filter((t) => t.occurrenceId === occ.id),
       order: orderMap.get(occ.id) ?? 0,
-    }
-  })
+    }))
+    .sort((a, b) => a.order - b.order)
 })
 
 const canManageMeeting = computed(() => {
@@ -321,30 +310,29 @@ function toggleArchived() {
     </div>
 
     <template v-if="isRecurring">
-      <div class="series-alert card" :class="{ empty: !unfinishedAcrossSeries.length }">
+      <div class="series-alert card" :class="{ empty: !unfinishedTotalCount }">
         <div class="series-alert-head">
           <div>
             <div class="series-alert-title"><AppIcon name="warning" :size="14" /> Невыполненные задачи серии</div>
             <div class="series-alert-subtitle">
-              <template v-if="unfinishedAcrossSeries.length">Открытых задач: {{ unfinishedAcrossSeries.length }}</template>
+              <template v-if="unfinishedTotalCount">Открытых задач: {{ unfinishedTotalCount }}</template>
               <template v-else>По серии нет невыполненных задач</template>
             </div>
           </div>
-          <span v-if="unfinishedAcrossSeries.length" class="series-alert-count">{{ unfinishedAcrossSeries.length }}</span>
+          <span v-if="unfinishedTotalCount" class="series-alert-count">{{ unfinishedTotalCount }}</span>
         </div>
-        <template v-if="unfinishedByOccurrence.length">
-          <div class="series-occ-grid">
-            <aside class="series-occ-sidebar">
-              <div v-for="group in unfinishedByOccurrence" :key="group.occurrence.id" class="series-occ-chip">
-                <div class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</div>
-                <div class="series-occ-count">{{ group.count }}</div>
-              </div>
-            </aside>
-            <div class="series-occ-main">
-              <TaskListPanel :tasks="unfinishedAcrossSeries" :show-toolbar="false" :meeting-mode="true" />
+
+        <div v-if="unfinishedGroupsByOccurrence.length" class="series-occ-list">
+          <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row">
+            <div class="series-occ-marker">
+              <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
+              <span class="series-occ-count">{{ group.count }}</span>
+            </div>
+            <div class="series-occ-tasks">
+              <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
             </div>
           </div>
-        </template>
+        </div>
       </div>
 
       <h3 class="tasks-title occurrences-title">Подвстречи серии</h3>
@@ -363,12 +351,7 @@ function toggleArchived() {
           </div>
 
           <div v-if="!group.tasks.length" class="empty-state-inline">Задач на встрече нет</div>
-          <template v-else>
-            <div v-for="assigneeGroup in group.assigneeGroups" :key="assigneeGroup.key" class="occurrence-sub">
-              <div class="occurrence-sub-label">{{ assigneeGroup.label }} ({{ assigneeGroup.tasks.length }})</div>
-              <TaskListPanel :tasks="assigneeGroup.tasks" :show-toolbar="false" :meeting-mode="true" />
-            </div>
-          </template>
+          <TaskListPanel v-else :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
 
           <QuickAddTaskRow
             :meeting-id="props.id"
@@ -599,12 +582,12 @@ function toggleArchived() {
   min-width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--color-danger); color: #fff; font-weight: 700; font-size: 13px; flex-shrink: 0;
 }
-.series-occ-grid { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 12px; align-items: start; }
-.series-occ-sidebar { display: flex; flex-direction: column; gap: 8px; }
-.series-occ-chip { border: 1px solid #f1d2d5; border-radius: 10px; background: #fff; padding: 8px 10px; }
-.series-occ-date { font-size: 12px; font-weight: 600; color: var(--color-text); }
-.series-occ-count { margin-top: 4px; color: var(--color-danger); font-size: 12px; font-weight: 700; }
-.series-occ-main { min-width: 0; }
+.series-occ-list { display: flex; flex-direction: column; gap: 10px; }
+.series-occ-row { display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 12px; align-items: start; }
+.series-occ-marker { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; }
+.series-occ-date { font-size: 11.5px; font-weight: 600; color: var(--color-text-muted); line-height: 1.3; }
+.series-occ-count { font-size: 11px; font-weight: 700; color: var(--color-danger); }
+.series-occ-tasks { min-width: 0; border-left: 2px solid #f1d2d5; padding-left: 10px; }
 
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
 .occurrence-card { padding: 12px 14px; }
@@ -616,8 +599,6 @@ function toggleArchived() {
 .occurrence-date { font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .occurrence-has-desc { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
 .occurrence-open-hint { margin-left: auto; font-size: 12px; color: var(--color-primary); font-weight: 600; }
-.occurrence-sub { margin-bottom: 8px; }
-.occurrence-sub-label { font-size: 11.5px; font-weight: 600; color: var(--color-text-muted); padding: 2px 4px 6px; }
 .occurrence-description-text { font-size: 13px; line-height: 1.55; margin: 0 0 10px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
