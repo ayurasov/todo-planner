@@ -53,23 +53,36 @@ export function createTask({
   createdAt = new Date().toISOString(), createdBy = null,
   updatedAt = new Date().toISOString(), updatedBy = null,
   lastActivityAt = new Date().toISOString(), completedAt = null,
-  displayStandalone = false, meetingId = null,
+  displayStandalone = false, meetingId = null, occurrenceId = null,
 }) {
   return {
     id: id || nextId('task'), listId, parentTaskId, title, description,
     status, priority, assigneeId, watcherIds, dueDate, startDate,
     recurrenceTemplateId, tags, pinned,
     createdAt, createdBy, updatedAt, updatedBy, lastActivityAt, completedAt,
-    displayStandalone, meetingId,
+    displayStandalone, meetingId, occurrenceId,
   }
 }
 
+// occurrenceId — если задача создана в рамках конкретной подвстречи повторяющейся
+// серии (meeting.recurrence !== null), ссылается на id элемента meeting.occurrences.
+// Для разовых встреч всегда null. См. src/services/MeetingOccurrenceService.js.
 export function createMeeting({
   id, title, date, description = '', createdBy = null,
   createdAt = new Date().toISOString(), attendeeIds = [],
   color = '#4f7cff', archived = false, order = 0, link = '', recurrence = null,
+  occurrences = [],
 }) {
-  return { id: id || nextId('meeting'), title, date, description, createdBy, createdAt, attendeeIds, color, archived, order, link, recurrence }
+  return { id: id || nextId('meeting'), title, date, description, createdBy, createdAt, attendeeIds, color, archived, order, link, recurrence, occurrences }
+}
+
+// occurrences — материализованные подвстречи регулярной серии. Каждая:
+// { id, date (ISO), description, link, generatedAt }. Первая подвстреча — это
+// сама дата meeting.date, дальше идут будущие даты по правилу recurrence.
+// Появляются автоматически за день до начала (см. MeetingOccurrenceService.ensureOccurrences),
+// описание/ссылку пользователь заполняет вручную по каждой конкретной подвстрече.
+export function createMeetingOccurrence({ id, meetingId, date, description = '', link = '', generatedAt = new Date().toISOString() }) {
+  return { id: id || nextId('occ'), meetingId, date, description, link, generatedAt }
 }
 
 export function createChecklistItem({ id, taskId, title, done = false, order = 0, recurrenceScope = 'instance_only' }) {
