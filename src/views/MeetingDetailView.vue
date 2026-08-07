@@ -77,13 +77,19 @@ const attendees = computed(() => (meeting.value?.attendeeIds || []).map((id) => 
 const recurrenceLabel = computed(() => formatMeetingRecurrence(meeting.value?.recurrence))
 const occurrences = computed(() => meetingsStore.occurrencesOf(props.id))
 
+// Название подвстречи — всегда составное: базовое название встречи + дата и
+// время конкретного вхождения серии. Используется и в заголовке карточки
+// подвстречи, и в модалке, и как badge внутри самой задачи (TaskRow).
+function occurrenceTitle(occ) {
+  return `${meeting.value?.title || ''} · ${formatDateTime(occ.date)}`
+}
+
 // Невыполненные задачи серии — аккуратно привязаны к своей подвстрече:
 // каждая подвстреча со своими незакрытыми задачами формирует отдельную
-// секцию с деликатной отметкой даты слева, задачи внутри секции не
-// смешиваются со сплошным потоком остальных подвстреч. Внутри секции
-// список рендерится в flat-режиме (без бабла-заголовка "Не выполнено"),
-// так как сам факт нахождения в этом блоке уже говорит, что задачи не
-// выполнены — дублирующий заголовок избыточен.
+// секцию с деликатной отметкой даты слева. Внутри секции задачи рендерятся
+// обычным TaskListPanel (без flat) — так подсветка просроченных/сегодняшних
+// задач и bubble-подача "Не выполнено (N)" остаются такими же, как в блоке
+// "Подвстречи серии", а не теряются из-за принудительного flat-режима.
 const unfinishedGroupsByOccurrence = computed(() => {
   if (!isRecurring.value) return []
   const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
@@ -140,7 +146,7 @@ const canManageMeeting = computed(() => {
   return false
 })
 
-const summaryOccurrenceOptions = computed(() => occurrences.value.map((o) => ({ id: o.id, label: formatDateTime(o.date) })))
+const summaryOccurrenceOptions = computed(() => occurrences.value.map((o) => ({ id: o.id, label: occurrenceTitle(o) })))
 
 function openOccurrence(occ) {
   activeOccurrence.value = occ
@@ -313,27 +319,23 @@ function toggleArchived() {
     </div>
 
     <template v-if="isRecurring">
-      <div class="series-alert card" :class="{ empty: !unfinishedTotalCount }">
-        <div class="series-alert-head">
-          <div>
-            <div class="series-alert-title"><AppIcon name="warning" :size="14" /> Невыполненные задачи серии</div>
-            <div class="series-alert-subtitle">
-              <template v-if="unfinishedTotalCount">Открытых задач: {{ unfinishedTotalCount }}</template>
-              <template v-else>По серии нет невыполненных задач</template>
-            </div>
-          </div>
-          <span v-if="unfinishedTotalCount" class="series-alert-count">{{ unfinishedTotalCount }}</span>
-        </div>
+      <div class="series-alert-header">
+        <div class="series-alert-title"><AppIcon name="warning" :size="14" /> Невыполненные задачи серии</div>
+        <span v-if="unfinishedTotalCount" class="series-alert-count">{{ unfinishedTotalCount }}</span>
+      </div>
+      <div class="series-alert-subtitle">
+        <template v-if="unfinishedTotalCount">Открытых задач: {{ unfinishedTotalCount }}</template>
+        <template v-else>По серии нет невыполненных задач</template>
+      </div>
 
-        <div v-if="unfinishedGroupsByOccurrence.length" class="series-occ-list">
-          <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row">
-            <div class="series-occ-marker">
-              <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
-              <span class="series-occ-count">({{ group.count }})</span>
-            </div>
-            <div class="series-occ-tasks">
-              <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" :flat="true" />
-            </div>
+      <div v-if="unfinishedGroupsByOccurrence.length" class="series-occ-list">
+        <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
+          <div class="series-occ-marker">
+            <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
+            <span class="series-occ-count">{{ group.count }}</span>
+          </div>
+          <div class="series-occ-tasks">
+            <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
           </div>
         </div>
       </div>
@@ -344,7 +346,7 @@ function toggleArchived() {
         <div v-for="group in occurrenceGroups" :key="group.occurrence.id" class="occurrence-card card">
           <div class="occurrence-header-wrap">
             <button class="occurrence-header" @click="openOccurrence(group.occurrence)">
-              <span class="occurrence-date"><AppIcon name="calendar" :size="13" /> {{ formatDateTime(group.occurrence.date) }}</span>
+              <span class="occurrence-date"><AppIcon name="calendar" :size="13" /> {{ occurrenceTitle(group.occurrence) }}</span>
               <span v-if="group.occurrence.description" class="occurrence-has-desc"><AppIcon name="edit" :size="11" /> описание заполнено</span>
               <span class="occurrence-open-hint">{{ group.occurrence.description ? 'Открыть описание' : 'Заполнить описание' }} →</span>
             </button>
@@ -378,7 +380,7 @@ function toggleArchived() {
     <div v-if="activeOccurrence" class="modal-overlay" @click.self="closeOccurrence">
       <div class="modal modal-occurrence card scroll-thin">
         <div class="modal-header">
-          <h3>Подвстреча · {{ formatDateTime(activeOccurrence.date) }}</h3>
+          <h3>{{ occurrenceTitle(activeOccurrence) }}</h3>
           <button class="btn btn-ghost btn-sm" @click="closeOccurrence"><AppIcon name="close" :size="13" /></button>
         </div>
         <div class="modal-body">
@@ -574,23 +576,27 @@ function toggleArchived() {
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
 .empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }
 
-.series-alert {
-  padding: 14px 16px; margin-bottom: 14px; border: 1px solid var(--color-border); background: var(--color-surface);
-}
-.series-alert.empty { border-color: var(--color-border); background: var(--color-surface); }
-.series-alert-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.series-alert-title { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 700; color: var(--color-text); }
-.series-alert-subtitle { font-size: 12.5px; color: var(--color-text-muted); margin-top: 4px; }
+/* Заголовок блока "Невыполненные задачи серии" вынесен из card-обёртки —
+   теперь визуально единообразен с заголовком "Подвстречи серии" (tasks-title). */
+.series-alert-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
+.series-alert-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--color-text); text-transform: uppercase; letter-spacing: 0.03em; }
 .series-alert-count {
-  min-width: 30px; height: 30px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
-  background: #eef1f7; color: var(--color-text); font-weight: 700; font-size: 13px; flex-shrink: 0;
+  min-width: 26px; height: 26px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--color-danger); color: #fff; font-weight: 700; font-size: 12.5px; flex-shrink: 0;
 }
-.series-occ-list { display: flex; flex-direction: column; gap: 8px; }
-.series-occ-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; align-items: start; }
-.series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: 6px; text-align: center; }
-.series-occ-date { font-size: 11.5px; font-weight: 600; color: var(--color-text-muted); line-height: 1.3; }
-.series-occ-count { font-size: 11px; font-weight: 700; color: var(--color-text-muted); }
-.series-occ-tasks { min-width: 0; border-left: 2px solid var(--color-border); padding-left: 4px; }
+.series-alert-subtitle { font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 12px; }
+.series-occ-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+.series-occ-row { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 14px; }
+.series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 6px; text-align: center; }
+/* Дата подвстречи — крупнее, жирнее и выделяющегося синего цвета, чтобы
+   визуально ориентироваться по срокам серии проще, число задач — ещё чуть
+   крупнее и контрастнее серого мета-текста. */
+.series-occ-date { font-size: 13px; font-weight: 700; color: #2f6fed; line-height: 1.3; }
+.series-occ-count {
+  min-width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  background: #eef1f7; color: var(--color-text); font-weight: 700; font-size: 13px; padding: 0 6px;
+}
+.series-occ-tasks { min-width: 0; }
 
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
 .occurrence-card { padding: 12px 14px; }
