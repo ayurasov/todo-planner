@@ -174,12 +174,12 @@ function toggleArchived() {
       </div>
       <div v-if="canManageMeeting" class="header-actions">
         <button class="btn btn-sm" @click="openSummaryParser"><AppIcon name="layers" :size="13" /> Разбор резюме в задачи</button>
-        <button class="btn btn-sm" @click="startEdit"><AppIcon name="edit" :size="13" /> Редактировать</button>
+        <button class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click="startEdit"><AppIcon name="edit" :size="14" /></button>
         <button
           class="btn btn-ghost btn-icon btn-sm" :title="meeting.archived ? 'Вернуть из архива' : 'Архивировать'"
           @click="toggleArchived"
         ><AppIcon :name="meeting.archived ? 'undo' : 'copy'" :size="14" /></button>
-        <button class="btn btn-sm btn-danger" @click="removeMeeting"><AppIcon name="trash" :size="13" /> удалить</button>
+        <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click="removeMeeting"><AppIcon name="trash" :size="14" /></button>
       </div>
     </div>
 
@@ -356,6 +356,8 @@ function toggleArchived() {
 .meeting-attendees { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .attendees-label { font-size: 11.5px; color: var(--color-text-muted); }
 .attendee-tag { background: #f4f0ff; color: #7c5cd6; }
+.btn-danger-ghost { color: var(--color-danger); }
+.btn-danger-ghost:hover { background: #fdeceb; }
 
 .tasks-title { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
