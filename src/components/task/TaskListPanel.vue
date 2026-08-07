@@ -20,6 +20,12 @@ const props = defineProps({
   // Экран встречи требует отдельной UX-настройки: в обычном режиме
   // («Группировка») показываем только сортировку «Обновлено».
   meetingMode: { type: Boolean, default: false },
+  // Flat-режим: игнорирует любые настройки группировки/режим «пузырьки»
+  // и рендерит простой отсортированный список без заголовков-баблов (например,
+  // «Не выполнено»). Используется в блоке «Невыполненные задачи серии»,
+  // где группировка уже сделана по подвстречам на уровне родительского компонента,
+  // и внутренний бабл-заголовок будет избыточным дублированием.
+  flat: { type: Boolean, default: false },
 })
 
 const prefs = usePreferencesStore()
@@ -35,7 +41,7 @@ function goToMeeting(meetingId) { router.push(`/meetings/${meetingId}`) }
 
 const visibleTasks = computed(() => {
   let list = filtersStore.apply(props.tasks)
-  const usingBubble = prefs.groupBy === 'bubble'
+  const usingBubble = prefs.groupBy === 'bubble' && !props.flat
   if (!prefs.showCompleted && !usingBubble) {
     list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled')
   }
@@ -116,6 +122,7 @@ function buildExplicitGroups(tasks) {
 }
 
 function buildSubgroups(tasks) {
+  if (props.flat) return null
   if (prefs.groupBy === 'bubble') return buildBubbleBlocks(tasks)
   if (prefs.groupBy && prefs.groupBy !== 'none') return buildExplicitGroups(tasks)
   return null
