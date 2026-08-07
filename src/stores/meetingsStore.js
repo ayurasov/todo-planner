@@ -25,27 +25,43 @@ export const useMeetingsStore = defineStore('meetings', {
       if (!meeting || !meeting.recurrence) return []
       return [...(meeting.occurrences || [])].sort((a, b) => new Date(b.date) - new Date(a.date))
     },
+
+    /**
+     * Найти конкретную подвстречу по её id, не зная meetingId заранее — используется
+     * в TaskRow для отображения бейджа "встреча + дата подвстречи" у задач, созданных
+     * внутри конкретной подвстречи.
+     */
+    occurrenceById: (state) => (occurrenceId) => {
+      for (const meeting of state.meetings) {
+        const occ = (meeting.occurrences || []).find((o) => o.id === occurrenceId)
+        if (occ) return { occurrence: occ, meeting }
+      }
+      return null
+    },
   },
   actions: {
     async load() {
       this.meetings = await meetingRepository.getAll()
       this.loaded = true
       // Догенерируем подвстречи для всех регулярных встреч сразу после загрузки —
-      // это гарантирует, что пользователь никогда не увидит пустой список подвстреч
-      // у регулярной встречи и что "завтрашняя" подвстреча появится без ручных действий.
+      // это гарантирует, что пользователь никогда не увидит пустой список подвстреч у
+      // регулярной встречи и что "завтрашняя" подвстреча появится без ручных действий.
       await Promise.all(this.meetings.filter((m) => m.recurrence).map((m) => this.ensureOccurrences(m.id)))
     },
 
     /**
-     * Пересчитывает и, если появились новые подвстречи, сохраняет их. Безопасно
-     * вызывать многократно (идемпотентно) — уже сгенерированные occurrences не
-     * трогаются, только дописываются новые в конец.
+     * Пересчитывает и, если появились новые подвстречи или у существующих была
+     * исправлена заглушшая полночь 00:00, сохраняет их. Безопасно вызывать многократно
+     * (идемпотентно) — вызов на уже корректных данных ничего не изменит.
      */
     async ensureOccurrences(meetingId) {
       const meeting = this.meetingById(meetingId)
       if (!meeting || !meeting.recurrence) return meeting
       const rebuilt = meetingOccurrenceService.buildOccurrences(meeting)
-      if (rebuilt.length === (meeting.occurrences || []).length) return meeting
+      const before = meeting.occurrences || []
+      const changed = rebuilt.length !== before.length
+        || rebuilt.some((occ, i) => occ.date !== before[i]?.date)
+      if (!changed) return meeting
       return this.updateMeeting(meetingId, { occurrences: rebuilt })
     },
 
