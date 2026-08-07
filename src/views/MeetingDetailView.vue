@@ -9,6 +9,7 @@ import { useIsAdmin } from '../composables/usePermissions'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
+import AppIcon from '../components/common/AppIcon.vue'
 import { formatDateTime, formatMeetingRecurrence } from '../utils/formatters'
 import { meetingSummaryParser, MATCHED_PATTERN_LABEL } from '../services/MeetingSummaryParser'
 
@@ -159,20 +160,20 @@ async function removeMeeting() {
   <template v-else>
     <div class="view-header">
       <div class="view-title">
-        <button class="btn btn-ghost btn-sm back-btn" @click="router.push('/meetings')">← Встречи</button>
+        <button class="btn btn-ghost btn-sm back-btn" @click="router.push('/meetings')"><AppIcon name="chevronLeft" :size="13" /> Встречи</button>
       </div>
       <div v-if="canManageMeeting" class="header-actions">
-        <button class="btn btn-sm" @click="openSummaryParser">🧩 Разбор резюме в задачи</button>
-        <button class="btn btn-sm" @click="startEdit">✎ Редактировать</button>
-        <button class="btn btn-sm btn-danger" @click="removeMeeting">✖ Удалить</button>
+        <button class="btn btn-sm" @click="openSummaryParser"><AppIcon name="layers" :size="13" /> Разбор резюме в задачи</button>
+        <button class="btn btn-sm" @click="startEdit"><AppIcon name="edit" :size="13" /> Редактировать</button>
+        <button class="btn btn-sm btn-danger" @click="removeMeeting"><AppIcon name="trash" :size="13" /> Удалить</button>
       </div>
     </div>
 
     <div class="meeting-header card">
-      <h2 class="meeting-title">📅 {{ meeting.title }}</h2>
+      <h2 class="meeting-title"><AppIcon name="calendar" :size="17" /> {{ meeting.title }}</h2>
       <div class="meeting-meta meeting-meta-wrap">
-        <span>🕐 {{ formatDateTime(meeting.date) }}</span>
-        <span class="meeting-recurrence">🔁 {{ recurrenceLabel }}</span>
+        <span class="meta-item"><AppIcon name="alarm" :size="12" /> {{ formatDateTime(meeting.date) }}</span>
+        <span class="meeting-recurrence meta-item"><AppIcon name="repeat" :size="12" /> {{ recurrenceLabel }}</span>
         <span v-if="author">· Автор: {{ author.name }}</span>
       </div>
       <p v-if="meeting.description" class="meeting-description">{{ meeting.description }}</p>
@@ -194,13 +195,13 @@ async function removeMeeting() {
       <div class="modal modal-wide card scroll-thin">
         <div class="modal-header">
           <h3>Разбор резюме встречи в задачи</h3>
-          <button class="btn btn-ghost btn-sm" @click="showSummaryParser = false">✕</button>
+          <button class="btn btn-ghost btn-sm" @click="showSummaryParser = false"><AppIcon name="close" :size="13" /></button>
         </div>
         <div class="modal-body">
           <p class="hint-text">
             Вставьте текстовое резюме встречи. Кандидатами в задачи считаются строки,
             начинающиеся с "-", "•", номера пункта, либо в формате "Имя: сделать...".
-            Это эвристика на основе regex, не NLP — ничего не создаётся без вашего подтверждения.
+            Его эвристика на основе regex, не NLP — ничего не создаётся без вашего подтверждения.
           </p>
           <div class="field-group">
             <label>Текст резюме</label>
@@ -227,7 +228,7 @@ async function removeMeeting() {
                     </span>
                   </div>
                 </div>
-                <button class="btn btn-ghost btn-sm" @click="removeCandidate(idx)">✕</button>
+                <button class="btn btn-ghost btn-sm" @click="removeCandidate(idx)"><AppIcon name="close" :size="11" /></button>
               </div>
             </template>
           </div>
@@ -247,7 +248,7 @@ async function removeMeeting() {
       <div class="modal card scroll-thin">
         <div class="modal-header">
           <h3>Редактировать встречу</h3>
-          <button class="btn btn-ghost btn-sm" @click="editing = false">✕</button>
+          <button class="btn btn-ghost btn-sm" @click="editing = false"><AppIcon name="close" :size="13" /></button>
         </div>
         <div class="modal-body">
           <div class="field-group">
@@ -311,13 +312,14 @@ async function removeMeeting() {
 
 <style scoped>
 .view-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.back-btn { padding-left: 4px; }
+.back-btn { padding-left: 4px; display: inline-flex; align-items: center; gap: 4px; }
 .header-actions { display: flex; gap: 8px; }
 
 .meeting-header { padding: 16px 18px; margin-bottom: 18px; }
-.meeting-title { margin: 0 0 6px; font-size: 18px; }
+.meeting-title { margin: 0 0 6px; font-size: 18px; display: flex; align-items: center; gap: 8px; }
 .meeting-meta { display: flex; gap: 10px; font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 8px; }
 .meeting-meta-wrap { flex-wrap: wrap; }
+.meta-item { display: inline-flex; align-items: center; gap: 5px; }
 .meeting-recurrence { color: var(--color-text); font-weight: 500; }
 .meeting-description { margin: 0 0 8px; font-size: 13px; color: var(--color-text); line-height: 1.5; white-space: pre-wrap; }
 .meeting-attendees { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
