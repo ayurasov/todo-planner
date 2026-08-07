@@ -4,6 +4,7 @@ import { useListsStore } from '../../stores/listsStore'
 import { useClickOutside } from '../../composables/useClickOutside'
 import { GroupByMode, SortField, GROUP_LABEL, SORT_LABEL, WEEKDAY_LABEL, MEETING_FREQ_LABEL } from '../../domain/entities/enums'
 import AppIcon from './AppIcon.vue'
+import RichTextEditor from './RichTextEditor.vue'
 
 const props = defineProps({
   list: { type: Object, required: true },
@@ -16,8 +17,8 @@ const listsStore = useListsStore()
 // которые используются во всём остальном приложении — раньше тут
 // были emoji, которые выглядели старомодно и не совпадали со
 // стилем AppIcon, используемым для отображения значка списка в карточках
-// (ListsManagerView.vue). Выбор иконки теперь действительно меняет вид
-// значка на карточке списка, а не только его цвет.
+// (ListsManagerView.vue). Выбор иконки теперь действительно меняет вид значка
+// на карточке списка, а не только его цвет.
 const ICON_OPTIONS = [
   'folder', 'list', 'checklist', 'calendar', 'pin', 'flag', 'star', 'bell',
   'tag', 'team', 'message', 'link', 'shield', 'repeat', 'eye', 'settings',
@@ -129,7 +130,7 @@ function toggleView(view) {
         </div>
         <div class="field-group">
           <label>Описание</label>
-          <textarea v-model="form.description" rows="2" />
+          <RichTextEditor v-model="form.description" placeholder="Описание списка..." />
         </div>
         <div class="field-row">
           <div class="field-group">
@@ -187,7 +188,7 @@ function toggleView(view) {
           </div>
           <div class="field-group">
             <label>Описание</label>
-            <textarea v-model="form.recurringMeeting.description" rows="2" placeholder="Повестка, участники, формат..." />
+            <RichTextEditor v-model="form.recurringMeeting.description" placeholder="Повестка, участники, формат..." />
           </div>
           <div class="field-group">
             <label>Ссылка на звонок</label>
@@ -263,11 +264,11 @@ function toggleView(view) {
 </style>
 
 <style>
-/* Глобальный стиль, т.к. элемент телепортится в body и выходит из-под scoped.
+/* Глобальный стиль, т.к. элемент телепортируется в body и выходит из-под scoped.
  * Раньше сетка иконок была position:absolute внутри .field-group, который
  * лежит внутри .modal-body с overflow-y: auto — поэтому при открытии
  * выпадающего списка он обрезался и смещался при скролле — это и была
- * та «бага при раскрытии». Teleport + position: fixed решает это окончательно. */
+ * та «baga при раскрытии». Teleport + position: fixed решает это окончательно. */
 .icon-grid {
   position: fixed; z-index: 500; padding: 8px;
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; width: 200px; box-shadow: var(--shadow-2);
