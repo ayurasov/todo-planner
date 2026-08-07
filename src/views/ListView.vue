@@ -6,6 +6,7 @@ import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import ListSettingsModal from '../components/common/ListSettingsModal.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
+import AppIcon from '../components/common/AppIcon.vue'
 
 const props = defineProps({ id: { type: String, required: true } })
 const tasksStore = useTasksStore()
@@ -19,10 +20,12 @@ const rankedRoots = computed(() => tasksStore.rankedTasksForList(props.id).filte
 <template>
   <div class="view-header">
     <div class="view-title">
-      <span class="list-icon">{{ list?.settings?.icon || '📋' }}</span>
+      <span class="list-icon" :style="{ background: (list?.color || 'var(--color-primary)') + '22', color: list?.color || 'var(--color-primary)' }">
+        <AppIcon :name="list?.settings?.icon || 'folder'" :size="16" />
+      </span>
       <h2>{{ list?.title }}</h2>
     </div>
-    <button class="btn btn-sm" @click="showSettings = true">⚙️ Настроить список</button>
+    <button class="btn btn-ghost btn-icon" title="Настроить список" @click="showSettings = true"><AppIcon name="settings" :size="15" /></button>
   </div>
   <p v-if="list?.description" class="list-description">{{ list.description }}</p>
   <QuickFiltersBar :task-count="rankedRoots.length" />
@@ -35,6 +38,6 @@ const rankedRoots = computed(() => tasksStore.rankedTasksForList(props.id).filte
 .view-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
 .view-title { display: flex; align-items: center; gap: 8px; }
 .view-title h2 { margin: 0; font-size: 19px; }
-.list-icon { font-size: 18px; }
+.list-icon { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .list-description { color: var(--color-text-muted); font-size: 13px; margin-bottom: 14px; }
 </style>
