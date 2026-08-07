@@ -50,6 +50,7 @@ function toggleSortDir() {
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showDueDate" @change="prefs.toggle('showDueDate')" /> Крайний срок</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showCompletedDate" @change="prefs.toggle('showCompletedDate')" /> Дата выполнения</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showLastUpdatedDate" @change="prefs.toggle('showLastUpdatedDate')" /> Последнее изменение</label>
+        <label class="checkbox-row"><input type="checkbox" :checked="prefs.showCreatedDate" @change="prefs.toggle('showCreatedDate')" /> Дата создания</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showTags" @change="prefs.toggle('showTags')" /> Теги</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showSubtaskCount" @change="prefs.toggle('showSubtaskCount')" /> Счётчик подзадач</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showChecklistProgress" @change="prefs.toggle('showChecklistProgress')" /> Прогресс чек-листа</label>
