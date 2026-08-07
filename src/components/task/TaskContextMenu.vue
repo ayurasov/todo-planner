@@ -13,8 +13,9 @@ const props = defineProps({
   task: { type: Object, required: true },
   x: { type: Number, required: true },
   y: { type: Number, required: true },
+  checklistExpanded: { type: Boolean, default: false },
 })
-const emit = defineEmits(['close', 'open-detail', 'add-subtask', 'rename'])
+const emit = defineEmits(['close', 'open-detail', 'add-subtask', 'rename', 'toggle-checklist'])
 
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
@@ -38,6 +39,11 @@ const isDone = computed(() => props.task.status === 'done')
 const isSubtask = computed(() => !!props.task.parentTaskId)
 const { canEditThisTask, canToggleStatus, canDeleteThisTask } = useTaskPermissions(() => props.task)
 const assignableUsers = useAssignableUsers(() => props.task)
+
+const hasChecklist = computed(() => {
+  const items = tasksStore.checklistByTask[props.task.id]
+  return Array.isArray(items) && items.length > 0
+})
 
 const style = computed(() => {
   const margin = 8
@@ -66,6 +72,11 @@ function addSubtask() {
 
 function rename() {
   emit('rename', props.task)
+  close()
+}
+
+function toggleChecklist() {
+  emit('toggle-checklist', props.task)
   close()
 }
 
@@ -139,10 +150,14 @@ const currentAssignee = computed(() => usersStore.byId(props.task.assigneeId))
             {{ isDone ? 'Вернуть в работу' : 'Завершить' }}
           </button>
           <button v-if="canEditThisTask" class="ctx-item" @click="rename">
-            <span class="ctx-icon icon-neutral"><AppIcon name="edit" :size="13" /></span> Переиименовать
+            <span class="ctx-icon icon-neutral"><AppIcon name="edit" :size="13" /></span> Переименовать
           </button>
           <button v-if="canEditThisTask" class="ctx-item" @click="addSubtask">
             <span class="ctx-icon icon-neutral"><AppIcon name="plus" :size="13" /></span> Добавить подзадачу
+          </button>
+          <button v-if="canEditThisTask" class="ctx-item" @click="toggleChecklist">
+            <span class="ctx-icon icon-neutral"><AppIcon name="checklist" :size="13" /></span>
+            {{ hasChecklist ? (checklistExpanded ? 'Скрыть чек-лист' : 'Раскрыть чек-лист') : 'Добавить чек-лист' }}
           </button>
           <button class="ctx-item" @click="openDetail">
             <span class="ctx-icon icon-neutral"><AppIcon name="detail" :size="13" /></span> Открыть детали
