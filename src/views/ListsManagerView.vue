@@ -5,6 +5,7 @@ import { useUsersStore } from '../stores/usersStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { ListRole } from '../domain/entities/enums'
 import ListSettingsModal from '../components/common/ListSettingsModal.vue'
+import AppIcon from '../components/common/AppIcon.vue'
 
 const listsStore = useListsStore()
 const usersStore = useUsersStore()
@@ -58,7 +59,7 @@ function availableUsers(listId) {
       <h2>Управление списками</h2>
       <p class="subtitle">Единая страница для создания списков, настройки доступа и параметров — вместо разрозненных настроек по каждому списку.</p>
     </div>
-    <button class="btn btn-primary" @click="showCreate = !showCreate">+ Новый список</button>
+    <button class="btn btn-primary" @click="showCreate = !showCreate"><AppIcon name="plus" :size="14" /> Новый список</button>
   </div>
 
   <div v-if="showCreate" class="card create-form">
@@ -71,19 +72,19 @@ function availableUsers(listId) {
     <div v-for="row in rows" :key="row.list.id" class="card list-card">
       <div class="list-card-head">
         <span class="list-icon-badge" :style="{ background: row.list.color + '22', color: row.list.color }">
-          {{ row.list.settings?.icon || '📋' }}
+          <AppIcon name="folder" :size="16" />
         </span>
         <div class="list-card-title">
           <strong>{{ row.list.title }}</strong>
           <span class="list-card-meta">{{ row.taskCount }} задач · {{ row.members.length }} участников</span>
         </div>
-        <button class="btn btn-ghost btn-sm" @click="editingList = row.list">⚙️ Настроить</button>
+        <button class="btn btn-ghost btn-sm" @click="editingList = row.list"><AppIcon name="settings" :size="13" /> Настроить</button>
       </div>
 
       <p v-if="row.list.description" class="list-card-desc">{{ row.list.description }}</p>
 
       <div v-if="row.list.settings?.recurringMeeting?.enabled" class="meeting-badge">
-        📞 {{ row.list.settings.recurringMeeting.title || 'Регулярная встреча' }}
+        <AppIcon name="calendar" :size="13" /> {{ row.list.settings.recurringMeeting.title || 'Регулярная встреча' }}
         <a v-if="row.list.settings.recurringMeeting.link" :href="row.list.settings.recurringMeeting.link" target="_blank" class="meeting-link">Ссылка</a>
       </div>
 
@@ -99,9 +100,9 @@ function availableUsers(listId) {
             >
               <option v-for="(label, role) in ROLE_LABEL" :key="role" :value="role">{{ label }}</option>
             </select>
-            <button class="chip-remove" @click="listsStore.removeMember(row.list.id, m.userId)">✕</button>
+            <button class="chip-remove" @click="listsStore.removeMember(row.list.id, m.userId)"><AppIcon name="close" :size="10" /></button>
           </span>
-          <button class="btn btn-ghost btn-sm add-member-btn" @click="openMemberPicker(row.list.id)">+ Участник</button>
+          <button class="btn btn-ghost btn-sm add-member-btn" @click="openMemberPicker(row.list.id)"><AppIcon name="plus" :size="12" /> Участник</button>
         </div>
 
         <div v-if="memberPickerListId === row.list.id" class="member-picker">
@@ -130,7 +131,7 @@ function availableUsers(listId) {
 .lists-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
 .list-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; }
 .list-card-head { display: flex; align-items: flex-start; gap: 10px; }
-.list-icon-badge { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.list-icon-badge { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .list-card-title { flex: 1; display: flex; flex-direction: column; gap: 2px; }
 .list-card-meta { font-size: 11.5px; color: var(--color-text-muted); }
 .list-card-desc { margin: 0; font-size: 12.5px; color: var(--color-text-muted); }
@@ -144,7 +145,7 @@ function availableUsers(listId) {
 }
 .mini-avatar { width: 18px; height: 18px; border-radius: 50%; background: var(--color-primary); color: #fff; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
 .role-select { border: none; background: none; font-size: 10.5px; font-weight: 600; cursor: pointer; }
-.chip-remove { border: none; background: none; cursor: pointer; color: var(--color-text-muted); font-size: 10px; padding: 0 2px; }
+.chip-remove { border: none; background: none; cursor: pointer; color: var(--color-text-muted); padding: 0 2px; display: flex; align-items: center; }
 .add-member-btn { border-radius: 16px; }
 .member-picker { display: flex; gap: 6px; margin-top: 8px; }
 .member-picker select { border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 12px; }
