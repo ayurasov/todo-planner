@@ -253,7 +253,6 @@ function closeContextMenu() {
           <span v-if="prefs.showListBadgeInMyTasks && list" class="tag list-badge" :style="{ background: list.color + '22', color: list.color }">{{ list.title }}</span>
           <span v-if="prefs.showTags && task.tags?.length" class="tag" v-for="tag in task.tags" :key="tag">{{ tag }}</span>
           <span v-if="prefs.showWatchers && task.watcherIds?.length" class="tag watcher-tag"><AppIcon name="eye" :size="11" /> {{ task.watcherIds.length }}</span>
-          <span v-if="prefs.showScoreDebug && task.__score !== undefined" class="tag score-tag">score {{ task.__score.toFixed(2) }}</span>
         </div>
       </div>
 
@@ -384,7 +383,7 @@ function closeContextMenu() {
 .date-meta { font-size: 11px; color: var(--color-text-muted); opacity: 0.75; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
 .date-meta-done { color: #1e9e4d; opacity: 0.85; }
 .list-badge { font-weight: 600; }
-.watcher-tag, .score-tag { background: #f4f0ff; color: #7c5cd6; display: inline-flex; align-items: center; gap: 3px; }
+.watcher-tag { background: #f4f0ff; color: #7c5cd6; display: inline-flex; align-items: center; gap: 3px; }
 .task-assignee { width: 26px; flex-shrink: 0; position: relative; }
 .avatar-btn { border: none; background: none; padding: 0; cursor: pointer; display: flex; border-radius: 50%; }
 .avatar-btn-disabled { cursor: default; }
