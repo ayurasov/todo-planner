@@ -10,7 +10,6 @@ const routes = [
   { path: '/meetings', name: 'meetings', component: () => import('../views/MeetingsView.vue') },
   { path: '/meetings/:id', name: 'meeting-detail', component: () => import('../views/MeetingDetailView.vue'), props: true },
   { path: '/lists-manager', name: 'lists-manager', component: () => import('../views/ListsManagerView.vue') },
-  { path: '/recurring', name: 'recurring', component: () => import('../views/RecurringTasksView.vue') },
   { path: '/history', name: 'history', component: () => import('../views/HistoryView.vue') },
   { path: '/settings', name: 'settings', component: () => import('../views/SettingsView.vue') },
   {
