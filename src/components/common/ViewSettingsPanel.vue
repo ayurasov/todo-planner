@@ -57,6 +57,7 @@ function toggleSortDir() {
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showCommentsCount" @change="prefs.toggle('showCommentsCount')" /> Счётчик комментариев</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showWatchers" @change="prefs.toggle('showWatchers')" /> Наблюдатели</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showAssigneeAvatar" @change="prefs.toggle('showAssigneeAvatar')" /> Аватар исполнителя</label>
+        <label class="checkbox-row"><input type="checkbox" :checked="prefs.detailedAssigneeView" @change="prefs.toggle('detailedAssigneeView')" /> Детальный вид исполнителя (иконка + имя)</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.showListBadgeInMyTasks" @change="prefs.toggle('showListBadgeInMyTasks')" /> Метка списка</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.highlightOverdue" @change="prefs.toggle('highlightOverdue')" /> Подсвечивать просроченные</label>
         <label class="checkbox-row"><input type="checkbox" :checked="prefs.wrapLongTitles" @change="prefs.toggle('wrapLongTitles')" /> Полный текст заголовков</label>
