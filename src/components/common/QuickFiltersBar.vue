@@ -81,8 +81,9 @@ function toggleCreatedDatePreset(preset) {
 
 <template>
   <div class="quick-filters-bar card">
-    <!-- Статус и исполнители продолжают один визуальный ряд с сортировкой/группировкой
-         в QuickToolbar — это один логический ряд «как показать/расположить». -->
+    <!-- Статус и исполнители идут сразу после «Группировка/Пузырьки» — embedded-toolbar
+         не растягивается (flex: 0 0 auto), весь оставшийся горизонтальный распор забирает
+         отдельный .row-toolbar-spacer после исполнителей. -->
     <div class="row row-toolbar">
       <QuickToolbar class="embedded-toolbar" :task-count="taskCount" :meeting-mode="meetingMode" compact />
 
@@ -106,6 +107,8 @@ function toggleCreatedDatePreset(preset) {
           <div v-if="!usersStore.users.length" class="assignee-empty">Нет пользователей</div>
         </div>
       </div>
+
+      <div class="row-toolbar-spacer" />
     </div>
 
     <!-- Второй ряд: блок «Создано» прижат влево, сразу справа от него —
@@ -145,7 +148,8 @@ function toggleCreatedDatePreset(preset) {
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .row-toolbar { padding: 0 2px; }
 .row-filters { padding: 0 2px; }
-.embedded-toolbar { flex: 1 1 auto; }
+.embedded-toolbar { flex: 0 0 auto; }
+.row-toolbar-spacer { flex: 1 1 auto; min-width: 0; }
 .created-filters-block { display: flex; align-items: center; gap: 8px; }
 .row-label { font-size: 12px; color: var(--color-text-muted); font-weight: 600; }
 .filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
