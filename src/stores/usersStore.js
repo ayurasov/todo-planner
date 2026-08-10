@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia'
 import { userRepository } from '../repositories'
+import { useNotificationsStore } from './notificationsStore'
+import { withPermissionHandling } from './utils/withPermissionHandling'
+import { router } from '../router'
 
 export const useUsersStore = defineStore('users', {
   state: () => ({ users: [], currentUser: null, loaded: false }),
@@ -10,6 +13,8 @@ export const useUsersStore = defineStore('users', {
     async load() {
       if (this.loaded) return
       this.users = await userRepository.getAll()
+      // getCurrentUser() в http-режиме всегда идёт через GET /api/auth/me
+      // (HttpUserRepository), а не из seed/mock-данных — см. src/repositories/http/HttpUserRepository.js.
       this.currentUser = await userRepository.getCurrentUser()
       this.loaded = true
     },
@@ -19,11 +24,13 @@ export const useUsersStore = defineStore('users', {
      * Синхронизирует локальный список и currentUser, если админ меняет себя.
      */
     async updateUser(id, patch) {
-      const updated = await userRepository.updateUser(id, patch)
-      const idx = this.users.findIndex((u) => u.id === id)
-      if (idx !== -1) this.users[idx] = updated
-      if (this.currentUser?.id === id) this.currentUser = updated
-      return updated
+      return withPermissionHandling(async () => {
+        const updated = await userRepository.updateUser(id, patch)
+        const idx = this.users.findIndex((u) => u.id === id)
+        if (idx !== -1) this.users[idx] = updated
+        if (this.currentUser?.id === id) this.currentUser = updated
+        return updated
+      }, { notificationsStore: useNotificationsStore(), router })
     },
   },
 })
