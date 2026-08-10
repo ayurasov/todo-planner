@@ -224,6 +224,10 @@ const groups = computed(() => {
 .bubble-header { font-size: 13.5px; text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 2px 10px; }
 .bubble-block-done .bubble-header { color: var(--color-text-muted); opacity: 0.8; }
 .bubble-block:not(.bubble-block-done) .bubble-header { color: var(--color-danger); }
+/* Внутри повторяющихся встреч нужно такое же мягкое розовое выделение списка
+   задач, как на карточке "НЕ ВЫПОЛНЕНО", чтобы блоки серии и подвстреч выглядели
+   единообразно. Ограничиваем только не-выполненные bubble-блоки, не затрагивая done. */
+.bubble-block:not(.bubble-block-done) .task-list-panel { background: rgba(229, 72, 77, 0.07); }
 .meeting-group-header { color: var(--color-text) !important; justify-content: space-between; text-transform: none; letter-spacing: normal; font-size: 13px; background: #eef1f7; border-radius: 8px; padding: 8px 10px; }
 .group-header-text { display: flex; align-items: center; gap: 6px; }
 .meeting-link-btn { flex-shrink: 0; white-space: nowrap; }
