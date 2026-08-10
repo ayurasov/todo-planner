@@ -40,6 +40,11 @@ const DEFAULT_PREFS = {
   weekStartsOn: 'monday',
   timeFormat: '24h',
   showSubtasksStandalone: false,
+  // "Мои задачи" по умолчанию группируют задачи по встрече/подвстрече (см.
+  // TaskListPanel meetingTopGroups). Пользователь может выключить эту галочку,
+  // чтобы получить простой единый список без деления на встречи — как сейчас
+  // устроено представление "Задачи команды".
+  myTasksGroupByMeeting: true,
 }
 
 export const usePreferencesStore = defineStore('preferences', {

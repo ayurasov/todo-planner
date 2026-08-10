@@ -23,9 +23,9 @@ const props = defineProps({
   // Flat-режим: игнорирует любые настройки группировки/режим «пузырьки»
   // и рендерит простой отсортированный список без заголовков-баблов (например,
   // «Не выполнено»). Используется в блоке «Невыполненные задачи серии».
-  // Важно: визуальная подсветка "просрочено" у TaskRow реализована на уровне самой
-  // строки (.bubble-overdue), а не на уровне контейнера — поэтому её включение требует
-  // передачи bubble-mode=true в TaskRow даже в flat-режиме, см. bubbleModeFor().
+  // Визуальная подсветка "просрочено" у TaskRow реализована на уровне самой
+  // строки (.bubble-overdue), а не на уровне контейнера — поэтому её включение
+  // требует передачи bubble-mode=true в TaskRow даже в flat-режиме, см. bubbleModeFor().
   flat: { type: Boolean, default: false },
 })
 
@@ -129,6 +129,19 @@ function buildSubgroups(tasks) {
   return null
 }
 
+/**
+ * Группировка "Мои задачи" по встречам должна отражать хронологию: сверху — самые
+ * недавние встречи/подвстречи, ниже — более давние ("от самых последних встреч и по
+ * увеличению давности"). Раньше группы строились только по meetingId и сортировались
+ * по возрастанию даты (от старых к новым), а внутри регулярной серии вообще не делились
+ * по конкретным подвстречам — все задачи серии сваливались в одну группу.
+ *
+ * Теперь для регулярной встречи каждая подвстреча (occurrenceId), к которой привязаны
+ * задачи, становится отдельным юнитом группировки со своей датой; задачи серии без
+ * привязки к конкретной подвстрече — отдельным юнитом с датой самой встречи. Разовые
+ * встречи остаются одним юнитом. Все юниты (независимо от типа) сортируются по эффективной
+ * дате по убыванию — новые сверху, старые снизу.
+ */
 const meetingTopGroups = computed(() => {
   const byMeeting = {}
   const noMeeting = []
@@ -141,30 +154,72 @@ const meetingTopGroups = computed(() => {
     }
   }
 
-  const meetingEntries = Object.entries(byMeeting)
-    .map(([meetingId, tasks]) => ({ meetingId, meeting: meetingsStore.meetingById(meetingId), tasks }))
-    .sort((a, b) => {
-      if (!a.meeting) return 1
-      if (!b.meeting) return -1
-      return new Date(a.meeting.date) - new Date(b.meeting.date)
-    })
+  const units = []
 
-  const result = meetingEntries.map(({ meetingId, meeting, tasks }) => {
-    const subgroups = buildSubgroups(tasks)
-    return {
-      key: `meeting_${meetingId}`,
-      label: meeting ? `Встреча: ${meeting.title}, ${formatDateTime(meeting.date)}` : `Встреча (${meetingId})`,
-      meetingId,
-      tasks: subgroups ? null : sortTasks(tasks),
-      subgroups,
-      bubble: false,
-      isMeetingGroup: true,
+  for (const [meetingId, tasks] of Object.entries(byMeeting)) {
+    const meeting = meetingsStore.meetingById(meetingId)
+
+    if (meeting?.recurrence) {
+      const byOccurrence = {}
+      const noOccurrence = []
+      for (const t of tasks) {
+        if (t.occurrenceId) {
+          if (!byOccurrence[t.occurrenceId]) byOccurrence[t.occurrenceId] = []
+          byOccurrence[t.occurrenceId].push(t)
+        } else {
+          noOccurrence.push(t)
+        }
+      }
+
+      for (const [occurrenceId, occTasks] of Object.entries(byOccurrence)) {
+        const occurrence = (meeting.occurrences || []).find((o) => o.id === occurrenceId)
+        const effectiveDate = occurrence?.date || meeting.date
+        const subgroups = buildSubgroups(occTasks)
+        units.push({
+          key: `occurrence_${occurrenceId}`,
+          label: `${meeting.title} · ${formatDateTime(effectiveDate)}`,
+          meetingId,
+          tasks: subgroups ? null : sortTasks(occTasks),
+          subgroups,
+          bubble: false,
+          isMeetingGroup: true,
+          _sortDate: effectiveDate,
+        })
+      }
+
+      if (noOccurrence.length) {
+        const subgroups = buildSubgroups(noOccurrence)
+        units.push({
+          key: `meeting_${meetingId}_general`,
+          label: `${meeting.title} (общие задачи серии)`,
+          meetingId,
+          tasks: subgroups ? null : sortTasks(noOccurrence),
+          subgroups,
+          bubble: false,
+          isMeetingGroup: true,
+          _sortDate: meeting.date,
+        })
+      }
+    } else {
+      const subgroups = buildSubgroups(tasks)
+      units.push({
+        key: `meeting_${meetingId}`,
+        label: meeting ? `Встреча: ${meeting.title}, ${formatDateTime(meeting.date)}` : `Встреча (${meetingId})`,
+        meetingId,
+        tasks: subgroups ? null : sortTasks(tasks),
+        subgroups,
+        bubble: false,
+        isMeetingGroup: true,
+        _sortDate: meeting?.date || 0,
+      })
     }
-  })
+  }
+
+  units.sort((a, b) => new Date(b._sortDate) - new Date(a._sortDate))
 
   if (noMeeting.length) {
     const subgroups = buildSubgroups(noMeeting)
-    result.push({
+    units.push({
       key: 'no_meeting',
       label: 'Без встречи',
       tasks: subgroups ? null : sortTasks(noMeeting),
@@ -174,7 +229,7 @@ const meetingTopGroups = computed(() => {
     })
   }
 
-  return result
+  return units
 })
 
 const groups = computed(() => {
@@ -210,9 +265,6 @@ const groups = computed(() => {
     <div v-else class="task-list-panel card" :class="[`density-${prefs.density}`, { 'flat-unfinished': props.flat }]">
       <div v-if="!group.tasks.length" class="empty-state">{{ emptyText }}</div>
       <TransitionGroup v-else name="fade" tag="div" class="task-list-body">
-        <!-- bubble-mode=true и в flat-режиме — играет роль триггера для .bubble-overdue в TaskRow,
-             чтобы та же задача в сводной карточке “Not выполнено в серии” выгляделась
-             тем же розовым цветом, что и при повторном показе внутри подвстречи. -->
         <TaskRow v-for="task in group.tasks" :key="task.id" :task="task" :bubble-mode="group.bubble || props.flat" class="fade-move" @open="openTask" />
       </TransitionGroup>
     </div>
@@ -228,11 +280,6 @@ const groups = computed(() => {
 .bubble-header { font-size: 13.5px; text-transform: uppercase; letter-spacing: 0.03em; padding: 6px 2px 10px; }
 .bubble-block-done .bubble-header { color: var(--color-text-muted); opacity: 0.8; }
 .bubble-block:not(.bubble-block-done) .bubble-header { color: var(--color-danger); }
-/* Внутри повторяющихся встреч нужно такое же мягкое розовое выделение списка
-   задач, как на карточке "НЕ ВЫПОЛНЕНО". Гарантировать через фон container не работает,
-   так как у .task-row всегда задан непрозрачный background — реальная визуальная
-   подсветка даётся .bubble-overdue в TaskRow.vue через проброшенный bubble-mode (см. шаблон выше).
-   Класс .flat-unfinished оставлен как безвредный fallback-фон на пустые места вокруг строк. */
 .bubble-block:not(.bubble-block-done) .task-list-panel,
 .task-list-panel.flat-unfinished {
   background: rgba(229, 72, 77, 0.07);
