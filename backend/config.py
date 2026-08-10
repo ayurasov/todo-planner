@@ -1,9 +1,11 @@
 """
-Конфигурация Flask-приложения. Три профиля (development/testing/production)
+Конфигурация Flask-приложения. три профиля (development/testing/production)
 подобраны под уже существующий frontend apiClient.js:
 - cookie-based сессии (credentials: 'include'), без JWT;
 - CSRF-заголовок 'X-CSRF-Token', который apiClient проставляет для не-GET
-  запросов (см. src/repositories/http/apiClient.js);
+  запросов (см. src/repositories/http/apiClient.js). Добавлен также 'X-CSRFToken'
+  (стандартный заголовок из рекомендаций Flask-WTF для AJAX-клиентов) для
+  совместимости с будущими клиентами;
 - BASE_URL фронтенда = '/api' -> весь URL-space backend строится под этим
   префиксом на уровне blueprints, а не здесь.
 """
@@ -35,7 +37,7 @@ class BaseConfig:
 
     # --- Flask-WTF / CSRFProtect ---
     WTF_CSRF_ENABLED = True
-    WTF_CSRF_HEADERS = ["X-CSRF-Token"]  # совпадает с apiClient.js
+    WTF_CSRF_HEADERS = ["X-CSRF-Token", "X-CSRFToken"]  # apiClient.js + Flask-WTF default
     WTF_CSRF_TIME_LIMIT = None
     WTF_CSRF_SSL_STRICT = False  # переопределяется в ProductionConfig
 
