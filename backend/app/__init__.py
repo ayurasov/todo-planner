@@ -23,6 +23,9 @@ from app.comments import comments_bp
 from app.checklists import checklists_bp
 from app.notes import notes_bp
 
+from app.auth.security import install_login_guard
+from app.auth.seed import seed_initial_users
+
 
 def create_app(config_name=None):
     app = Flask(__name__)
@@ -30,6 +33,8 @@ def create_app(config_name=None):
 
     _register_extensions(app)
     _register_blueprints(app)
+    install_login_guard(app)
+    _bootstrap_database(app)
 
     return app
 
@@ -59,3 +64,16 @@ def _register_blueprints(app):
     app.register_blueprint(comments_bp)
     app.register_blueprint(checklists_bp)
     app.register_blueprint(notes_bp)
+
+
+def _bootstrap_database(app):
+    """Создаёт таблицы (если их ещё нет) и при первом заведении базы
+    создаёт начальных пользователей с выводом одноразовых паролей в консоль.
+    В production рекомендуется заменить `db.create_all()` на полноценный механизм
+    миграций (backend/migrations/*.sql), но для каркаса он достаточен.
+    """
+
+    with app.app_context():
+        db.create_all()
+
+    seed_initial_users(app)
