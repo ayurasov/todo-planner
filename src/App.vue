@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useUsersStore } from './stores/usersStore'
 import { useListsStore } from './stores/listsStore'
 import { useTasksStore } from './stores/tasksStore'
@@ -11,6 +12,7 @@ import AppSidebar from './components/common/AppSidebar.vue'
 import AppTopBar from './components/common/AppTopBar.vue'
 import TaskDetailPanel from './components/task/TaskDetailPanel.vue'
 
+const route = useRoute()
 const usersStore = useUsersStore()
 const listsStore = useListsStore()
 const tasksStore = useTasksStore()
@@ -19,6 +21,8 @@ const notificationsStore = useNotificationsStore()
 const authStore = useAuthStore()
 
 const openTask = computed(() => uiStore.openTaskId ? tasksStore.byId(uiStore.openTaskId) : null)
+// /login -- публичный экран, без sidebar/topbar authenticated-оболочки.
+const isPublicScreen = computed(() => route.meta?.public === true)
 
 /**
  * в http-режиме authStore.bootstrap() уже вызывался в main.js до mount. Если сессия
@@ -36,14 +40,17 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="app-shell">
-    <AppSidebar />
-    <div class="app-main">
-      <AppTopBar />
-      <div class="app-content">
-        <router-view />
+  <router-view v-if="isPublicScreen" />
+  <template v-else>
+    <div class="app-shell">
+      <AppSidebar />
+      <div class="app-main">
+        <AppTopBar />
+        <div class="app-content">
+          <router-view />
+        </div>
       </div>
     </div>
-  </div>
-  <TaskDetailPanel v-if="openTask" :task="openTask" @close="uiStore.closeTask()" />
+    <TaskDetailPanel v-if="openTask" :task="openTask" @close="uiStore.closeTask()" />
+  </template>
 </template>
