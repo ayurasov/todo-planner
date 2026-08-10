@@ -288,26 +288,33 @@ function closeContextMenu() {
         </div>
       </div>
 
-      <div v-if="prefs.showAssigneeAvatar" class="task-assignee">
+      <!-- Детальный вид исполнителя (по умолчанию включён через prefs.detailedAssigneeView):
+           показывает и иконку/аватар, и полную расшифровку имени — как в поле
+           "Добавить подзадачу"/дропдауне назначения, а не только круглый аватар с инициалами.
+           Компактный вид (только аватар) остаётся доступен через настройку "Аватар исполнителя"
+           без детализации — на случай узких списков/предпочтения минимализма. -->
+      <div v-if="prefs.showAssigneeAvatar" class="task-assignee" :class="{ 'task-assignee-detailed': prefs.detailedAssigneeView }">
         <button
           ref="avatarBtnEl"
-          class="avatar-btn" :class="{ 'avatar-btn-disabled': !canEditThisTask }"
+          class="avatar-btn" :class="{ 'avatar-btn-disabled': !canEditThisTask, 'avatar-btn-detailed': prefs.detailedAssigneeView }"
           :title="canEditThisTask ? (assignee ? `Исполнитель: ${assignee.name} — нажмите, чтобы изменить` : 'Назначить исполнителя') : assignee?.name"
           @click.stop="toggleAssignPicker"
         >
-          <span v-if="assignee" class="avatar" :class="{ 'avatar-compact': prefs.compactAvatars }" :style="{ background: getAvatarColor(assignee.name) }">{{ getInitials(assignee.name) }}</span>
-          <span v-else class="avatar avatar-empty" :class="{ 'avatar-compact': prefs.compactAvatars }">+</span>
+          <span v-if="assignee" class="avatar" :class="{ 'avatar-compact': prefs.compactAvatars && !prefs.detailedAssigneeView }" :style="{ background: getAvatarColor(assignee.name) }">{{ getInitials(assignee.name) }}</span>
+          <span v-else class="avatar avatar-empty" :class="{ 'avatar-compact': prefs.compactAvatars && !prefs.detailedAssigneeView }">+</span>
+          <span v-if="prefs.detailedAssigneeView" class="assignee-name">{{ assignee ? assignee.name : 'Без исполнителя' }}</span>
         </button>
       </div>
 
       <!-- Иконки быстрых действий раньше показывались только по hover (opacity: 0 → 1),
            из-за чего на touch-устройствах и при быстром сканировании списка их не было видно
-           вообще. Теперь они всегда видимы (opacity: 1), а на hover только чуть темнее фон. -->
+           вообще. Теперь они всегда видимы (opacity: 1), а на hover только чуть темнее фон.
+           Кнопка "Ещё" (шестерёнка) убрана как избыточная: полный набор действий уже доступен
+           через правый клик по строке (контекстное меню), это дублирование только занимало место. -->
       <div class="task-quick-actions">
         <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить подзадачу" @click.stop="startAddSubtask"><AppIcon name="plus" :size="13" /></button>
         <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить чек-лист" @click.stop="toggleChecklistExpand"><AppIcon name="checklist" :size="13" /></button>
         <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Отложить на день" @click.stop="snooze"><AppIcon name="alarm" :size="13" /></button>
-        <button class="btn btn-ghost btn-sm" title="Ещё" @click.stop="openContextMenu($event)"><AppIcon name="settings" :size="13" /></button>
       </div>
     </div>
 
@@ -427,11 +434,26 @@ function closeContextMenu() {
 }
 .occurrence-badge:hover { background: #dfe6ff; }
 .task-assignee { width: 26px; flex-shrink: 0; position: relative; }
+/* В детальном режиме исполнитель — не просто круглый значок, а пилюля с именем,
+   поэтому фиксированная узкая ширина 26px больше не подходит: даём авто-ширину
+   с ограничением, чтобы длинные имена не разрывали строку списка. */
+.task-assignee-detailed { width: auto; max-width: 180px; flex-shrink: 0; }
 .avatar-btn { border: none; background: none; padding: 0; cursor: pointer; display: flex; border-radius: 50%; }
 .avatar-btn-disabled { cursor: default; }
+.avatar-btn-detailed {
+  border-radius: 999px; align-items: center; gap: 6px; padding: 3px 10px 3px 3px;
+  background: #eef1f7; max-width: 100%;
+}
+.avatar-btn-detailed:hover { background: #e4e8f2; }
+.avatar-btn-detailed.avatar-btn-disabled:hover { background: #eef1f7; }
+.assignee-name {
+  font-size: 12px; font-weight: 600; color: var(--color-text); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
 .avatar {
   width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary);
   color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
+  flex-shrink: 0;
 }
 .avatar-empty { background: #d9dde8; color: var(--color-text-muted); font-weight: 700; }
 .avatar-compact { width: 18px; height: 18px; font-size: 8px; }
