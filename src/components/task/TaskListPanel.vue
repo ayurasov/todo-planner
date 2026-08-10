@@ -208,7 +208,7 @@ const groups = computed(() => {
         </div>
       </div>
     </template>
-    <div v-else class="task-list-panel card" :class="[`density-${prefs.density}`, { 'flat-unfinished': flat }]">
+    <div v-else class="task-list-panel card" :class="[`density-${prefs.density}`, { 'flat-unfinished': props.flat }]">
       <div v-if="!group.tasks.length" class="empty-state">{{ emptyText }}</div>
       <TransitionGroup v-else name="fade" tag="div" class="task-list-body">
         <TaskRow v-for="task in group.tasks" :key="task.id" :task="task" :bubble-mode="group.bubble" class="fade-move" @open="openTask" />
@@ -230,9 +230,10 @@ const groups = computed(() => {
    задач, как на карточке "НЕ ВЫПОЛНЕНО", чтобы блоки серии и подвстреч выглядели
    единообразно. Ограничиваем только не-выполненные bubble-блоки, не затрагивая done.
    Flat-режим (карточка "Не выполнено в серии встреч") не строит bubble-подгруппы,
-   поэтому получает такое же выделение через отдельный класс .flat-unfinished —
-   иначе первая задача в верхнем сводном блоке визуально отличалась бы от той же
-   задачи, повторно показанной ниже внутри подвстречи с bubble-подсветкой. */
+   поэтому получает такое же выделение через отдельный класс .flat-unfinished (биндим к `props.flat`,
+   а не к bare `flat` — в <script setup> при `const props = defineProps(...)` без деструктуризации
+   в шаблон автоматически доступна только переменная `props`, а без префикса `flat` всегда undefined,
+   и класс никогда не применялся — именно из-за этого предыдущий фикс не сработал. */
 .bubble-block:not(.bubble-block-done) .task-list-panel,
 .task-list-panel.flat-unfinished {
   background: rgba(229, 72, 77, 0.07);
