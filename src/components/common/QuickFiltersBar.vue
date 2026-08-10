@@ -108,17 +108,9 @@ function toggleCreatedDatePreset(preset) {
       </div>
     </div>
 
-    <!-- Второй ряд: блок «Просрочено...» прижат влево, сразу справа от него —
-         блок «Создано», а кнопка «Сбросить все» прижата к правому краю. -->
+    <!-- Второй ряд: блок «Создано» прижат влево, сразу справа от него —
+         блок «Просрочено...», а кнопка «Сбросить все» прижата к правому краю. -->
     <div class="row row-filters">
-      <div class="filter-group" role="group" aria-label="Срок">
-        <button
-          v-for="p in DUE_DATE_PRESETS" :key="p.value"
-          class="filter-btn" :class="{ active: filtersStore.dueDatePreset === p.value }"
-          @click="toggleDueDatePreset(p.value)"
-        >{{ p.label }}</button>
-      </div>
-
       <div class="created-filters-block">
         <span class="row-label">Создано:</span>
         <div class="filter-group" role="group" aria-label="Дата создания">
@@ -128,6 +120,14 @@ function toggleCreatedDatePreset(preset) {
             @click="toggleCreatedDatePreset(p.value)"
           >{{ p.label }}</button>
         </div>
+      </div>
+
+      <div class="filter-group" role="group" aria-label="Срок">
+        <button
+          v-for="p in DUE_DATE_PRESETS" :key="p.value"
+          class="filter-btn" :class="{ active: filtersStore.dueDatePreset === p.value }"
+          @click="toggleDueDatePreset(p.value)"
+        >{{ p.label }}</button>
       </div>
 
       <button v-if="filtersStore.isActive" class="btn btn-ghost btn-sm reset-btn" @click="filtersStore.resetAll(); assigneePickerOpen = false">
@@ -145,7 +145,7 @@ function toggleCreatedDatePreset(preset) {
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .row-toolbar { padding: 0 2px; }
 .row-filters { padding: 0 2px; }
-.embedded-toolbar { flex: 1 1 auto; min-width: 100%; }
+.embedded-toolbar { flex: 1 1 auto; }
 .created-filters-block { display: flex; align-items: center; gap: 8px; }
 .row-label { font-size: 12px; color: var(--color-text-muted); font-weight: 600; }
 .filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
