@@ -105,3 +105,106 @@ task = dto_to_domain.task_from_create(payload)               # -> Task (id ещ�
 
 Routes/services в этом шаге не реализованы — эндпоинты продолжают
 возвращать `501 Not Implemented` (см. `app/tasks/routes.py` и другие).
+
+## Аутентификация (Промпт 11)
+
+Реализована cookie-session аутентификация, совместимая с
+`src/repositories/http/apiClient.js`:
+
+- `POST /api/auth/login` принимает `{ "login": "...", "password": "..." }`,
+  проверяет `password_hash` через `werkzeug.security.check_password_hash`,
+  отклоняет `is_active = false`, создаёт server-side session и возвращает
+  `{"user": ...}` без `password_hash`.
+- `POST /api/auth/logout` очищает сессию.
+- `GET /api/auth/me` возвращает текущего пользователя по `session["user_id"]`,
+  иначе отдаёт стабильный JSON `{"error": "auth_required", "message": "Требуется авторизация"}`
+  со статусом `401`.
+- `GET /api/auth/csrf-token` возвращает `{"csrfToken": "..."}` через
+  `flask_wtf.csrf.generate_csrf()`.
+- Глобальный guard (`app/auth/security.py`) требует логин для всех route'ов,
+  кроме `/api/health`, `/api/auth/login` и `/api/auth/csrf-token`.
+
+### Bootstrap initial users
+
+При первом запуске приложение:
+
+1. вызывает `db.create_all()` для каркаса;
+2. если таблица `users` пуста, создаёт пользователей `admin` и `user`;
+3. генерирует случайные временные пароли, сохраняет **только hash**;
+4. выводит открытые пароли **один раз** в консоль.
+
+Пример консольного вывода при самом первом запуске:
+
+```text
+============================================================
+Todo Planner: созданы начальные пользователи (пароли показываются только сейчас):
+  login=admin  password=...
+  login=user   password=...
+Сохраните эти пароли — повторно они не выводятся и не хранятся в открытом виде.
+============================================================
+```
+
+### Примеры curl
+
+Получить CSRF token и сохранить cookie jar:
+
+```bash
+curl -c cookies.txt http://localhost:5000/api/auth/csrf-token
+# {"csrfToken":"..."}
+```
+
+Логин с cookie + CSRF header:
+
+```bash
+CSRF=$(curl -s -c cookies.txt http://localhost:5000/api/auth/csrf-token | python -c 'import sys, json; print(json.load(sys.stdin)["csrfToken"])')
+
+curl -i \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: $CSRF" \
+  -X POST http://localhost:5000/api/auth/login \
+  -d '{"login":"admin","password":"<password-from-console>"}'
+```
+
+Проверить текущего пользователя:
+
+```bash
+curl -b cookies.txt http://localhost:5000/api/auth/me
+```
+
+Выйти из сессии:
+
+```bash
+curl -i \
+  -b cookies.txt -c cookies.txt \
+  -H "X-CSRF-Token: $CSRF" \
+  -X POST http://localhost:5000/api/auth/logout
+```
+
+### Примеры HTTPie
+
+Получить CSRF token:
+
+```bash
+http --session=todo GET :5000/api/auth/csrf-token
+```
+
+Логин:
+
+```bash
+http --session=todo POST :5000/api/auth/login \
+  X-CSRF-Token:<csrf-token> \
+  login=admin password=<password-from-console>
+```
+
+Текущий пользователь:
+
+```bash
+http --session=todo GET :5000/api/auth/me
+```
+
+Logout:
+
+```bash
+http --session=todo POST :5000/api/auth/logout X-CSRF-Token:<csrf-token>
+```
