@@ -17,7 +17,12 @@ import { createMeetingOccurrence } from '../domain/entities/factories'
  * Важно: время суток всегда должно совпадать со временем исходной встречи (seriesStart),
  * а не сбрасываться на 00:00 — все вычисления дня недели/совпадения ведутся на
  * отдельных копиях дат, а итоговый candidate всегда возвращается с тем же временем суток,
- * что и seriesStart.
+ * что и seriesStart. Дополнительно withSeriesTime() используется и для самой первой
+ * подвстречи серии (см. buildOccurrences), а не только для последующих — ранее первая
+ * подвстреча брала seriesStart "as is", и если он по какой-то причине содержал 00:00
+ * (например, встреча была отредактирована без явного времени), это значение так и
+ * оставалось зафиксированным навсегда в existing[0], а normalizeOccurrences ниже чинит
+ * уже сохранённые записи с таким дефектом.
  */
 
 function addDays(date, days) {
@@ -37,6 +42,12 @@ function startOfDay(date) {
   return d
 }
 
+function withTime(date, hours, minutes) {
+  const d = new Date(date)
+  d.setHours(hours, minutes, 0, 0)
+  return d
+}
+
 /**
  * Вычисляет следующую дату после `fromDate` (не включая её), удовлетворяющую
  * правилу recurrence. Для daily — просто +1 день. Для weekly/biweekly с заданными
@@ -53,11 +64,7 @@ function nextOccurrenceDate(fromDate, recurrence, seriesStart) {
   const hours = seriesTime.getHours()
   const minutes = seriesTime.getMinutes()
 
-  function withSeriesTime(date) {
-    const d = new Date(date)
-    d.setHours(hours, minutes, 0, 0)
-    return d
-  }
+  function withSeriesTime(date) { return withTime(date, hours, minutes) }
 
   if (recurrence.freq === 'daily') return withSeriesTime(addDays(fromDate, 1))
 
@@ -90,7 +97,7 @@ export class MeetingOccurrenceService {
   buildOccurrences(meeting, { now = new Date() } = {}) {
     if (!meeting.recurrence) return []
 
-    const existing = [...(meeting.occurrences || [])].sort((a, b) => new Date(a.date) - new Date(b.date))
+    const existing = this.normalizeOccurrences(meeting)
     const seriesStart = meeting.date
 
     if (!existing.length) {
@@ -109,6 +116,30 @@ export class MeetingOccurrenceService {
     }
 
     return existing
+  }
+
+  /**
+   * Исправляет уже сохранённые occurrences, у которых время суток равно 00:00,
+   * хотя время исходной встречи (meeting.date) — не 00:00. Такие записи могли
+   * появиться до фикса генератора или из старых версий localStorage-данных.
+   * Первая подвстреча серии (существующая до этого фикса) — самый частый случай:
+   * она создавалась "as is" из seriesStart без прогонки через withSeriesTime().
+   * День (число/месяц/год) occurrence никогда не трогаем — меняем только часы/минуты.
+   */
+  normalizeOccurrences(meeting) {
+    const seriesTime = new Date(meeting.date)
+    const hours = seriesTime.getHours()
+    const minutes = seriesTime.getMinutes()
+    const seriesIsMidnight = hours === 0 && minutes === 0
+    const list = [...(meeting.occurrences || [])].sort((a, b) => new Date(a.date) - new Date(b.date))
+    if (seriesIsMidnight) return list
+    return list.map((occ) => {
+      const d = new Date(occ.date)
+      if (d.getHours() === 0 && d.getMinutes() === 0) {
+        return { ...occ, date: withTime(d, hours, minutes).toISOString() }
+      }
+      return occ
+    })
   }
 }
 
