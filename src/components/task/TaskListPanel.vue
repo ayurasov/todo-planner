@@ -22,11 +22,10 @@ const props = defineProps({
   meetingMode: { type: Boolean, default: false },
   // Flat-режим: игнорирует любые настройки группировки/режим «пузырьки»
   // и рендерит простой отсортированный список без заголовков-баблов (например,
-  // «Не выполнено»). Используется в блоке «Невыполненные задачи серии»,
-  // где группировка уже сделана по подвстречам на уровне родительского компонента,
-  // и внутренний бабл-заголовок будет избыточным дублированием. Визуально список
-  // всё равно должен получать то же розовое выделение, что и bubble-блок
-  // «Не выполнено», поэтому подсветка ниже применяется и к flat-режиму.
+  // «Не выполнено»). Используется в блоке «Невыполненные задачи серии».
+  // Важно: визуальная подсветка "просрочено" у TaskRow реализована на уровне самой
+  // строки (.bubble-overdue), а не на уровне контейнера — поэтому её включение требует
+  // передачи bubble-mode=true в TaskRow даже в flat-режиме, см. bubbleModeFor().
   flat: { type: Boolean, default: false },
 })
 
@@ -211,7 +210,10 @@ const groups = computed(() => {
     <div v-else class="task-list-panel card" :class="[`density-${prefs.density}`, { 'flat-unfinished': props.flat }]">
       <div v-if="!group.tasks.length" class="empty-state">{{ emptyText }}</div>
       <TransitionGroup v-else name="fade" tag="div" class="task-list-body">
-        <TaskRow v-for="task in group.tasks" :key="task.id" :task="task" :bubble-mode="group.bubble" class="fade-move" @open="openTask" />
+        <!-- bubble-mode=true и в flat-режиме — играет роль триггера для .bubble-overdue в TaskRow,
+             чтобы та же задача в сводной карточке “Not выполнено в серии” выгляделась
+             тем же розовым цветом, что и при повторном показе внутри подвстречи. -->
+        <TaskRow v-for="task in group.tasks" :key="task.id" :task="task" :bubble-mode="group.bubble || props.flat" class="fade-move" @open="openTask" />
       </TransitionGroup>
     </div>
   </div>
@@ -227,13 +229,10 @@ const groups = computed(() => {
 .bubble-block-done .bubble-header { color: var(--color-text-muted); opacity: 0.8; }
 .bubble-block:not(.bubble-block-done) .bubble-header { color: var(--color-danger); }
 /* Внутри повторяющихся встреч нужно такое же мягкое розовое выделение списка
-   задач, как на карточке "НЕ ВЫПОЛНЕНО", чтобы блоки серии и подвстреч выглядели
-   единообразно. Ограничиваем только не-выполненные bubble-блоки, не затрагивая done.
-   Flat-режим (карточка "Не выполнено в серии встреч") не строит bubble-подгруппы,
-   поэтому получает такое же выделение через отдельный класс .flat-unfinished (биндим к `props.flat`,
-   а не к bare `flat` — в <script setup> при `const props = defineProps(...)` без деструктуризации
-   в шаблон автоматически доступна только переменная `props`, а без префикса `flat` всегда undefined,
-   и класс никогда не применялся — именно из-за этого предыдущий фикс не сработал. */
+   задач, как на карточке "НЕ ВЫПОЛНЕНО". Гарантировать через фон container не работает,
+   так как у .task-row всегда задан непрозрачный background — реальная визуальная
+   подсветка даётся .bubble-overdue в TaskRow.vue через проброшенный bubble-mode (см. шаблон выше).
+   Класс .flat-unfinished оставлен как безвредный fallback-фон на пустые места вокруг строк. */
 .bubble-block:not(.bubble-block-done) .task-list-panel,
 .task-list-panel.flat-unfinished {
   background: rgba(229, 72, 77, 0.07);
