@@ -24,7 +24,9 @@ const props = defineProps({
   // и рендерит простой отсортированный список без заголовков-баблов (например,
   // «Не выполнено»). Используется в блоке «Невыполненные задачи серии»,
   // где группировка уже сделана по подвстречам на уровне родительского компонента,
-  // и внутренний бабл-заголовок будет избыточным дублированием.
+  // и внутренний бабл-заголовок будет избыточным дублированием. Визуально список
+  // всё равно должен получать то же розовое выделение, что и bubble-блок
+  // «Не выполнено», поэтому подсветка ниже применяется и к flat-режиму.
   flat: { type: Boolean, default: false },
 })
 
@@ -206,7 +208,7 @@ const groups = computed(() => {
         </div>
       </div>
     </template>
-    <div v-else class="task-list-panel card" :class="`density-${prefs.density}`">
+    <div v-else class="task-list-panel card" :class="[`density-${prefs.density}`, { 'flat-unfinished': flat }]">
       <div v-if="!group.tasks.length" class="empty-state">{{ emptyText }}</div>
       <TransitionGroup v-else name="fade" tag="div" class="task-list-body">
         <TaskRow v-for="task in group.tasks" :key="task.id" :task="task" :bubble-mode="group.bubble" class="fade-move" @open="openTask" />
@@ -226,8 +228,15 @@ const groups = computed(() => {
 .bubble-block:not(.bubble-block-done) .bubble-header { color: var(--color-danger); }
 /* Внутри повторяющихся встреч нужно такое же мягкое розовое выделение списка
    задач, как на карточке "НЕ ВЫПОЛНЕНО", чтобы блоки серии и подвстреч выглядели
-   единообразно. Ограничиваем только не-выполненные bubble-блоки, не затрагивая done. */
-.bubble-block:not(.bubble-block-done) .task-list-panel { background: rgba(229, 72, 77, 0.07); }
+   единообразно. Ограничиваем только не-выполненные bubble-блоки, не затрагивая done.
+   Flat-режим (карточка "Не выполнено в серии встреч") не строит bubble-подгруппы,
+   поэтому получает такое же выделение через отдельный класс .flat-unfinished —
+   иначе первая задача в верхнем сводном блоке визуально отличалась бы от той же
+   задачи, повторно показанной ниже внутри подвстречи с bubble-подсветкой. */
+.bubble-block:not(.bubble-block-done) .task-list-panel,
+.task-list-panel.flat-unfinished {
+  background: rgba(229, 72, 77, 0.07);
+}
 .meeting-group-header { color: var(--color-text) !important; justify-content: space-between; text-transform: none; letter-spacing: normal; font-size: 13px; background: #eef1f7; border-radius: 8px; padding: 8px 10px; }
 .group-header-text { display: flex; align-items: center; gap: 6px; }
 .meeting-link-btn { flex-shrink: 0; white-space: nowrap; }
