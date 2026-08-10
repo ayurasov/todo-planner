@@ -1,0 +1,61 @@
+"""
+Application factory. Backend спроектирован как реализация под уже
+существующий frontend HTTP-слой (src/repositories/http/apiClient.js):
+cookie-сессии + CSRF-заголовок, единый префикс /api, без JWT.
+"""
+
+from flask import Flask
+
+from config import get_config
+from app.extensions import db, sess, cors, csrf
+
+from app.health import health_bp
+from app.auth import auth_bp
+from app.users import users_bp
+from app.lists import lists_bp
+from app.tasks import tasks_bp
+from app.meetings import meetings_bp
+from app.recurrence import recurrence_bp
+from app.history import history_bp
+from app.notifications import notifications_bp
+from app.saved_views import saved_views_bp
+from app.comments import comments_bp
+from app.checklists import checklists_bp
+from app.notes import notes_bp
+
+
+def create_app(config_name=None):
+    app = Flask(__name__)
+    app.config.from_object(get_config(config_name))
+
+    _register_extensions(app)
+    _register_blueprints(app)
+
+    return app
+
+
+def _register_extensions(app):
+    db.init_app(app)
+    sess.init_app(app)
+    csrf.init_app(app)
+    cors.init_app(
+        app,
+        origins=app.config["CORS_ORIGINS"],
+        supports_credentials=app.config["CORS_SUPPORTS_CREDENTIALS"],
+    )
+
+
+def _register_blueprints(app):
+    app.register_blueprint(health_bp)
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(users_bp)
+    app.register_blueprint(lists_bp)
+    app.register_blueprint(tasks_bp)
+    app.register_blueprint(meetings_bp)
+    app.register_blueprint(recurrence_bp)
+    app.register_blueprint(history_bp)
+    app.register_blueprint(notifications_bp)
+    app.register_blueprint(saved_views_bp)
+    app.register_blueprint(comments_bp)
+    app.register_blueprint(checklists_bp)
+    app.register_blueprint(notes_bp)
