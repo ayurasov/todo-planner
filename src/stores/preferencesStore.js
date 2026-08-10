@@ -23,6 +23,11 @@ const DEFAULT_PREFS = {
   showCommentsCount: true,
   showTags: true,
   showAssigneeAvatar: true,
+  // Детальный вид исполнителя (иконка + расшифровка имени, как в поле "Добавить
+  // подзадачу"/дропдауне назначения) включён по умолчанию. Если пользователь
+  // предпочитает компактный только-аватар вид, можно выключить в настройках —
+  // тогда строка вернётся к прежнему отображению в виде круглого аватара.
+  detailedAssigneeView: true,
   showDueDate: true,
   showCompletedDate: true,
   showLastUpdatedDate: true,
