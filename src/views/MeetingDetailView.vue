@@ -77,19 +77,10 @@ const attendees = computed(() => (meeting.value?.attendeeIds || []).map((id) => 
 const recurrenceLabel = computed(() => formatMeetingRecurrence(meeting.value?.recurrence))
 const occurrences = computed(() => meetingsStore.occurrencesOf(props.id))
 
-// Название подвстречи — всегда составное: базовое название встречи + дата и
-// время конкретного вхождения серии. Используется и в заголовке карточки
-// подвстречи, и в модалке, и как badge внутри самой задачи (TaskRow).
 function occurrenceTitle(occ) {
   return `${meeting.value?.title || ''} · ${formatDateTime(occ.date)}`
 }
 
-// Невыполненные задачи серии — аккуратно привязаны к своей подвстрече:
-// каждая подвстреча со своими незакрытыми задачами формирует отдельную
-// секцию с деликатной отметкой даты слева. Внутри секции задачи рендерятся
-// обычным TaskListPanel (без flat) — так подсветка просроченных/сегодняшних
-// задач и bubble-подача "Не выполнено (N)" остаются такими же, как в блоке
-// "Подвстречи серии", а не теряются из-за принудительного flat-режима.
 const unfinishedGroupsByOccurrence = computed(() => {
   if (!isRecurring.value) return []
   const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
@@ -117,11 +108,6 @@ const recurringVisibleTasks = computed(() => {
   return list
 })
 
-// Задачи каждой подвстречи — простой отсортированный список без
-// принудительной группировки по исполнителю. Пользовательские настройки
-// группировки/сортировки (QuickToolbar) применяются TaskListPanel
-// автоматически через prefs, так что искусственно строить byAssignee
-// здесь больше не нужно.
 const occurrenceGroups = computed(() => {
   if (!isRecurring.value) return []
   const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
@@ -319,10 +305,7 @@ function toggleArchived() {
     </div>
 
     <template v-if="isRecurring">
-      <div class="series-alert-header">
-        <div class="series-alert-title"><AppIcon name="warning" :size="14" /> Невыполненные задачи серии</div>
-        <span v-if="unfinishedTotalCount" class="series-alert-count">{{ unfinishedTotalCount }}</span>
-      </div>
+      <div v-if="unfinishedTotalCount" class="series-alert-bubble">НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ ({{ unfinishedTotalCount }})</div>
       <div class="series-alert-subtitle">
         <template v-if="unfinishedTotalCount">Открытых задач: {{ unfinishedTotalCount }}</template>
         <template v-else>По серии нет невыполненных задач</template>
@@ -332,7 +315,7 @@ function toggleArchived() {
         <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
           <div class="series-occ-marker">
             <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
-            <span class="series-occ-count">{{ group.count }}</span>
+            <span class="series-occ-count">({{ group.count }})</span>
           </div>
           <div class="series-occ-tasks">
             <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
@@ -576,26 +559,20 @@ function toggleArchived() {
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
 .empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }
 
-/* Заголовок блока "Невыполненные задачи серии" вынесен из card-обёртки —
-   теперь визуально единообразен с заголовком "Подвстречи серии" (tasks-title). */
-.series-alert-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
-.series-alert-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--color-text); text-transform: uppercase; letter-spacing: 0.03em; }
-.series-alert-count {
-  min-width: 26px; height: 26px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
-  background: var(--color-danger); color: #fff; font-weight: 700; font-size: 12.5px; flex-shrink: 0;
+/* По скриншоту верхний заголовок должен выглядеть так же, как bubble "НЕ ВЫПОЛНЕНО",
+   только с полным названием серии встреч. Поэтому делаем его красным, капсом и без
+   отдельного круглого счётчика справа — число уже встроено в текст. */
+.series-alert-bubble {
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px;
+  color: var(--color-danger); font-size: 13.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
 }
 .series-alert-subtitle { font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 12px; }
 .series-occ-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
 .series-occ-row { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 14px; }
 .series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 6px; text-align: center; }
-/* Дата подвстречи — крупнее, жирнее и выделяющегося синего цвета, чтобы
-   визуально ориентироваться по срокам серии проще, число задач — ещё чуть
-   крупнее и контрастнее серого мета-текста. */
+/* Дата подсерии по требованию должна быть жирной и синей. */
 .series-occ-date { font-size: 13px; font-weight: 700; color: #2f6fed; line-height: 1.3; }
-.series-occ-count {
-  min-width: 22px; height: 22px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
-  background: #eef1f7; color: var(--color-text); font-weight: 700; font-size: 13px; padding: 0 6px;
-}
+.series-occ-count { font-size: 13px; font-weight: 600; color: var(--color-text); }
 .series-occ-tasks { min-width: 0; }
 
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
