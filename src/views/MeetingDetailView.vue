@@ -306,10 +306,7 @@ function toggleArchived() {
 
     <template v-if="isRecurring">
       <div v-if="unfinishedTotalCount" class="series-alert-bubble">НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ ({{ unfinishedTotalCount }})</div>
-      <div class="series-alert-subtitle">
-        <template v-if="unfinishedTotalCount">Открытых задач: {{ unfinishedTotalCount }}</template>
-        <template v-else>По серии нет невыполненных задач</template>
-      </div>
+      <div v-else class="series-alert-subtitle">По серии нет невыполненных задач</div>
 
       <div v-if="unfinishedGroupsByOccurrence.length" class="series-occ-list">
         <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
@@ -318,7 +315,7 @@ function toggleArchived() {
             <span class="series-occ-count">({{ group.count }})</span>
           </div>
           <div class="series-occ-tasks">
-            <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
+            <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" :flat="true" />
           </div>
         </div>
       </div>
@@ -560,19 +557,20 @@ function toggleArchived() {
 .empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }
 
 /* По скриншоту верхний заголовок должен выглядеть так же, как bubble "НЕ ВЫПОЛНЕНО",
-   только с полным названием серии встреч. Поэтому делаем его красным, капсом и без
-   отдельного круглого счётчика справа — число уже встроено в текст. */
+   только с полным названием серии встреч. Отдельная строка "Открытых задач: x" убрана —
+   она дублировала число, которое уже есть в заголовке. */
 .series-alert-bubble {
-  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px;
+  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px;
   color: var(--color-danger); font-size: 13.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
 }
 .series-alert-subtitle { font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 12px; }
 .series-occ-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
 .series-occ-row { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 14px; }
 .series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 6px; text-align: center; }
-/* Дата подсерии по требованию должна быть жирной и синей. */
+/* Дата подсерии — жирная и синяя. Счётчик рядом теперь оформлен так же ярко,
+   как в bubble "НЕ ВЫПОЛНЕНО": жирный, красный, крупнее прежнего. */
 .series-occ-date { font-size: 13px; font-weight: 700; color: #2f6fed; line-height: 1.3; }
-.series-occ-count { font-size: 13px; font-weight: 600; color: var(--color-text); }
+.series-occ-count { font-size: 15px; font-weight: 700; color: var(--color-danger); }
 .series-occ-tasks { min-width: 0; }
 
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
