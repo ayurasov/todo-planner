@@ -81,34 +81,34 @@ function toggleCreatedDatePreset(preset) {
 
 <template>
   <div class="quick-filters-bar card">
-    <!-- Статус и исполнители идут сразу после «Группировка/Пузырьки» — embedded-toolbar
-         не растягивается (flex: 0 0 auto), весь оставшийся горизонтальный распор забирает
-         отдельный .row-toolbar-spacer после исполнителей. -->
+    <!-- Статус и исполнители вставляются в слот QuickToolbar сразу после «Группировка/
+         Пузырьки» — сам QuickToolbar обеспечивает, чтобы кнопка «…» оставалась в правом
+         крае строки независимо от того, что перед ней вставлено. -->
     <div class="row row-toolbar">
-      <QuickToolbar class="embedded-toolbar" :task-count="taskCount" :meeting-mode="meetingMode" compact />
+      <QuickToolbar class="embedded-toolbar" :task-count="taskCount" :meeting-mode="meetingMode" compact>
+        <template #after-view-mode>
+          <div class="filter-group" role="group" aria-label="Статус">
+            <button
+              v-for="opt in STATUS_OPTIONS" :key="opt.value"
+              class="filter-btn" :class="{ active: filtersStore.status === opt.value }"
+              @click="setStatus(opt.value)"
+            >{{ opt.label }}</button>
+          </div>
 
-      <div class="filter-group" role="group" aria-label="Статус">
-        <button
-          v-for="opt in STATUS_OPTIONS" :key="opt.value"
-          class="filter-btn" :class="{ active: filtersStore.status === opt.value }"
-          @click="setStatus(opt.value)"
-        >{{ opt.label }}</button>
-      </div>
-
-      <div class="assignee-picker">
-        <button class="filter-btn dropdown-trigger" :class="{ active: filtersStore.assigneeIds.length }" @click="assigneePickerOpen = !assigneePickerOpen">
-          <AppIcon name="users" :size="13" /> {{ assigneeSummary }} <AppIcon name="chevronDown" :size="11" class="caret" />
-        </button>
-        <div v-if="assigneePickerOpen" class="assignee-dropdown card" @click.self="assigneePickerOpen = false">
-          <label v-for="u in usersStore.users" :key="u.id" class="assignee-option">
-            <input type="checkbox" :checked="filtersStore.assigneeIds.includes(u.id)" @change="toggleAssignee(u.id)" />
-            {{ u.name }}
-          </label>
-          <div v-if="!usersStore.users.length" class="assignee-empty">Нет пользователей</div>
-        </div>
-      </div>
-
-      <div class="row-toolbar-spacer" />
+          <div class="assignee-picker">
+            <button class="filter-btn dropdown-trigger" :class="{ active: filtersStore.assigneeIds.length }" @click="assigneePickerOpen = !assigneePickerOpen">
+              <AppIcon name="users" :size="13" /> {{ assigneeSummary }} <AppIcon name="chevronDown" :size="11" class="caret" />
+            </button>
+            <div v-if="assigneePickerOpen" class="assignee-dropdown card" @click.self="assigneePickerOpen = false">
+              <label v-for="u in usersStore.users" :key="u.id" class="assignee-option">
+                <input type="checkbox" :checked="filtersStore.assigneeIds.includes(u.id)" @change="toggleAssignee(u.id)" />
+                {{ u.name }}
+              </label>
+              <div v-if="!usersStore.users.length" class="assignee-empty">Нет пользователей</div>
+            </div>
+          </div>
+        </template>
+      </QuickToolbar>
     </div>
 
     <!-- Второй ряд: блок «Создано» прижат влево, сразу справа от него —
@@ -148,8 +148,7 @@ function toggleCreatedDatePreset(preset) {
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .row-toolbar { padding: 0 2px; }
 .row-filters { padding: 0 2px; }
-.embedded-toolbar { flex: 0 0 auto; }
-.row-toolbar-spacer { flex: 1 1 auto; min-width: 0; }
+.embedded-toolbar { flex: 1 1 auto; min-width: 100%; }
 .created-filters-block { display: flex; align-items: center; gap: 8px; }
 .row-label { font-size: 12px; color: var(--color-text-muted); font-weight: 600; }
 .filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
