@@ -1,9 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUsersStore } from '../stores/usersStore'
 import { useNotificationsStore } from '../stores/notificationsStore'
+import { useAuthStore } from '../stores/authStore'
+import { apiMode } from '../repositories'
 
 const routes = [
   { path: '/', redirect: '/my-tasks' },
+  { path: '/login', name: 'login', component: () => import('../views/LoginView.vue'), meta: { public: true } },
   { path: '/my-tasks', name: 'my-tasks', component: () => import('../views/MyTasksView.vue') },
   { path: '/team-tasks', name: 'team-tasks', component: () => import('../views/TeamTasksView.vue') },
   { path: '/lists/:id', name: 'list-view', component: () => import('../views/ListView.vue'), props: true },
@@ -27,11 +30,23 @@ export const router = createRouter({
 })
 
 /**
- * Route guard для экранов, доступных только администраторам (globalRole === 'admin').
- * Ждём загрузки usersStore (на случай прямого перехода по URL до onMounted в App.vue),
- * затем проверяем роль. Не-admin получает redirect на /my-tasks + in-app уведомление.
+ * В http-режиме любой не-public переход требует authStore.checked/authenticated.
+ * main.js вызывает authStore.bootstrap() до app.mount(), но guard добавлен как fallback
+ * (прямые перегрузки страниц без повторного main.js).
+ * В mock-режиме apiMode !== 'http', поэтому ветка авторизации никогда не срабатывает, поведение
+ * не изменилось.
  */
 router.beforeEach(async (to) => {
+  if (apiMode === 'http' && !to.meta?.public) {
+    const authStore = useAuthStore()
+    if (!authStore.checked) {
+      await authStore.bootstrap()
+    }
+    if (!authStore.authenticated) {
+      return { path: '/login' }
+    }
+  }
+
   if (!to.meta?.requiresAdmin) return true
 
   const usersStore = useUsersStore()
