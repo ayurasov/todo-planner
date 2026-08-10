@@ -81,11 +81,11 @@ function toggleCreatedDatePreset(preset) {
 
 <template>
   <div class="quick-filters-bar card">
+    <!-- Статус и исполнители продолжают один визуальный ряд с сортировкой/группировкой
+         в QuickToolbar — это один логический ряд «как показать/расположить». -->
     <div class="row row-toolbar">
       <QuickToolbar class="embedded-toolbar" :task-count="taskCount" :meeting-mode="meetingMode" compact />
-    </div>
 
-    <div class="row row-filters">
       <div class="filter-group" role="group" aria-label="Статус">
         <button
           v-for="opt in STATUS_OPTIONS" :key="opt.value"
@@ -93,8 +93,6 @@ function toggleCreatedDatePreset(preset) {
           @click="setStatus(opt.value)"
         >{{ opt.label }}</button>
       </div>
-
-      <div class="filter-divider" />
 
       <div class="assignee-picker">
         <button class="filter-btn dropdown-trigger" :class="{ active: filtersStore.assigneeIds.length }" @click="assigneePickerOpen = !assigneePickerOpen">
@@ -108,9 +106,11 @@ function toggleCreatedDatePreset(preset) {
           <div v-if="!usersStore.users.length" class="assignee-empty">Нет пользователей</div>
         </div>
       </div>
+    </div>
 
-      <div class="filter-divider" />
-
+    <!-- Второй ряд: блок «Просрочено...» прижат влево, сразу справа от него —
+         блок «Создано», а кнопка «Сбросить все» прижата к правому краю. -->
+    <div class="row row-filters">
       <div class="filter-group" role="group" aria-label="Срок">
         <button
           v-for="p in DUE_DATE_PRESETS" :key="p.value"
@@ -119,20 +119,20 @@ function toggleCreatedDatePreset(preset) {
         >{{ p.label }}</button>
       </div>
 
+      <div class="created-filters-block">
+        <span class="row-label">Создано:</span>
+        <div class="filter-group" role="group" aria-label="Дата создания">
+          <button
+            v-for="p in CREATED_DATE_PRESETS" :key="p.value"
+            class="filter-btn" :class="{ active: filtersStore.createdDatePreset === p.value }"
+            @click="toggleCreatedDatePreset(p.value)"
+          >{{ p.label }}</button>
+        </div>
+      </div>
+
       <button v-if="filtersStore.isActive" class="btn btn-ghost btn-sm reset-btn" @click="filtersStore.resetAll(); assigneePickerOpen = false">
         Сбросить все
       </button>
-    </div>
-
-    <div class="row row-filters row-created-filters">
-      <span class="row-label">Создано:</span>
-      <div class="filter-group" role="group" aria-label="Дата создания">
-        <button
-          v-for="p in CREATED_DATE_PRESETS" :key="p.value"
-          class="filter-btn" :class="{ active: filtersStore.createdDatePreset === p.value }"
-          @click="toggleCreatedDatePreset(p.value)"
-        >{{ p.label }}</button>
-      </div>
     </div>
   </div>
 </template>
@@ -143,14 +143,11 @@ function toggleCreatedDatePreset(preset) {
   padding: 8px 10px; margin-bottom: 12px;
 }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-/* Вторая строка выровнена по левому краю с первым элементом верхней строки
-   (блок «Groupировка/Пузырьки»), поскольку quick-toolbar и filter-group используют
-   одинаковый внешний padding у карточки. */
 .row-toolbar { padding: 0 2px; }
 .row-filters { padding: 0 2px; }
-.row-created-filters { padding-top: 4px; border-top: 1px dashed var(--color-border); }
-.row-label { font-size: 12px; color: var(--color-text-muted); font-weight: 600; }
 .embedded-toolbar { flex: 1 1 auto; min-width: 100%; }
+.created-filters-block { display: flex; align-items: center; gap: 8px; }
+.row-label { font-size: 12px; color: var(--color-text-muted); font-weight: 600; }
 .filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
 .filter-btn {
   border: none; background: transparent; padding: 5px 10px; border-radius: 6px;
@@ -158,7 +155,6 @@ function toggleCreatedDatePreset(preset) {
   display: flex; align-items: center; gap: 3px;
 }
 .filter-btn.active { background: var(--color-surface); color: var(--color-text); font-weight: 600; box-shadow: var(--shadow-1); }
-.filter-divider { width: 1px; height: 20px; background: var(--color-border); }
 
 .assignee-picker { position: relative; }
 .dropdown-trigger {
