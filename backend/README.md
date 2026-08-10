@@ -208,3 +208,63 @@ Logout:
 ```bash
 http --session=todo POST :5000/api/auth/logout X-CSRF-Token:<csrf-token>
 ```
+
+## PermissionService mirror (Промпт 12)
+
+Backend теперь содержит `app/services/permission_service.py` — зеркальное
+продолжение frontend `src/services/PermissionService.js`. Идея та же:
+frontend-проверки остаются UX-слоем, но реальным источником истины для
+авторизации становится backend.
+
+### Mapping правил
+
+| Frontend PermissionService rule | Backend implementation |
+| --- | --- |
+| `_isGlobalAdmin(userId)` -> `user.globalRole === 'admin'` даёт полный bypass | `PermissionService.is_global_admin(user_id)` проверяет `UserORM.global_role == 'admin'` и используется в начале всех проверок |
+| `getRole(listId, userId)` читает роль пользователя в списке | `PermissionService.get_role(list_id, user_id)` читает `ListMembershipORM.role` |
+| `canViewList` разрешает доступ, если у пользователя есть любая list-role | `can_view_list` возвращает `True`, если есть membership, либо если пользователь global admin |
+| `canCreateTask` разрешает только `owner/editor` | `can_create_task` использует тот же набор ролей `owner/editor` |
+| `canEditTask` для задач в списке: `owner/editor`, либо `assignee` только своей задачи | `can_edit_task(task, user_id)` воспроизводит ровно это правило |
+| `canEditTask` для задач без списка: только `createdBy` или `assigneeId` | `can_edit_task` для `task.list_id is None` использует тот же fallback |
+| `canAssign` разрешает `owner/editor` | `can_assign` использует тот же набор ролей |
+| `canManageMembers` разрешает только `owner` | `can_manage_members` использует только роль `owner` |
+| `canDeleteList` разрешает только `owner` | `can_delete_list` использует только роль `owner` |
+| `canDeleteTask`: global admin, либо создатель, либо `owner/editor` списка | `can_delete_task(task, user_id)` воспроизводит то же поведение |
+| `getAccessibleListIds(userId)` возвращает membership-based набор list ids | `get_accessible_list_ids(user_id)` возвращает list ids из `ListMembershipORM`; для global admin — все известные list ids |
+| `isTaskVisible(task, { role, userId, isGlobalAdmin })` скрывает от `assignee` чужие задачи, если он не watcher | `is_task_visible(task, role=..., user_id=..., is_global_admin=...)` реализует то же правило |
+
+### Route guards
+
+Добавлены helper-декораторы:
+
+```python
+from app.services.permission_service import require_list_permission, require_task_permission
+
+@require_list_permission("can_manage_members")
+def add_list_member(list_id):
+    ...
+
+@require_task_permission("can_edit_task")
+def update_task(task_id):
+    ...
+```
+
+На mutating-endpoints эти guard'ы возвращают стабильный JSON 403:
+
+```json
+{ "error": "permission_denied", "message": "Недостаточно прав ..." }
+```
+
+Именно такой ответ backend должен отдавать дальше, чтобы frontend мог
+превращать его в `PermissionDeniedError` и корректно откатывать optimistic UI.
+
+### Фильтрация GET-ответов
+
+При реализации реальных `GET /api/lists`, `GET /api/tasks` и других read-endpoints
+следующий шаг должен использовать этот же сервис:
+
+- списки — фильтровать через `permission_service.get_accessible_list_ids(user_id)`;
+- задачи — для каждой задачи вычислять роль пользователя в её списке и затем
+  пропускать через `permission_service.is_task_visible(...)`;
+- задачи без списка (`list_id = null`) не должны утекать чужому пользователю,
+  если отдельно не будет введено правило для приватных задач-сирот.
