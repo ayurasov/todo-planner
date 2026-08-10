@@ -21,9 +21,24 @@ const STATUS_OPTIONS = [
   { value: 'done', label: 'Выполнено' },
 ]
 
-const DATE_PRESETS = [
+// Порядок важен: сначала "просрочено" и "нет срока" — крайние случаи,
+// требующие внимания в первую очередь, затем хронология по сроку: сегодня, завтра,
+// 7 дней, месяц.
+const DUE_DATE_PRESETS = [
+  { value: 'overdue', label: 'Просрочено' },
+  { value: 'no_due', label: 'Нет срока' },
   { value: 'today', label: 'Сегодня' },
+  { value: 'tomorrow', label: 'Завтра' },
   { value: 'week', label: '7 дней' },
+  { value: 'month', label: 'Месяц' },
+]
+
+// Второй набор быстрых фильтров — по дате создания задачи (createdAt), независимо
+// от фильтра по сроку — оба измерения могут быть активны одновременно.
+const CREATED_DATE_PRESETS = [
+  { value: 'today', label: 'Сегодня' },
+  { value: 'yesterday', label: 'Вчера' },
+  { value: 'week', label: 'Неделя' },
   { value: 'month', label: 'Месяц' },
 ]
 
@@ -51,10 +66,16 @@ function toggleAssignee(userId) {
   if (filtersStore.assigneeIds.length) forceBubbleMode()
 }
 
-function toggleDatePreset(preset) {
-  if (filtersStore.datePreset === preset) filtersStore.setCustomDateRange(null, null)
-  else filtersStore.setDatePreset(preset)
-  if (filtersStore.datePreset) forceBubbleMode()
+function toggleDueDatePreset(preset) {
+  if (filtersStore.dueDatePreset === preset) filtersStore.setCustomDateRange(null, null)
+  else filtersStore.setDueDatePreset(preset)
+  if (filtersStore.dueDatePreset) forceBubbleMode()
+}
+
+function toggleCreatedDatePreset(preset) {
+  if (filtersStore.createdDatePreset === preset) filtersStore.resetCreatedDate()
+  else filtersStore.setCreatedDatePreset(preset)
+  if (filtersStore.createdDatePreset) forceBubbleMode()
 }
 </script>
 
@@ -90,17 +111,28 @@ function toggleDatePreset(preset) {
 
       <div class="filter-divider" />
 
-      <div class="filter-group" role="group" aria-label="Диапазон дат">
+      <div class="filter-group" role="group" aria-label="Срок">
         <button
-          v-for="p in DATE_PRESETS" :key="p.value"
-          class="filter-btn" :class="{ active: filtersStore.datePreset === p.value }"
-          @click="toggleDatePreset(p.value)"
+          v-for="p in DUE_DATE_PRESETS" :key="p.value"
+          class="filter-btn" :class="{ active: filtersStore.dueDatePreset === p.value }"
+          @click="toggleDueDatePreset(p.value)"
         >{{ p.label }}</button>
       </div>
 
       <button v-if="filtersStore.isActive" class="btn btn-ghost btn-sm reset-btn" @click="filtersStore.resetAll(); assigneePickerOpen = false">
         Сбросить все
       </button>
+    </div>
+
+    <div class="row row-filters row-created-filters">
+      <span class="row-label">Создано:</span>
+      <div class="filter-group" role="group" aria-label="Дата создания">
+        <button
+          v-for="p in CREATED_DATE_PRESETS" :key="p.value"
+          class="filter-btn" :class="{ active: filtersStore.createdDatePreset === p.value }"
+          @click="toggleCreatedDatePreset(p.value)"
+        >{{ p.label }}</button>
+      </div>
     </div>
   </div>
 </template>
@@ -112,10 +144,12 @@ function toggleDatePreset(preset) {
 }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 /* Вторая строка выровнена по левому краю с первым элементом верхней строки
-   (блок «Группировка/Пузырьки»), поскольку quick-toolbar и filter-group используют
+   (блок «Groupировка/Пузырьки»), поскольку quick-toolbar и filter-group используют
    одинаковый внешний padding у карточки. */
 .row-toolbar { padding: 0 2px; }
 .row-filters { padding: 0 2px; }
+.row-created-filters { padding-top: 4px; border-top: 1px dashed var(--color-border); }
+.row-label { font-size: 12px; color: var(--color-text-muted); font-weight: 600; }
 .embedded-toolbar { flex: 1 1 auto; min-width: 100%; }
 .filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
 .filter-btn {
