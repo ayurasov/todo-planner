@@ -3,6 +3,7 @@ import { onMounted, computed, ref } from 'vue'
 import { useHistoryStore } from '../stores/historyStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
+import { useUiStore } from '../stores/uiStore'
 import { formatDateTime } from '../utils/formatters'
 import { PRIORITY_LABEL } from '../domain/entities/enums'
 import ActivityChart from '../components/charts/ActivityChart.vue'
@@ -11,6 +12,7 @@ import AppIcon from '../components/common/AppIcon.vue'
 const historyStore = useHistoryStore()
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
+const uiStore = useUiStore()
 
 onMounted(async () => {
   if (!usersStore.loaded) await usersStore.load()
@@ -22,6 +24,16 @@ const filterActor = ref('')
 const filterType = ref('')
 
 const taskTitle = (taskId) => tasksStore.byId(taskId)?.title || taskId
+
+// Задачи в приложении открываются глобальной модалкой (App.vue слушает
+// uiStore.openTaskId), а не отдельным маршрутом. Ссылка на "/lists/<listId>"
+// вела в неправильное место, а для задач без listId (например, привязанных
+// только к встрече) превращалась в /lists/undefined и переход не срабатывал
+// вовсе. Открываем задачу так же, как это делает TaskListPanel/TaskRow.
+function openTaskDetail(taskId) {
+  if (!tasksStore.byId(taskId)) return
+  uiStore.openTask(taskId)
+}
 
 const HISTORY_LABEL = {
   created: 'создал(а) задачу', field_changed: 'изменил(а)', commented: 'оставил(а) комментарий',
@@ -85,7 +97,7 @@ const actorOptions = computed(() => {
           {{ HISTORY_LABEL[entry.type] || entry.type }}
           <template v-if="entry.type === 'field_changed'">{{ FIELD_LABEL[entry.field] || entry.field }}</template>
         </span>
-        <router-link :to="`/lists/${tasksStore.byId(entry.taskId)?.listId}`" class="task-link">«{{ taskTitle(entry.taskId) }}»</router-link>
+        <button type="button" class="task-link" @click="openTaskDetail(entry.taskId)">«{{ taskTitle(entry.taskId) }}»</button>
         <span class="log-time">{{ formatDateTime(entry.timestamp) }}</span>
       </div>
       <div v-if="entry.type === 'field_changed' || entry.type === 'assignee_changed' || entry.type === 'rescheduled'" class="log-diff">
@@ -110,7 +122,10 @@ const actorOptions = computed(() => {
 .log-row { padding: 10px 14px; border-bottom: 1px solid var(--color-border); font-size: 13px; }
 .log-main { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
 .actor { font-weight: 600; }
-.task-link { color: var(--color-primary-dark); text-decoration: none; }
+.task-link {
+  color: var(--color-primary-dark); text-decoration: none; background: none; border: none;
+  padding: 0; font: inherit; cursor: pointer;
+}
 .task-link:hover { text-decoration: underline; }
 .log-time { margin-left: auto; color: var(--color-text-muted); font-size: 11.5px; }
 .log-diff { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--color-text-muted); padding-left: 2px; }
