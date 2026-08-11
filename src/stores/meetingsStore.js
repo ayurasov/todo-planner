@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { meetingRepository } from '../repositories'
 import { useUsersStore } from './usersStore'
+import { useTasksStore } from './tasksStore'
 import { meetingOccurrenceService } from '../services/MeetingOccurrenceService'
 
 export const useMeetingsStore = defineStore('meetings', {
@@ -79,6 +80,37 @@ export const useMeetingsStore = defineStore('meetings', {
       const idx = this.meetings.findIndex((m) => m.id === id)
       if (idx !== -1) this.meetings[idx] = updated
       return updated
+    },
+
+    /**
+     * Безопасное обновление регулярной серии встречи: используется вместо
+     * прямого updateMeeting(id, { ...patch, occurrences: [] }) при правке
+     * состава/времени/регулярности. Прошлые подвстречи и будущие подвстречи
+     * с уже существующими задачами сохраняют свои id (и, соответственно,
+     * привязку задач через occurrence_id) — пересобираются только "свободные"
+     * будущие слоты по новому правилу повторения. См. MeetingOccurrenceService
+     * .buildMergedOccurrences и баг "исчезают задачи подвстречи при правке серии".
+     */
+    async updateMeetingSeries(id, patch) {
+      const meeting = this.meetingById(id)
+      if (!meeting) return null
+      const tasksStore = useTasksStore()
+      const hasTasks = (occurrenceId) => tasksStore.tasks.some((t) => t.occurrenceId === occurrenceId)
+      const nextRecurrence = 'recurrence' in patch ? patch.recurrence : meeting.recurrence
+      const nextDate = 'date' in patch ? patch.date : meeting.date
+
+      let occurrences
+      if (!nextRecurrence) {
+        occurrences = []
+      } else {
+        occurrences = meetingOccurrenceService.buildMergedOccurrences(meeting, {
+          date: nextDate,
+          recurrence: nextRecurrence,
+          hasTasks,
+        })
+      }
+
+      return this.updateMeeting(id, { ...patch, occurrences })
     },
 
     /**
