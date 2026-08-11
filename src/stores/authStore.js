@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { apiClient, setCsrfToken } from '../repositories/http/apiClient'
+import { apiClient, setCsrfToken, ApiError, AuthRequiredError } from '../repositories/http/apiClient'
 import { apiMode } from '../repositories'
 
 /**
@@ -10,6 +10,9 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     checked: false,
     authenticated: false,
+    // Промпт 24: отличаем "нет сессии (401)" от "backend недоступен" (сетевая ошибка/5xx),
+    // чтобы LoginView/App.vue могли показать понятную ошибку вместо тихого редиректа на /login.
+    networkError: false,
   }),
   actions: {
     /**
@@ -18,6 +21,8 @@ export const useAuthStore = defineStore('auth', {
      * 2) дергает /api/auth/me, чтобы узнать, есть ли активная сессия.
      * При 401 authenticated остаётся false -- вызывающий код (main.js/router) должен
      * показать LoginView и не монтировать authenticated app-shell.
+     * При сетевой ошибке (backend недоступен) authenticated тоже false, но networkError
+     * становится true -- LoginView должен отличать это от простого "неверный пароль".
      */
     async bootstrap() {
       if (apiMode !== 'http') {
@@ -26,11 +31,14 @@ export const useAuthStore = defineStore('auth', {
         return true
       }
 
+      this.networkError = false
+
       try {
         const csrf = await apiClient.get('/auth/csrf-token')
         setCsrfToken(csrf?.csrfToken || csrf?.token)
-      } catch {
-        // csrf-token эндпоинт мог быть недоступен до авторизации -- продолжаем, /auth/me всё равно вернёт 401 если нет сессии.
+      } catch (err) {
+        if (isNetworkFailure(err)) this.networkError = true
+        // csrf-token эндпоинт мог быть недоступен до авторизации -- продолжаем, /auth/me всё равно вернёт 401/сеть-ошибку если что-то не так.
       }
 
       try {
@@ -38,6 +46,7 @@ export const useAuthStore = defineStore('auth', {
         this.authenticated = true
       } catch (err) {
         this.authenticated = false
+        if (isNetworkFailure(err)) this.networkError = true
       } finally {
         this.checked = true
       }
@@ -45,8 +54,14 @@ export const useAuthStore = defineStore('auth', {
     },
 
     async login(login, password) {
-      await apiClient.post('/auth/login', { login, password })
-      this.authenticated = true
+      this.networkError = false
+      try {
+        await apiClient.post('/auth/login', { login, password })
+        this.authenticated = true
+      } catch (err) {
+        if (isNetworkFailure(err)) this.networkError = true
+        throw err
+      }
     },
 
     async logout() {
@@ -58,3 +73,13 @@ export const useAuthStore = defineStore('auth', {
     },
   },
 })
+
+/**
+ * true для "backend недоступен" (fetch reject / TypeError сети, либо 5xx), false для
+ * ожидаемых доменных ошибок доступа (401/403), которые обрабатываются отдельно.
+ */
+function isNetworkFailure(err) {
+  if (err instanceof AuthRequiredError) return false
+  if (err instanceof ApiError) return typeof err.status === 'number' && err.status >= 500
+  return true
+}

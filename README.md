@@ -1,7 +1,8 @@
-# Todo Planner — Frontend-only MVP v1
+# Todo Planner — v2.0.0
 
 [![Frontend CI](https://github.com/ayurasov/todo-planner/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/ayurasov/todo-planner/actions/workflows/frontend-ci.yml)
 [![Backend CI](https://github.com/ayurasov/todo-planner/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/ayurasov/todo-planner/actions/workflows/backend-ci.yml)
+[![E2E smoke](https://github.com/ayurasov/todo-planner/actions/workflows/e2e.yml/badge.svg)](https://github.com/ayurasov/todo-planner/actions/workflows/e2e.yml)
 
 Веб-планировщик задач на Vue 3 + Vite + Pinia + Vue Router + ECharts.
 Реализован по утверждённой архитектуре (repository/adapter pattern, готовый к переходу на Flask+SQLite v2 без переписывания UI).
@@ -397,11 +398,24 @@ npm run dev
 нужный набор репозиториев; все stores и компоненты обращаются только к экспортам из `src/repositories/index.js`
 и не знают, какой режим активен.
 
-## Smoke-checklist (ручная проверка)
+## Smoke-checklist (ручная проверка) + автоматизация (Playwright)
 
-Выполнять после любого значимого изменения в auth/permissions/repositories слоях, в режиме `VITE_API_MODE=http`
-(если не указано иное). Для шагов 8-9 предварительно запустите `python seed_demo_data.py` (см. выше) — он
-создаёт пользователей с ролями Owner/Editor, необходимыми для этих проверок.
+Шаги 1-7 ниже теперь **автоматизированы** Playwright E2E-тестами (`e2e/*.spec.js`, Промпт 24) и гоняются
+против docker-compose стека (Промпт 22) в CI (`.github/workflows/e2e.yml`). Ручной прогон остаётся нужен
+для шагов 8-9 (требуют `seed_demo_data.py` с недетерминированными паролями) и как fallback/дебаг.
+
+Запуск автотестов — см. `e2e/README.md`:
+
+```bash
+docker compose up -d --build
+docker compose exec backend python seed_e2e_data.py   # детерминированные e2e-admin/e2e-owner/e2e-viewer
+npm install && npx playwright install --with-deps chromium
+npm run e2e
+```
+
+Выполнять ручную версию после любого значимого изменения в auth/permissions/repositories слоях, в режиме
+`VITE_API_MODE=http` (если не указано иное). Для шагов 8-9 предварительно запустите `python seed_demo_data.py`
+(см. выше) — он создаёт пользователей с ролями Owner/Editor, необходимыми для этих проверок.
 
 1. **Login/logout** — открыть `/`, убедиться в редиректе на `/login`; ввести логин/пароль из логов backend →
    попасть на `/my-tasks`; выполнить logout (кнопка в `AppTopBar`/`SettingsView`) → редирект обратно на `/login`,
@@ -411,6 +425,9 @@ npm run dev
    (`POST/PATCH/DELETE`) содержат заголовок `X-CSRF-Token`.
 3. **401 → экран логина** — вручную удалить cookie сессии (или дождаться истечения) и обновить страницу /
    выполнить любое действие → приложение должно показать `LoginView`, а не белый экран/необработанную ошибку.
+   Отдельно: при **недоступности backend** (сетевая ошибка/5xx, не 401/403) приложение показывает полноэкранный
+   экран «Не удаётся связаться с сервером» с кнопкой «Повторить» (`App.vue`/`authStore.networkError`), а не
+   белый экран или бесконечный спиннер — покрыто `e2e/network-failure.spec.js` (Промпт 24).
 4. **403 → откат optimistic update + toast** — залогиниться пользователем без прав на список/задачу (например,
    `Viewer` в чужом списке), попытаться изменить статус задачи → изменение в UI должно откатиться к исходному
    значению, а в списке уведомлений должен появиться toast «Недостаточно прав».
@@ -436,8 +453,25 @@ npm run dev
 
 ## Известные ограничения
 
+Актуализировано по итогам Промптов 15-24 (v2.0.0).
+
 - **Нет real-time sync между несколькими клиентами.** Если два пользователя одновременно открывают одну задачу
   или список, изменения одного не долетают до другого без ручного обновления страницы — WebSocket/SSE слоя нет.
+  *(Из Roadmap v1 — до сих пор не реализовано, остаётся в Roadmap ниже.)*
+- **Нет background jobs / очереди.** Генерация повторяющихся задач и сканирование due-soon/overdue выполняются
+  клиентски (`tasksStore.scanDueNotifications`) при каждой загрузке приложения, а не сервером по расписанию —
+  Celery/RQ не подключены. *(Из Roadmap v1 — до сих пор не реализовано, остаётся в Roadmap ниже.)*
+- **`MeetingSummaryParser` — не LLM, а regex-эвристика.** Разбор резюме встречи в задачи (`MeetingDetailView`)
+  работает по фиксированным шаблонам текста, а не через языковую модель; контракт `SummaryParser` спроектирован
+  как заменяемая абстракция, но реальная LLM-интеграция не подключена. *(Из Roadmap v1 — до сих пор не
+  реализовано, остаётся в Roadmap ниже.)*
+- **Нет отдельного audit log.** Существует только `History` изменений задач (`HistoryService` +
+  `HistoryRepository`) — изменения списков, участников, ролей и попыток 403 в неизменяемый журнал не пишутся.
+  *(Из Roadmap v1 — до сих пор не реализовано, остаётся в Roadmap ниже.)*
+- **E2E-тесты покрывают только базовый smoke.** Playwright (`e2e/*.spec.js`, Промпт 24) автоматизирует шаги
+  1-7 smoke-checklist (login/logout, 401, 403+toast, Viewer-ограничения, admin-доступ, dual-mode) и
+  silent-failure сценарий, но не шаги 8-9 (Editor/Owner-управление участниками, требуют `seed_demo_data.py` с
+  недетерминированными паролями) — они остаются ручными.
 - **Возможны повторные полные загрузки после мутаций.** Stores (`tasksStore`, `listsStore` и др.) не полностью
   нормализованы (нет единого entity-cache с автоматической инвалидацией по связям), поэтому отдельные операции
   дозагружают смежные данные (например, `checklistByTask`/`commentsByTask`) отдельными запросами вместо одного
@@ -454,17 +488,27 @@ npm run dev
 
 ## Roadmap: что дальше после v2
 
-- **Webhooks / real-time sync** — WebSocket или SSE канал для обновления задач/списков у всех подключённых
-  клиентов без polling.
-- **Background jobs** — очередь (Celery/RQ) для генерации повторяющихся задач по расписанию, напоминаний
-  due-soon/overdue и других отложенных операций вместо клиентского `scanDueNotifications`.
-- **Import summary via LLM** — замена regex-эвристики `MeetingSummaryParser` на реальный LLM-based парсер
-  резюме встреч в задачи (контракт `SummaryParser` уже спроектирован как заменяемая абстракция).
-- **Audit logging** — отдельный неизменяемый журнал действий (кто/что/когда), шире, чем текущая `History`
-  задач, — включая изменения списков, участников, ролей и попытки 403.
-- **E2E tests** — автоматизированные сценарии (Playwright/Cypress) для smoke-checklist выше, чтобы не проверять
-  login/logout/403/401/permissions вручную перед каждым релизом.
-- **Role-matrix integration tests** — `backend/tests/test_role_matrix.py` (Промпт 18) уже покрывает матрицу
-  ролей на уровне HTTP API; следующий шаг — аналогичные frontend-тесты (Vitest) на `PermissionService.js` и
-  `useTaskPermissions`/`useListPermissions`, чтобы фиксировать паритет с backend автоматически, а не только
-  вручную по smoke-checklist.
+Обновлено по итогам Промптов 15-24 — отмечено, что уже сделано, что остаётся.
+
+- **Webhooks / real-time sync** — ❌ не реализовано. WebSocket или SSE канал для обновления задач/списков у
+  всех подключённых клиентов без polling.
+- **Background jobs** — ❌ не реализовано. Очередь (Celery/RQ) для генерации повторяющихся задач по расписанию,
+  напоминаний due-soon/overdue и других отложенных операций вместо клиентского `scanDueNotifications`.
+- **Import summary via LLM** — ❌ не реализовано. Замена regex-эвристики `MeetingSummaryParser` на реальный
+  LLM-based парсер резюме встреч в задачи (контракт `SummaryParser` уже спроектирован как заменяемая
+  абстракция).
+- **Audit logging** — ❌ не реализовано. Отдельный неизменяемый журнал действий (кто/что/когда), шире, чем
+  текущая `History` задач, — включая изменения списков, участников, ролей и попытки 403.
+- **E2E tests** — ✅ реализовано частично (Промпт 24). Playwright-сценарии (`e2e/*.spec.js`) автоматизируют
+  шаги 1-7 smoke-checklist и silent-failure сценарий, гоняются в CI (`.github/workflows/e2e.yml`) против
+  docker-compose стека. Осталось: шаги 8-9 (Editor/Owner-управление участниками) и расширение покрытия
+  (создание/удаление задач, чек-листы, комментарии).
+- **Role-matrix integration tests** — ✅ реализовано на backend (`backend/tests/test_role_matrix.py`, Промпт 18)
+  и на frontend (`src/services/PermissionService.js` покрыт Vitest-тестами, зеркалирующими ту же матрицу) —
+  паритет между frontend и backend фиксируется автоматически, а не только вручную по smoke-checklist.
+- **Production security hardening** — ✅ реализовано (Промпт 23): обязательный `SECRET_KEY`, secure/httpOnly/
+  sameSite cookies, rate limiting на login, structured logging, `ProxyFix`, HTTPS через Caddy.
+- **PostgreSQL + backup** — ✅ реализовано (Промпт 22-23): `docker-compose.yml` с Postgres, Alembic-миграциями
+  и ежедневным `pg_dump`-backup sidecar.
+- **CI/CD** — ✅ реализовано (Промпт 21, дополнено Промптом 24): lint+test+build для frontend/backend на каждый
+  push/PR, плюс отдельный E2E workflow против docker-compose стека.

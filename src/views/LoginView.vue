@@ -14,16 +14,25 @@ const router = useRouter()
 const login = ref('')
 const password = ref('')
 const error = ref('')
+const isNetworkError = ref(false)
 const loading = ref(false)
 
 async function submit() {
   error.value = ''
+  isNetworkError.value = false
   loading.value = true
   try {
     await authStore.login(login.value, password.value)
     router.push('/my-tasks')
   } catch (err) {
-    error.value = err.payload?.message || 'Неверный логин или пароль'
+    // Промпт 24: сетевая недоступность backend -- отдельное, понятное сообщение,
+    // а не общее «неверный логин или пароль», чтобы не вводить в заблуждение.
+    if (authStore.networkError) {
+      isNetworkError.value = true
+      error.value = 'Не удаётся связаться с сервером. Проверьте подключение и попробуйте снова.'
+    } else {
+      error.value = err.payload?.message || 'Неверный логин или пароль'
+    }
   } finally {
     loading.value = false
   }
@@ -42,7 +51,7 @@ async function submit() {
         <span>Пароль</span>
         <input v-model="password" type="password" autocomplete="current-password" required />
       </label>
-      <p v-if="error" class="login-error">{{ error }}</p>
+      <p v-if="error" class="login-error" :class="{ 'login-error--network': isNetworkError }">{{ error }}</p>
       <button class="btn btn-sm" type="submit" :disabled="loading">{{ loading ? 'Вход...' : 'Войти' }}</button>
     </form>
   </div>
@@ -55,4 +64,5 @@ async function submit() {
 .login-field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .login-field input { padding: 7px 9px; border: 1px solid var(--color-border, #d8dbe3); border-radius: 6px; font-size: 13px; }
 .login-error { color: var(--color-danger, #d64545); font-size: 12.5px; margin: 0; }
+.login-error--network { color: var(--color-warning, #b8860b); }
 </style>
