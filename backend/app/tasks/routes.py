@@ -2,7 +2,7 @@
 Реализация blueprint 'tasks' поверх TaskRepository/ChecklistItemRepository/
 NoteRepository/CommentRepository (app.repositories) и HistoryService (app.services).
 
-Доступконтроль:
+Достуиконтроль:
   - GET /tasks -- видимые текущему пользователю задачи (server-side через
     TaskRepository.get_visible_for_user, а не "всё и фильтр на фронте").
   - POST /tasks -- если есть listId, требует can_create_task; без listId --
@@ -16,6 +16,11 @@ NoteRepository/CommentRepository (app.repositories) и HistoryService (app.servi
     list.settings.allowComments != false (правило из tasksStore.addComment).
   - GET /tasks/:id/history -- через HistoryService.get_task_timeline (виден любому,
     кто видит задачу).
+
+Рекуррентные задачи: когда update_task переводит задачу в status=done и у неё
+есть recurrence_template_id, вызывается RecurrenceRepository.on_task_completed --
+порт `src/services/RecurrenceService.js.onTaskCompleted` на backend, выполняется здесь,
+а не только на фронте -- см. backend/README.md, раздел "Client/server split".
 """
 
 import json
@@ -26,6 +31,7 @@ from app.auth.security import current_user_id
 from app.mappers import domain_to_dto
 from app.models import ListORM
 from app.repositories import ChecklistItemRepository, CommentRepository, NoteRepository, TaskRepository
+from app.repositories.recurrence_repository import RecurrenceRepository
 from app.services.history_service import history_service
 from app.services.permission_service import (
     permission_denied_response,
@@ -38,6 +44,7 @@ task_repository = TaskRepository()
 checklist_repository = ChecklistItemRepository()
 note_repository = NoteRepository()
 comment_repository = CommentRepository()
+recurrence_repository = RecurrenceRepository()
 
 
 def _not_found(name="задача"):
@@ -174,6 +181,10 @@ def update_task(task_id, **kwargs):
 
     if is_completed_now and not was_completed:
         history_service.record_completed(task_id, user_id)
+        # Порт RecurrenceService.js.onTaskCompleted -- генерация следующего инстанса
+        # для completion_based-шаблона выполняется на backend всегда (а не только на фронте),
+        # чтобы работать одинаково для всех клиентов.
+        recurrence_repository.on_task_completed(updated, task_repository=task_repository)
     elif is_reopened_now:
         history_service.record_reopened(task_id, user_id)
 
