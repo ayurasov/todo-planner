@@ -10,8 +10,9 @@
   префиксом на уровне blueprints, а не здесь.
 
 Промпт 23 (security review): production-профиль больше не допускает дефолтный
-секрет -- отсутствие SECRET_KEY в окружении валит старт приложения с явной
-ошибкой (fail-fast), а не тихо работает на предсказуемом значении.
+секрет -- отсутствие SECRET_KEY или известный placeholder в окружении валит
+старт приложения с явной ошибкой (fail-fast), а не тихо работает на
+предсказуемом значении.
 """
 
 import os
@@ -20,6 +21,14 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DEFAULT_SQLITE_URI = f"sqlite:///{os.path.join(BASE_DIR, 'todo_planner.db')}"
 
 _INSECURE_DEV_SECRET_KEY = "dev-secret-key"
+# Плейсхолдеры, встретившиеся в .env.example (корень/backend) и docker-compose.yml --
+# если кто-то скопирует .env без редактирования, production всё равно должен
+# упасть с явной ошибкой, а не тихо заработать с предсказуемым секретом.
+_KNOWN_INSECURE_SECRET_KEYS = {
+    _INSECURE_DEV_SECRET_KEY,
+    "change-me-in-production",
+    "",
+}
 
 
 class BaseConfig:
@@ -107,15 +116,16 @@ class ProductionConfig(BaseConfig):
 
 
 def _require_production_secret_key():
-    """Fail-fast: в production запрещён дефолтный/пустой SECRET_KEY.
+    """Fail-fast: в production запрещён дефолтный/известный placeholder SECRET_KEY.
     Без этой проверки приложение тихо стартовало бы с предсказуемым секретом,
-    что ломает безопасность сессий и CSRF-токенов.
+    что ломает безопасность сессии и CSRF-токенов.
     """
 
     secret_key = os.environ.get("SECRET_KEY")
-    if not secret_key or secret_key == _INSECURE_DEV_SECRET_KEY:
+    if not secret_key or secret_key in _KNOWN_INSECURE_SECRET_KEYS:
         raise RuntimeError(
-            "SECRET_KEY не задан (или используется дефолтное insecure-значение). "
+            "SECRET_KEY не задан (или используется известный insecure-плейсхолдер, "
+            "например 'change-me-in-production'). "
             "Для FLASK_ENV=production обязательно установите переменную окружения "
             "SECRET_KEY на длинную случайную строку (например, "
             "`python -c 'import secrets; print(secrets.token_hex(32))'`) перед запуском."
