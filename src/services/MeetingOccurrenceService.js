@@ -119,6 +119,45 @@ export class MeetingOccurrenceService {
   }
 
   /**
+   * Пересчитывает occurrences серии при правках даты/времени/регулярности,
+   * НЕ трогая прошлые подвстречи (дата < now) и НЕ трогая будущие подвстречи,
+   * у которых уже есть задачи (проверяется через hasTasks(occurrenceId)) — иначе
+   * при пересборке серии их id менялся бы и задачи "отвязывались" бы от подвстречи
+   * (occurrence_id -> SET NULL на backend), пропадая из группировки по подвстречам,
+   * хотя формально оставались бы в общем списке задач и у исполнителей (см. баг
+   * "исчезают задачи при правке периодической встречи").
+   *
+   * Только "свободные" будущие слоты (без задач) пересобираются по новому правилу
+   * recurrence/новой дате начала серии — это и есть "править только будущее".
+   */
+  buildMergedOccurrences(meeting, { date, recurrence, hasTasks = () => false, now = new Date() } = {}) {
+    const effectiveRecurrence = recurrence !== undefined ? recurrence : meeting.recurrence
+    if (!effectiveRecurrence) return []
+    const seriesStart = date !== undefined ? date : meeting.date
+
+    const existing = this.normalizeOccurrences(meeting)
+    const kept = existing.filter((occ) => new Date(occ.date) < now || hasTasks(occ.id))
+
+    if (!kept.length) {
+      kept.push(createMeetingOccurrence({ meetingId: meeting.id, date: seriesStart }))
+    }
+    kept.sort((a, b) => new Date(a.date) - new Date(b.date))
+
+    const genThreshold = addDays(now, 1)
+    let guard = 0
+    while (guard < 200) {
+      guard += 1
+      const last = kept[kept.length - 1]
+      if (new Date(last.date) >= genThreshold) break
+      const next = nextOccurrenceDate(last.date, effectiveRecurrence, seriesStart)
+      kept.push(createMeetingOccurrence({ meetingId: meeting.id, date: next.toISOString() }))
+      if (next > genThreshold) break
+    }
+
+    return kept
+  }
+
+  /**
    * Исправляет уже сохранённые occurrences, у которых время суток равно 00:00,
    * хотя время исходной встречи (meeting.date) — не 00:00. Такие записи могли
    * появиться до фикса генератора или из старых версий localStorage-данных.

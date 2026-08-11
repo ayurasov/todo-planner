@@ -19,7 +19,10 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const showCreateForm = ref(false)
 const showArchived = ref(false)
-const draft = ref({ title: '', date: '', time: '', description: '', link: '', attendeeIds: [], color: '#4f7cff' })
+const draft = ref({
+  title: '', date: '', time: '', description: '', link: '', attendeeIds: [], color: '#4f7cff',
+  recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
+})
 
 const editingMeetingId = ref(null)
 const editDraft = ref({
@@ -91,8 +94,17 @@ function openCreateForm() {
     link: '',
     attendeeIds: [],
     color: '#4f7cff',
+    recurrenceEnabled: false,
+    recurrenceFreq: 'weekly',
+    recurrenceWeekdays: [],
   }
   showCreateForm.value = true
+}
+
+function toggleDraftWeekday(day) {
+  const idx = draft.value.recurrenceWeekdays.indexOf(day)
+  if (idx === -1) draft.value.recurrenceWeekdays.push(day)
+  else draft.value.recurrenceWeekdays.splice(idx, 1)
 }
 
 function toggleDraftAttendee(userId) {
@@ -104,6 +116,14 @@ function toggleDraftAttendee(userId) {
 async function submitCreate() {
   if (!draft.value.title.trim() || !draft.value.date) return
   const isoDate = new Date(`${draft.value.date}T${draft.value.time || '00:00'}`).toISOString()
+  const recurrence = draft.value.recurrenceEnabled
+    ? {
+        freq: draft.value.recurrenceFreq,
+        weekdays: ['weekly', 'biweekly'].includes(draft.value.recurrenceFreq)
+          ? [...draft.value.recurrenceWeekdays].sort((a, b) => a - b)
+          : [],
+      }
+    : null
   const meeting = await meetingsStore.createMeeting({
     title: draft.value.title.trim(),
     date: isoDate,
@@ -111,6 +131,7 @@ async function submitCreate() {
     link: draft.value.link.trim(),
     attendeeIds: [...draft.value.attendeeIds],
     color: draft.value.color,
+    recurrence,
   })
   showCreateForm.value = false
   router.push(`/meetings/${meeting.id}`)
@@ -164,7 +185,7 @@ async function saveEdit() {
           : [],
       }
     : null
-  await meetingsStore.updateMeeting(editingMeetingId.value, {
+  await meetingsStore.updateMeetingSeries(editingMeetingId.value, {
     title: editDraft.value.title.trim(),
     date: isoDate,
     description: editDraft.value.description,
@@ -290,6 +311,28 @@ function isRecurringMeeting(meeting) {
         <div class="field-group">
           <label>Ссылка на звонок (опционально)</label>
           <input v-model="draft.link" placeholder="https://meet.example.com/..." />
+        </div>
+        <div class="field-group recurrence-section">
+          <label>Тип встречи</label>
+          <div class="segmented-row">
+            <button class="segmented-btn" :class="{ active: !draft.recurrenceEnabled }" @click="draft.recurrenceEnabled = false">Разовая</button>
+            <button class="segmented-btn" :class="{ active: draft.recurrenceEnabled }" @click="draft.recurrenceEnabled = true">Регулярная</button>
+          </div>
+        </div>
+        <div v-if="draft.recurrenceEnabled" class="field-group recurrence-box">
+          <label>Периодичность</label>
+          <div class="segmented-row recurrence-type-row">
+            <button class="segmented-btn" :class="{ active: draft.recurrenceFreq === 'daily' }" @click="draft.recurrenceFreq = 'daily'">Каждый день</button>
+            <button class="segmented-btn" :class="{ active: draft.recurrenceFreq === 'weekly' }" @click="draft.recurrenceFreq = 'weekly'">раз в неделю</button>
+            <button class="segmented-btn" :class="{ active: draft.recurrenceFreq === 'biweekly' }" @click="draft.recurrenceFreq = 'biweekly'">раз в 2 недели</button>
+          </div>
+          <div v-if="draft.recurrenceFreq !== 'daily'" class="weekday-picker">
+            <button
+              v-for="day in WEEKDAY_OPTIONS" :key="day.value"
+              class="weekday-btn" :class="{ active: draft.recurrenceWeekdays.includes(day.value) }"
+              @click="toggleDraftWeekday(day.value)"
+            >{{ day.label }}</button>
+          </div>
         </div>
         <div class="field-group">
           <label>Описание (опционально)</label>

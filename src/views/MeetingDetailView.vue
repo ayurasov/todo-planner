@@ -235,8 +235,7 @@ async function saveEdit() {
           : [],
       }
     : null
-  const wasRecurring = !!meeting.value.recurrence?.freq
-  await meetingsStore.updateMeeting(props.id, {
+  await meetingsStore.updateMeetingSeries(props.id, {
     title: editDraft.value.title.trim(),
     date: isoDate,
     description: editDraft.value.description,
@@ -244,9 +243,7 @@ async function saveEdit() {
     attendeeIds: [...editDraft.value.attendeeIds],
     color: editDraft.value.color,
     recurrence,
-    occurrences: recurrence && (!wasRecurring || meeting.value.date !== isoDate) ? [] : undefined,
   })
-  if (recurrence) await meetingsStore.ensureOccurrences(props.id)
   editing.value = false
 }
 
@@ -309,6 +306,11 @@ function toggleArchived() {
       <div v-else class="series-alert-subtitle">По серии нет невыполненных задач</div>
 
       <div v-if="unfinishedGroupsByOccurrence.length" class="series-occ-list">
+        <p class="hint-text series-occ-hint">
+          Сводка невыполненных задач по всей серии (только статус "не выполнено"/"в работе").
+          Полный список задач каждой подвстречи, включая выполненные — в разделе
+          «Подвстречи серии» ниже; каждая строка сводки соответствует подвстрече с той же датой.
+        </p>
         <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
           <div class="series-occ-marker">
             <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
@@ -320,7 +322,7 @@ function toggleArchived() {
         </div>
       </div>
 
-      <h3 class="tasks-title occurrences-title">Подвстречи серии</h3>
+      <h3 class="tasks-title occurrences-title">Подвстречи серии (все подвстречи и все их задачи)</h3>
       <QuickFiltersBar :task-count="recurringVisibleTasks.length" :meeting-mode="false" />
       <div class="occurrence-list">
         <div v-for="group in occurrenceGroups" :key="group.occurrence.id" class="occurrence-card card">
