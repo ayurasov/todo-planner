@@ -52,6 +52,11 @@ class ListRepository:
             updated_at=now_iso(),
         )
         db.session.add(row)
+        # flush() гарантированно выполняет INSERT в "lists" до создания membership,
+        # независимо от того, как SQLAlchemy unit-of-work авто-упорядочивает объекты
+        # в одной транзакции -- защита от ForeignKeyViolation на list_memberships.list_id
+        # (наблюдалось после restart воркера с "грязной" сессией из-за прошлых ошибок).
+        db.session.flush()
         if owner_id:
             membership = ListMembershipORM(
                 id=new_id(), list_id=row.id, user_id=owner_id,

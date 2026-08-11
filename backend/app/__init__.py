@@ -103,6 +103,13 @@ def _configure_logging(app):
     @app.errorhandler(Exception)
     def _log_unhandled_exception(exc):  # noqa: WPS430
         app.logger.exception("Unhandled exception during request")
+        # Без rollback() сессия SQLAlchemy остаётся "грязной" после любой ошибки
+        # (IntegrityError, CSRFError и т.п.): невыполненные insert/update продолжают
+        # висеть в Session на этом gunicorn-воркере и портят транзакцию следующего,
+        # ни в чём не повинного запроса на том же воркере (например, INSERT списка
+        # после отклонённого CSRF-запроса). db.session.remove() откатывает и
+        # выбрасывает scoped session, гарантируя чистое состояние для следующего запроса.
+        db.session.remove()
         raise exc
 
 
