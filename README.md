@@ -6,6 +6,60 @@
 Веб-планировщик задач на Vue 3 + Vite + Pinia + Vue Router + ECharts.
 Реализован по утверждённой архитектуре (repository/adapter pattern, готовый к переходу на Flask+SQLite v2 без переписывания UI).
 
+## Deployment
+
+Основной способ запуска на сервере — через Docker Compose:
+
+```bash
+cp .env.example .env
+# отредактируйте SECRET_KEY, POSTGRES_PASSWORD, DATABASE_URL, FRONTEND_ORIGIN
+
+docker compose up -d --build
+```
+
+Что поднимется:
+
+- `db` — `postgres:16-alpine` с volume `db_data`.
+- `backend` — Flask/Gunicorn контейнер из `backend/Dockerfile`; перед стартом приложения
+  entrypoint ждёт доступность Postgres и выполняет `alembic upgrade head`.
+- `frontend` — статическая сборка Vite в nginx; nginx отдаёт SPA и проксирует `/api/*`
+  в backend (`http://backend:5000/api/*`), поэтому снаружи приложение доступно на
+  одном origin, обычно `http://<server>`.
+
+После запуска:
+
+- фронтенд доступен на `http://localhost` (или на IP/домене сервера, если порт 80 открыт наружу);
+- backend healthcheck — `http://localhost/api/health` через nginx reverse-proxy;
+- прямой backend внутри compose-сети слушает `http://backend:5000`.
+
+### Что внутри контейнеров
+
+- `backend/Dockerfile` — multi-stage образ на `python:3.12-slim`, production WSGI-сервер `gunicorn`,
+  healthcheck на `/api/health`.
+- `Dockerfile` (корень проекта) — multi-stage сборка фронтенда: `npm ci` + `npm run build`,
+  финальный runtime-образ — `nginx:alpine`.
+- `docker-compose.yml` — три сервиса (`db`, `backend`, `frontend`) с healthchecks и порядком старта:
+  `backend` зависит от healthy `db`, `frontend` зависит от healthy `backend`.
+
+### Продовые переменные
+
+См. корневой `.env.example`:
+
+- `DATABASE_URL` — строка подключения к Postgres для backend;
+- `SECRET_KEY` — секрет Flask-сессий/CSRF;
+- `FRONTEND_ORIGIN` — публичный origin фронтенда (например, `https://todo.example.com`);
+- `VITE_API_MODE=http` — фронтенд собирается в HTTP-режиме;
+- `VITE_API_BASE_URL=/api` — фронтенд обращается к backend через same-origin nginx proxy.
+
+### Обновление после новой версии
+
+```bash
+docker compose up -d --build
+```
+
+Compose пересоберёт frontend/backend образы, backend снова применит `alembic upgrade head`,
+после чего gunicorn поднимет обновлённое приложение.
+
 ## Запуск
 
 ```bash
