@@ -7,10 +7,8 @@ PATCH /users/:id доступен только global admin (PermissionService.i
 """
 
 from flask import jsonify, request
-from pydantic import ValidationError
 
 from app.auth.security import current_user_id
-from app.dto import UserResponseDTO
 from app.mappers import domain_to_dto
 from app.repositories import UserRepository
 from app.services.permission_service import permission_denied_response, permission_service
@@ -18,13 +16,16 @@ from app.users import users_bp
 
 user_repository = UserRepository()
 
+ALLOWED_UPDATE_FIELDS = {"globalRole", "isActive"}
+ALLOWED_GLOBAL_ROLES = {"admin", "user"}
+
 
 def _not_found(name="user"):
     return jsonify({"error": "not_found", "message": f"{name} не найден"}), 404
 
 
-def _validation_error(exc: ValidationError):
-    return jsonify({"error": "validation_error", "details": exc.errors()}), 400
+def _validation_error(details):
+    return jsonify({"error": "validation_error", "details": details}), 400
 
 
 @users_bp.route("", methods=["GET"])
@@ -47,22 +48,20 @@ def update_user(user_id, **kwargs):
         return permission_denied_response("Сменять пользователя может только администратор")
 
     payload = request.get_json(silent=True) or {}
-    try:
-        # частичный PATCH: читаем только те поля, которые реально пришли в запросе
-        allowed = {"globalRole", "isActive"}
-        unknown = set(payload) - allowed
-        if unknown:
-            raise ValidationError.from_exception_data(
-                "UserUpdate", [{"type": "extra_forbidden", "loc": (k,), "input": payload[k]} for k in unknown]
-            )
-    except ValidationError as exc:
-        return _validation_error(exc)
 
-    updated = user_repository.update(
-        user_id,
-        global_role=payload.get("globalRole"),
-        is_active=payload.get("isActive"),
-    )
+    unknown = set(payload) - ALLOWED_UPDATE_FIELDS
+    if unknown:
+        return _validation_error([{"loc": [k], "msg": "unknown field"} for k in unknown])
+
+    global_role = payload.get("globalRole")
+    if global_role is not None and global_role not in ALLOWED_GLOBAL_ROLES:
+        return _validation_error([{"loc": ["globalRole"], "msg": "must be 'admin' or 'user'"}])
+
+    is_active = payload.get("isActive")
+    if is_active is not None and not isinstance(is_active, bool):
+        return _validation_error([{"loc": ["isActive"], "msg": "must be boolean"}])
+
+    updated = user_repository.update(user_id, global_role=global_role, is_active=is_active)
     if updated is None:
         return _not_found()
     return jsonify(domain_to_dto.user(updated).model_dump(by_alias=True))
