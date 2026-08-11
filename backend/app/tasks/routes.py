@@ -7,7 +7,8 @@ NoteRepository/CommentRepository (app.repositories) и HistoryService (app.servi
     TaskRepository.get_visible_for_user, а не "всё и фильтр на фронте").
   - POST /tasks -- если есть listId, требует can_create_task; без listId --
     "приватная" задача, доступна любому авторизованному.
-  - GET/PATCH/DELETE /tasks/:id -- @require_task_permission("can_edit_task"/"can_delete_task").
+  - GET /tasks/:id -- доступен любому, кто видит задачу (is_task_visible),
+    PATCH/DELETE -- @require_task_permission("can_edit_task"/"can_delete_task").
   - Сабресурсы (checklist-items/notes/comments) защищены правами
     родительской задачи: чтение -- через is_task_visible (та же видимость,
     что и для самой задачи), запись/удаление checklist/notes -- can_edit_task,
@@ -38,11 +39,9 @@ checklist_repository = ChecklistItemRepository()
 note_repository = NoteRepository()
 comment_repository = CommentRepository()
 
-FIELD_TO_HISTORY_KIND = {"assignee_id": "assignee", "due_date": "reschedule"}
 
-
-def _not_found(name="task"):
-    return jsonify({"error": "not_found", "message": f"{name} не найден"}), 404
+def _not_found(name="задача"):
+    return jsonify({"error": "not_found", "message": f"{name} не найдена"}), 404
 
 
 def _validation_error(details):
@@ -103,9 +102,8 @@ def create_task(**kwargs):
         return _validation_error([{"loc": ["title"], "msg": "required"}])
 
     list_id = payload.get("listId")
-    if list_id:
-        if not permission_service.can_create_task(list_id, user_id):
-            return permission_denied_response("Недостаточно прав для создания задачи в стом списке")
+    if list_id and not permission_service.can_create_task(list_id, user_id):
+        return permission_denied_response("Недостаточно прав для создания задачи в этом списке")
 
     task = task_repository.create(
         list_id=list_id,
@@ -132,11 +130,12 @@ def create_task(**kwargs):
 
 
 @tasks_bp.route("/<string:task_id>", methods=["GET"])
-@require_task_permission("can_edit_task")
 def get_task(task_id, **kwargs):
     task = task_repository.get_by_id(task_id)
     if task is None:
         return _not_found()
+    if not _can_view_task(task, current_user_id()):
+        return permission_denied_response("Недостаточно прав для доступа к задаче")
     return jsonify(domain_to_dto.task(task).model_dump(by_alias=True))
 
 
@@ -169,7 +168,7 @@ def update_task(task_id, **kwargs):
 
     updated = task_repository.update(task_id, patch, updated_by=user_id)
 
-    was_completed = old_values.get("status") not in (None,) and old_values.get("status") == "done"
+    was_completed = old_values.get("status") == "done"
     is_completed_now = patch.get("status") == "done"
     is_reopened_now = patch.get("status") == "open" and old_values.get("status") == "done"
 
