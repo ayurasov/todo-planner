@@ -1,5 +1,6 @@
 """
 Промпт 20: unit/integration-тесты auth flow.
+Промпт 23: тесты POST /api/auth/change-password.
 
 Покрывает:
 - POST /api/auth/login (успех/неверный пароль/неактивный пользователь/невалидный payload)
@@ -9,6 +10,8 @@
   WTF_CSRF_ENABLED включён явно для этого модуля (в остальных тестах
   проекта CSRF отключён через TestingConfig, чтобы не усложнять фикстуры
   ролевой матрицы).
+- POST /api/auth/change-password (успешная смена, неверный текущий пароль,
+  без авторизации, слишком короткий новый пароль, вход под новым паролем после смены).
 """
 
 from tests.conftest import PASSWORD, make_user
@@ -132,3 +135,61 @@ class TestCsrfToken:
             headers={"X-CSRF-Token": post_login_token},
         )
         assert resp.status_code == 201
+
+
+class TestChangePassword:
+    def test_requires_authentication(self, client):
+        resp = client.post(
+            "/api/auth/change-password",
+            json={"currentPassword": PASSWORD, "newPassword": "a-new-strong-password"},
+        )
+        assert resp.status_code == 401
+        assert resp.get_json()["error"] == "auth_required"
+
+    def test_wrong_current_password_returns_401(self, client, app):
+        with app.app_context():
+            make_user(login="cp-user1")
+
+        client.post("/api/auth/login", json={"login": "cp-user1", "password": PASSWORD})
+        resp = client.post(
+            "/api/auth/change-password",
+            json={"currentPassword": "totally-wrong", "newPassword": "a-new-strong-password"},
+        )
+        assert resp.status_code == 401
+        assert resp.get_json()["error"] == "invalid_credentials"
+
+    def test_new_password_too_short_returns_400(self, client, app):
+        with app.app_context():
+            make_user(login="cp-user2")
+
+        client.post("/api/auth/login", json={"login": "cp-user2", "password": PASSWORD})
+        resp = client.post(
+            "/api/auth/change-password",
+            json={"currentPassword": PASSWORD, "newPassword": "short"},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "validation_error"
+
+    def test_successful_change_allows_login_with_new_password(self, client, app):
+        with app.app_context():
+            make_user(login="cp-user3")
+
+        client.post("/api/auth/login", json={"login": "cp-user3", "password": PASSWORD})
+        resp = client.post(
+            "/api/auth/change-password",
+            json={"currentPassword": PASSWORD, "newPassword": "a-new-strong-password"},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["message"] == "password_changed"
+
+        client.post("/api/auth/logout")
+
+        old_password_resp = client.post(
+            "/api/auth/login", json={"login": "cp-user3", "password": PASSWORD}
+        )
+        assert old_password_resp.status_code == 401
+
+        new_password_resp = client.post(
+            "/api/auth/login", json={"login": "cp-user3", "password": "a-new-strong-password"}
+        )
+        assert new_password_resp.status_code == 200
