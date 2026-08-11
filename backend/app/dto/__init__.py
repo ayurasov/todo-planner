@@ -34,6 +34,7 @@ from app.dto.schemas import (
     SavedViewCreateDTO,
     SavedViewUpdateDTO,
     NotificationResponseDTO,
+    NotificationCreateDTO,
     NotificationUpdateDTO,
 )
 
@@ -46,5 +47,6 @@ __all__ = [
     "MeetingOccurrenceResponseDTO", "MeetingResponseDTO", "MeetingCreateDTO",
     "MeetingUpdateDTO", "RecurrenceTemplateResponseDTO", "RecurrenceTemplateCreateDTO",
     "RecurrenceTemplateUpdateDTO", "SavedViewResponseDTO", "SavedViewCreateDTO",
-    "SavedViewUpdateDTO", "NotificationResponseDTO", "NotificationUpdateDTO",
+    "SavedViewUpdateDTO", "NotificationResponseDTO", "NotificationCreateDTO",
+    "NotificationUpdateDTO",
 ]
