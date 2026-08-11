@@ -98,6 +98,9 @@ class Meeting:
     link: str = ""
     recurrence: Optional[dict] = None
     occurrences: list = field(default_factory=list)
+    # Агрегат "не выполнено в серии" -- считается backend'ом в
+MeetingRepository.unfinished_total_count, перенесён с фронта (см. backend/README.md).
+    unfinished_count: int = 0
 
 
 @dataclass
