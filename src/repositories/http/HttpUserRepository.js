@@ -24,6 +24,14 @@ export class HttpUserRepository extends UserRepository {
   async updateUser(id, patch) {
     return apiClient.patch(`/users/${id}`, patch)
   }
+
+  async createUser(payload) {
+    return apiClient.post('/users', payload)
+  }
+
+  async resetPassword(id) {
+    return apiClient.post(`/users/${id}/reset-password`, {})
+  }
 }
 
 export const httpUserRepository = new HttpUserRepository()

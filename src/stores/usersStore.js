@@ -32,5 +32,28 @@ export const useUsersStore = defineStore('users', {
         return updated
       }, { notificationsStore: useNotificationsStore(), router })
     },
+
+    /**
+     * Создание нового пользователя администратором.
+     * Возвращает { ...user, temporaryPassword } -- вызывающий UI должен
+     * показать temporaryPassword один раз и не сохранять его.
+     */
+    async createUser(payload) {
+      return withPermissionHandling(async () => {
+        const created = await userRepository.createUser(payload)
+        this.users.push(created)
+        return created
+      }, { notificationsStore: useNotificationsStore(), router })
+    },
+
+    /**
+     * Сброс пароля пользователя администратором.
+     * Возвращает { ...user, temporaryPassword } -- аналогично createUser.
+     */
+    async resetPassword(id) {
+      return withPermissionHandling(async () => {
+        return userRepository.resetPassword(id)
+      }, { notificationsStore: useNotificationsStore(), router })
+    },
   },
 })

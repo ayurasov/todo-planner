@@ -8,4 +8,8 @@ export class UserRepository {
    * store и UI переживут переход на backend без переписывания.
    */
   async updateUser(_id, _patch) { throw new Error('Not implemented') }
+  /** Создание пользователя администратором. Возвращает { ...user, temporaryPassword }. */
+  async createUser(_payload) { throw new Error('Not implemented') }
+  /** Сброс пароля администратором. Возвращает { ...user, temporaryPassword }. */
+  async resetPassword(_id) { throw new Error('Not implemented') }
 }

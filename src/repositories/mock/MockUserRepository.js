@@ -25,6 +25,26 @@ export class MockUserRepository extends UserRepository {
     this._users[idx] = { ...this._users[idx], ...patch }
     return { ...this._users[idx] }
   }
+
+  async createUser(payload) {
+    const user = {
+      id: `mock-user-${Date.now()}`,
+      name: payload.name,
+      email: payload.email,
+      login: payload.login,
+      globalRole: payload.globalRole || 'user',
+      isActive: true,
+      timezone: 'Europe/Moscow',
+    }
+    this._users.push(user)
+    return { ...user, temporaryPassword: payload.password || 'mock-password' }
+  }
+
+  async resetPassword(id) {
+    const user = this._users.find((u) => u.id === id)
+    if (!user) throw new Error('User not found')
+    return { ...user, temporaryPassword: 'mock-reset-password' }
+  }
 }
 
 export const mockUserRepository = new MockUserRepository()
