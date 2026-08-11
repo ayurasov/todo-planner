@@ -1,0 +1,15 @@
+# Промпт 21: минимальный конфиг ruff для backend CI.
+# Приоритет — поймать явные баги (unused imports/vars, undefined names),
+# а не гонка за идеальным стилем.
+line-length = 120
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # длина строки — не блокирующая проблема на этом этапе проекта
+    "E741",  # однобуквенные имена (l) уже используются в существующем коде mappers/routes
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["F401"]
