@@ -113,7 +113,8 @@ class orm_to_domain:
         )
 
     @staticmethod
-    def meeting(row: orm.MeetingORM, attendee_ids: Optional[list] = None, occurrences: Optional[list] = None) -> d.Meeting:
+    def meeting(row: orm.MeetingORM, attendee_ids: Optional[list] = None, occurrences: Optional[list] = None,
+                unfinished_count: int = 0) -> d.Meeting:
         return d.Meeting(
             id=row.id,
             title=row.title,
@@ -128,6 +129,7 @@ class orm_to_domain:
             link=row.link,
             recurrence=_loads(row.recurrence, None),
             occurrences=occurrences or [],
+            unfinished_count=unfinished_count,
         )
 
     @staticmethod
@@ -319,6 +321,7 @@ class domain_to_dto:
             color=m.color, archived=m.archived, order=m.order, link=m.link,
             recurrence=m.recurrence,
             occurrences=[domain_to_dto.meeting_occurrence(o) for o in m.occurrences],
+            unfinished_count=m.unfinished_count,
         )
 
     @staticmethod
@@ -386,7 +389,7 @@ class domain_to_dto:
 class dto_to_domain:
     """Request DTO (app.dto) -> domain dataclass (app.domain.entities).
 
-    Используется в будущих services при создании/обновлении сущностей.
+    Используется в services/repositories при создании/обновлении сущностей.
     `id`, `created_at`/`updated_at` и другие серверные поля здесь
     сознательно не заполняются -- их назначает services/repository слой
     (генерация id, временные метки), а не DTO-маппер.
@@ -415,7 +418,7 @@ class dto_to_domain:
 
     @staticmethod
     def apply_task_update(task: d.Task, dto_obj: api_dto.TaskUpdateDTO) -> d.Task:
-        """Возвращает Task с точечно применёнными полями из PATCH-DTO
+        """Возвращает Task с точечно апплицированными полями из PATCH-DTO
         (только те, что были явно переданы клиентом)."""
         data = dto_obj.model_dump(exclude_unset=True, by_alias=False)
         for key, value in data.items():
@@ -470,4 +473,20 @@ class dto_to_domain:
             sort=dto_obj.sort,
             group_by=dto_obj.group_by,
             pinned=dto_obj.pinned,
+        )
+
+    @staticmethod
+    def notification_from_create(dto_obj: api_dto.NotificationCreateDTO) -> d.Notification:
+        """Создание через POST /notifications -- временное решение: due_soon/overdue
+        уведомления в http-режиме всё ещё создаются на фронте (см. backend/README.md,
+        раздел про client/server split и Промпт 19 про background jobs)."""
+        return d.Notification(
+            id=None,
+            user_id=dto_obj.user_id,
+            type=dto_obj.type,
+            title=dto_obj.title,
+            body=dto_obj.body,
+            task_id=dto_obj.task_id,
+            list_id=dto_obj.list_id,
+            actor_id=dto_obj.actor_id,
         )
