@@ -30,6 +30,29 @@ npm run preview
 - `src/components` — UI-компоненты (задачи, чарты, общие элементы).
 - `src/views` — экраны: My Tasks, Team Tasks, List View, Recurring, History, Settings, Login.
 
+## Тестирование
+
+Unit-тесты покрывают самую критичную бизнес-логику frontend — ranking/bubble-
+сортировку задач и матрицу прав доступа (зеркальную backend-версии), а также
+сервис рекуррентных задач. Vue-компоненты не рендерятся -- тесты проверяют
+только чистую логику (`src/domain`, `src/services`).
+
+```bash
+npm install
+npm run test        # разовый прогон (vitest run)
+npm run test:watch  # watch-режим для локальной разработки
+```
+
+Что покрыто:
+- `src/domain/ranking/rankingScore.js` — расчёт ranking score, сортировка, `explainVisibility`.
+- `src/domain/ranking/bubbleSort.js` — разбиение на bubble-тиры и сортировка внутри блоков.
+- `src/services/PermissionService.js` — та же ролевая матрица (admin/owner/editor/viewer/assignee),
+  что и в `backend/tests/test_role_matrix.py` — гарантирует зеркальность правил между frontend и backend.
+- `src/services/RecurrenceService.js` — расчёт следующей даты повторения (`computeNextOccurrence`)
+  и генерация следующего инстанса задачи.
+
+Backend-тесты (`pytest`) запускаются отдельно — см. `backend/README.md`.
+
 ## Данные
 
 В v1 данные — mock, хранятся в `localStorage` (переживают обновление страницы, решение по допущению #3).

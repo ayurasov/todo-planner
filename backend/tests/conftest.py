@@ -39,6 +39,23 @@ def db_session(app):
         yield db.session
 
 
+@pytest.fixture()
+def csrf_app():
+    """Отдельное приложение с включённым WTF_CSRF_ENABLED поверх testing-профиля,
+    чтобы явно проверить CSRF-защиту mutating-запросов (в остальных тестах
+    CSRF отключён через TestingConfig ради простоты фикстур ролевой матрицы)."""
+    application = create_app("testing")
+    application.config["WTF_CSRF_ENABLED"] = True
+    yield application
+
+
+@pytest.fixture()
+def csrf_client(csrf_app):
+    with csrf_app.app_context():
+        db.create_all()
+    return csrf_app.test_client()
+
+
 PASSWORD = "test-password-123"
 
 
