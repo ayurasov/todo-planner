@@ -54,7 +54,16 @@ def login(**kwargs):
     if not user_orm.is_active:
         return auth_error_response("account_disabled", "Аккаунт деактивирован", 403)
 
+    # session.clear() стирает весь Flask-Session, включая csrf_token, который был
+    # выдан фронтенду раньше через GET /api/auth/csrf-token и уже сохранён в
+    # apiClient.js/памяти клиента. Если не восстановить его, следующий же
+    # не-GET запрос (тот же токен в заголовке X-CSRF-Token) не найдёт токен в
+    # свежей сессии и упадёт с CSRFError "session token is missing" (см. баг
+    # "не могу ничего создать после логина").
+    csrf_token = session.get("csrf_token")
     session.clear()
+    if csrf_token is not None:
+        session["csrf_token"] = csrf_token
     session["user_id"] = user_orm.id
     session.permanent = False
 
@@ -65,7 +74,13 @@ def login(**kwargs):
 
 @auth_bp.route("/logout", methods=["POST"])
 def logout(**kwargs):
+    # Сохраняем csrf_token по той же причине, что и в login() -- иначе следующий
+    # logout/login в той же вкладке (без обновления страницы) снова потеряет
+    # CSRF-сессию для уже сохранённого на фронтенде токена.
+    csrf_token = session.get("csrf_token")
     session.clear()
+    if csrf_token is not None:
+        session["csrf_token"] = csrf_token
     return jsonify({"message": "logged_out"})
 
 
