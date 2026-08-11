@@ -102,8 +102,13 @@ class TestingConfig(BaseConfig):
 class ProductionConfig(BaseConfig):
     DEBUG = False
     ENV = "production"
-    SESSION_COOKIE_SECURE = True
-    WTF_CSRF_SSL_STRICT = True
+    # По умолчанию secure cookie обязательны в production (HTTPS). Но на переходном
+    # этапе (например, первый деплой по http://IP:PORT без домена/TLS) допускается
+    # временно выставить SESSION_COOKIE_SECURE=false в .env, чтобы cookie сессии/CSRF
+    # сохранялись в браузере по обычному HTTP. Обязательно верните true, как только
+    # появится HTTPS (см. README.md, раздел "HTTPS / reverse-proxy").
+    SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "true").lower() != "false"
+    WTF_CSRF_SSL_STRICT = os.environ.get("WTF_CSRF_SSL_STRICT", "true").lower() != "false"
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
         "pool_recycle": 1800,
