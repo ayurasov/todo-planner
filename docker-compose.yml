@@ -1,3 +1,10 @@
+# HTTPS / reverse-proxy: nginx (сервис frontend) отдаёт только HTTP внутри compose-сети.
+# На production-сервере перед ним должен стоять TLS-терминатор -- выбран Caddy
+# (сачетает Let's Encrypt-сертификаты автоматически, без certbot/cron). См. Caddyfile.example
+# в корне репозитория и раздел "HTTPS / reverse-proxy" в README.md для пошаговой инструкции:
+# в production следует закрыть прямой доступ к `frontend:80` снаружи (убрать `ports: ["80:80"]`
+# у frontend и добавить сервис caddy с `ports: ["80:80", "443:443"]`, reverse_proxy к frontend:80).
+
 services:
   db:
     image: postgres:16-alpine
@@ -22,8 +29,14 @@ services:
     environment:
       FLASK_ENV: production
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://todo_planner:todo_planner@db:5432/todo_planner}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      # Без дефолта нарочно: config.py._require_production_secret_key() упадёт старт приложения
+      # с явной ошибкой, если SECRET_KEY не задан в .env -- скопирование .env.example без
+      # редактирования не даст тихо заработать с insecure-секретом.
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY обязателен: сгенерируйте python -c "import secrets; print(secrets.token_hex(32))" и положите в .env}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
+      SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-Lax}
+      RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
+      LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10 per minute;50 per hour}
       DB_WAIT_HOST: db
       DB_WAIT_PORT: 5432
     depends_on:
@@ -58,5 +71,39 @@ services:
       retries: 5
       start_period: 10s
 
+  # Ротация backup Postgres: ежедневный pg_dump в volume backups (custom-формат,
+  # сжатый, восстанавливается pg_restore) + чистка файлов старше BACKUP_RETENTION_DAYS.
+  # Подробнее см. раздел "Backup / ротация" в README.md.
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGHOST: db
+      PGUSER: ${POSTGRES_USER:-todo_planner}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-todo_planner}
+      PGDATABASE: ${POSTGRES_DB:-todo_planner}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - db_backups:/backups
+    entrypoint: >
+      sh -c "
+      echo 'Todo Planner backup sidecar started (daily 03:00 UTC pg_dump, retention '$$BACKUP_RETENTION_DAYS' days).';
+      while true; do
+        NOW_HOUR=$$(date -u +%H);
+        NOW_MIN=$$(date -u +%M);
+        if [ "$$NOW_HOUR" = '03' ] && [ "$$NOW_MIN" = '00' ]; then
+          FILE=/backups/todo_planner_$$(date -u +%Y%m%dT%H%M%SZ).dump;
+          echo "[backup] running pg_dump -> $$FILE";
+          pg_dump -Fc -f "$$FILE" && echo '[backup] done' || echo '[backup] FAILED';
+          find /backups -name '*.dump' -mtime +$$BACKUP_RETENTION_DAYS -delete;
+        fi;
+        sleep 60;
+      done
+      "
+
 volumes:
   db_data:
+  db_backups:
