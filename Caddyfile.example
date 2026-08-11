@@ -1,0 +1,27 @@
+# Пример конфига Caddy для HTTPS-терминации перед `frontend` (nginx) сервисом из
+# docker-compose.yml. Caddy выбран как reverse-proxy с TLS, потому что автоматически
+# выпускает/обновляет Let's Encrypt-сертификаты без ручной настройки certbot/cron
+# (альтернативы -- Traefik или ручной certbot + nginx; Caddy выбран за простоту).
+#
+# Использование:
+#   1. скопируйте в Caddyfile, замените todo.example.com на реальный домен;
+#   2. в docker-compose.yml уберите `ports: ["80:80"]` у сервиса `frontend` (он больше не
+#      должен смотреть наружу напрямую, только внутри compose-сети);
+#   3. добавьте сервис `caddy` (см. пример в docker-compose.yml, секция "HTTPS / reverse-proxy");
+#   4. убедитесь, что DNS-запись домена указывает на этот сервер и порты 80/443 открыты.
+#
+# Caddy автоматически выпустит/продлит Let's Encrypt сертификат при первом запросе
+# к domain через HTTP-01 challenge (нужен открытый порт 80 и 443).
+
+todo.example.com {
+    reverse_proxy frontend:80
+
+    encode gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
