@@ -12,21 +12,11 @@ MeetingRepository -- CRUD встреч (MeetingORM), участники (Meeting
 списка встреч.
 """
 
-import json
-
 from app.extensions import db
 from app.mappers import orm_to_domain
 from app.models import MeetingAttendeeORM, MeetingOccurrenceORM, MeetingORM, TaskORM
 from app.repositories.common import new_id, now_iso
 
-
-def _loads(value, default):
-    if value is None:
-        return default
-    try:
-        return json.loads(value)
-    except (TypeError, ValueError):
-        return default
 
 
 class MeetingRepository:
@@ -63,7 +53,7 @@ class MeetingRepository:
         timestamp = now_iso()
         row = MeetingORM(
             id=new_id(), title=title, date=date, description=description, link=link, color=color,
-            archived=False, order_index=order, recurrence=json.dumps(recurrence) if recurrence else None,
+            archived=False, order_index=order, recurrence=recurrence or None,
             created_by=created_by, created_at=timestamp,
         )
         db.session.add(row)
@@ -89,7 +79,7 @@ class MeetingRepository:
             if key in patch:
                 setattr(row, attr, patch[key])
         if "recurrence" in patch:
-            row.recurrence = json.dumps(patch["recurrence"]) if patch["recurrence"] else None
+            row.recurrence = patch["recurrence"] or None
         if "attendee_ids" in patch:
             MeetingAttendeeORM.query.filter_by(meeting_id=meeting_id).delete()
             for user_id in patch["attendee_ids"] or []:

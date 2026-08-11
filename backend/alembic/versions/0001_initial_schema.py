@@ -16,7 +16,7 @@ depends_on = None
 
 
 def _json_type():
-    return postgresql.JSONB(astext_type=sa.Text())
+    return sa.JSON().with_variant(postgresql.JSONB(astext_type=sa.Text()), 'postgresql')
 
 
 def upgrade():
@@ -43,7 +43,7 @@ def upgrade():
         sa.Column('color', sa.Text(), nullable=False, server_default='#4f7cff'),
         sa.Column('is_shared', sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column('default_view', sa.Text(), nullable=False, server_default='list'),
-        sa.Column('settings', _json_type(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column('settings', _json_type(), nullable=False, server_default=sa.text("'{}'")),
         sa.Column('archived', sa.Boolean(), nullable=False, server_default=sa.false()),
         sa.Column('order_index', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
@@ -94,11 +94,11 @@ def upgrade():
         sa.Column('list_id', sa.String(length=36), sa.ForeignKey('lists.id', ondelete='CASCADE'), nullable=False),
         sa.Column('title_template', sa.Text(), nullable=False),
         sa.Column('type', sa.Text(), nullable=False),
-        sa.Column('rule', _json_type(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column('rule', _json_type(), nullable=False, server_default=sa.text("'{}'")),
         sa.Column('timezone', sa.Text(), nullable=False, server_default='Europe/Moscow'),
         sa.Column('generate_ahead_count', sa.Integer(), nullable=False, server_default='1'),
         sa.Column('last_generated_instance_date', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('checklist_template', _json_type(), nullable=False, server_default=sa.text("'[]'::jsonb")),
+        sa.Column('checklist_template', _json_type(), nullable=False, server_default=sa.text("'[]'")),
         sa.CheckConstraint("type IN ('fixed_schedule', 'completion_based')", name='ck_recurrence_templates_type'),
     )
     op.create_table(
@@ -160,7 +160,7 @@ def upgrade():
         'notes',
         sa.Column('id', sa.String(length=36), primary_key=True),
         sa.Column('task_id', sa.String(length=36), sa.ForeignKey('tasks.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('content', _json_type(), nullable=False, server_default=sa.text("'{\"type\":\"doc\",\"content\":[]}'::jsonb")),
+        sa.Column('content', _json_type(), nullable=False, server_default=sa.text('\'{"type":"doc","content":[]}\'')),
         sa.Column('updated_by', sa.String(length=36), sa.ForeignKey('users.id', ondelete='SET NULL')),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
@@ -213,8 +213,8 @@ def upgrade():
         sa.Column('id', sa.String(length=36), primary_key=True),
         sa.Column('user_id', sa.String(length=36), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
         sa.Column('name', sa.Text(), nullable=False),
-        sa.Column('filters', _json_type(), nullable=False, server_default=sa.text("'{}'::jsonb")),
-        sa.Column('sort', _json_type(), nullable=False, server_default=sa.text("'{\"field\":\"score\",\"dir\":\"desc\"}'::jsonb")),
+        sa.Column('filters', _json_type(), nullable=False, server_default=sa.text("'{}'")),
+        sa.Column('sort', _json_type(), nullable=False, server_default=sa.text('\'{"field":"score","dir":"desc"}\'')),
         sa.Column('group_by', sa.Text(), nullable=True),
         sa.Column('pinned', sa.Boolean(), nullable=False, server_default=sa.false()),
     )
@@ -251,7 +251,7 @@ def upgrade():
         sa.Column('user_id', sa.String(length=36), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True),
         sa.Column('provider', sa.Text(), nullable=False, server_default='none'),
         sa.Column('status', sa.Text(), nullable=False, server_default='disconnected'),
-        sa.Column('sync_settings', _json_type(), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column('sync_settings', _json_type(), nullable=False, server_default=sa.text("'{}'")),
         sa.Column('last_synced_at', sa.DateTime(timezone=True), nullable=True),
         sa.CheckConstraint("provider IN ('none', 'exchange', 'google')", name='ck_calendar_integrations_provider'),
         sa.CheckConstraint("status IN ('disconnected', 'connected', 'error')", name='ck_calendar_integrations_status'),

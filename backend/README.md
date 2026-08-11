@@ -328,3 +328,73 @@ PATCH/DELETE чужого вида возвращают `403 permission_denied`.
 Остаются заглушками только вложения задач: `GET/POST /tasks/:id/attachments`
 (файловое хранилище — отдельная задача, см. корневой README.md, раздел
 "Roadmap").
+
+## Миграции и БД
+
+Production-режим ориентирован на **PostgreSQL**; локально и в тестах остаётся **SQLite** через профили из `config.py`.
+
+### Выбор БД по окружению
+
+- `FLASK_ENV=development` — по умолчанию `sqlite:///backend/todo_planner.db`, если не задан `DATABASE_URL`.
+- `FLASK_ENV=testing` — всегда `sqlite:///:memory:` для быстрых pytest/integration tests.
+- `FLASK_ENV=production` — рекомендуется задавать `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname`.
+
+`DATABASE_URL` — основной production-источник; `SQLALCHEMY_DATABASE_URI` остаётся совместимым override для нестандартных сценариев.
+
+### Alembic: базовые команды
+
+Первичная инициализация/обновление схемы:
+
+```bash
+cd backend
+source .venv/bin/activate
+export FLASK_ENV=development
+alembic upgrade head
+```
+
+Откат последней миграции:
+
+```bash
+alembic downgrade -1
+```
+
+Откат до конкретной ревизии:
+
+```bash
+alembic history
+alembic downgrade <revision_id>
+```
+
+Создание новой миграции после изменения ORM-моделей:
+
+```bash
+alembic revision --autogenerate -m "describe change"
+alembic upgrade head
+```
+
+### Деплой
+
+Backend больше **не** полагается на `db.create_all()` вне тестового профиля. Порядок шагов при деплое:
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+export FLASK_ENV=production
+export DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname
+alembic upgrade head
+python wsgi.py
+```
+
+Если приложение стартует на пустой БД без выполненных миграций, оно выведет warning в лог о необходимости `alembic upgrade head`; автосоздание production-схемы отключено намеренно.
+
+### Connection pooling
+
+Для production включён умеренный pooling SQLAlchemy без over-engineering:
+
+- `pool_size=5`
+- `max_overflow=5`
+- `pool_pre_ping=True`
+- `pool_recycle=1800`
+
+Значения подходят для небольшой команды и переопределяются через `DB_POOL_SIZE` / `DB_MAX_OVERFLOW`.

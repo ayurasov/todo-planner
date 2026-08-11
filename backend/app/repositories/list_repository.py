@@ -45,7 +45,7 @@ class ListRepository:
             color=color,
             is_shared=is_shared,
             default_view=default_view,
-            settings=self._dump_settings(settings or {}),
+            settings=settings or {},
             archived=False,
             order_index=0,
             created_at=now_iso(),
@@ -76,7 +76,7 @@ class ListRepository:
         if "default_view" in patch:
             row.default_view = patch["default_view"]
         if "settings" in patch and patch["settings"] is not None:
-            row.settings = self._dump_settings(patch["settings"])
+            row.settings = patch["settings"]
         if "archived" in patch and patch["archived"] is not None:
             row.archived = patch["archived"]
         if "order" in patch and patch["order"] is not None:
@@ -89,7 +89,7 @@ class ListRepository:
         row = ListORM.query.get(list_id)
         if row is None:
             return False
-        db.session.delete(row)  # ON DELETE CASCADE -- memberships/tasks удаляются в базе
+        db.session.delete(row)
         db.session.commit()
         return True
 
@@ -117,8 +117,3 @@ class ListRepository:
         db.session.delete(row)
         db.session.commit()
         return True
-
-    @staticmethod
-    def _dump_settings(settings: dict) -> str:
-        import json
-        return json.dumps(settings)

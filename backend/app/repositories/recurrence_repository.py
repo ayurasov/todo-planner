@@ -10,7 +10,6 @@ COMPLETION_BASED-шаблона должна выполняться в моме�
 backend/README.md, раздел "Client/server split".
 """
 
-import json
 from datetime import datetime, timedelta, timezone
 
 from app.domain.entities import RecurrenceTemplate
@@ -78,8 +77,8 @@ class RecurrenceRepository:
                generate_ahead_count=1, checklist_template=None):
         row = RecurrenceTemplateORM(
             id=new_id(), list_id=list_id, title_template=title_template, type=type,
-            rule=json.dumps(rule or {}), timezone=timezone, generate_ahead_count=generate_ahead_count,
-            last_generated_instance_date=None, checklist_template=json.dumps(checklist_template or []),
+            rule=rule or {}, timezone=timezone, generate_ahead_count=generate_ahead_count,
+            last_generated_instance_date=None, checklist_template=checklist_template or [],
         )
         db.session.add(row)
         db.session.commit()
@@ -98,9 +97,9 @@ class RecurrenceRepository:
             if key in patch:
                 setattr(row, attr, patch[key])
         if "rule" in patch:
-            row.rule = json.dumps(patch["rule"] or {})
+            row.rule = patch["rule"] or {}
         if "checklist_template" in patch:
-            row.checklist_template = json.dumps(patch["checklist_template"] or [])
+            row.checklist_template = patch["checklist_template"] or []
         db.session.commit()
         return self._to_domain(row)
 
