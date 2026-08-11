@@ -44,7 +44,10 @@ class MeetingRepository:
 
     def _to_domain(self, row: MeetingORM):
         return orm_to_domain.meeting(
-            row, attendee_ids=self._attendee_ids(row.id), occurrences=self._occurrences(row.id)
+            row,
+            attendee_ids=self._attendee_ids(row.id),
+            occurrences=self._occurrences(row.id),
+            unfinished_count=self.unfinished_total_count(row.id),
         )
 
     def get_all(self):
