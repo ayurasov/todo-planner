@@ -28,6 +28,8 @@ class UserResponseDTO(CamelModel):
     avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
     global_role: str = Field(default="user", alias="globalRole")
     is_active: bool = Field(default=True, alias="isActive")
+    position: Optional[str] = None
+    department: Optional[str] = None
 
 
 class LoginRequestDTO(CamelModel):

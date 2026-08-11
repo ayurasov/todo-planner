@@ -66,6 +66,8 @@ class UserORM(db.Model):
     avatar_url = db.Column(db.Text)
     global_role = db.Column(db.Text, nullable=False, default="user")
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    position = db.Column(db.Text)
+    department = db.Column(db.Text)
     created_at = db.Column(TZDateTime(), nullable=False)
     updated_at = db.Column(TZDateTime(), nullable=False)
 

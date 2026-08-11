@@ -25,6 +25,8 @@ class User:
     is_active: bool = True
     login: Optional[str] = None
     password_hash: Optional[str] = None
+    position: Optional[str] = None
+    department: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

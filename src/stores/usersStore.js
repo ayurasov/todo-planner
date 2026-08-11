@@ -55,5 +55,13 @@ export const useUsersStore = defineStore('users', {
         return userRepository.resetPassword(id)
       }, { notificationsStore: useNotificationsStore(), router })
     },
+
+    /** Полное удаление пользователя администратором. */
+    async deleteUser(id) {
+      return withPermissionHandling(async () => {
+        await userRepository.deleteUser(id)
+        this.users = this.users.filter((u) => u.id !== id)
+      }, { notificationsStore: useNotificationsStore(), router })
+    },
   },
 })

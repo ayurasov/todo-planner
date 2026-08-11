@@ -61,6 +61,8 @@ class orm_to_domain:
             is_active=bool(row.is_active),
             login=row.login,
             password_hash=row.password_hash,
+            position=row.position,
+            department=row.department,
             created_at=_iso(row.created_at),
             updated_at=_iso(row.updated_at),
         )
@@ -285,6 +287,7 @@ class domain_to_dto:
         return api_dto.UserResponseDTO(
             id=u.id, name=u.name, email=u.email, timezone=u.timezone,
             avatar_url=u.avatar_url, global_role=u.global_role, is_active=u.is_active,
+            position=u.position, department=u.department,
         )
 
     @staticmethod

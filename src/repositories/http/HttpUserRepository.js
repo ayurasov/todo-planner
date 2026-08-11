@@ -32,6 +32,10 @@ export class HttpUserRepository extends UserRepository {
   async resetPassword(id) {
     return apiClient.post(`/users/${id}/reset-password`, {})
   }
+
+  async deleteUser(id) {
+    return apiClient.delete(`/users/${id}`)
+  }
 }
 
 export const httpUserRepository = new HttpUserRepository()

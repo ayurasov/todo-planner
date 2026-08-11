@@ -35,6 +35,8 @@ export class MockUserRepository extends UserRepository {
       globalRole: payload.globalRole || 'user',
       isActive: true,
       timezone: 'Europe/Moscow',
+      position: payload.position || null,
+      department: payload.department || null,
     }
     this._users.push(user)
     return { ...user, temporaryPassword: payload.password || 'mock-password' }
@@ -44,6 +46,12 @@ export class MockUserRepository extends UserRepository {
     const user = this._users.find((u) => u.id === id)
     if (!user) throw new Error('User not found')
     return { ...user, temporaryPassword: 'mock-reset-password' }
+  }
+
+  async deleteUser(id) {
+    const idx = this._users.findIndex((u) => u.id === id)
+    if (idx === -1) throw new Error('User not found')
+    this._users.splice(idx, 1)
   }
 }
 

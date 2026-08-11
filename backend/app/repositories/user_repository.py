@@ -24,12 +24,13 @@ class UserRepository:
         row = UserORM.query.get(user_id)
         return orm_to_domain.user(row) if row else None
 
-    def update(self, user_id: str, *, global_role=None, is_active=None):
+    def update(self, user_id: str, *, global_role=None, is_active=None,
+               name=None, email=None, position=None, department=None):
         """Точечное обновление только тех полей, что переданы (не None).
 
-        globalRole/isActive -- единственные поля, которые сейчас реально меняет
-        UsersView.vue (см. src/views/UsersView.vue: usersStore.updateUser(id, { globalRole })
-        и usersStore.updateUser(id, { isActive })).
+        position/department -- новые справочные поля (должность/отдел),
+        name/email -- редактирование профиля администратором, помимо
+        globalRole/isActive, которые уже менялись из UsersView.vue.
         """
         row = UserORM.query.get(user_id)
         if row is None:
@@ -38,15 +39,40 @@ class UserRepository:
             row.global_role = global_role
         if is_active is not None:
             row.is_active = is_active
+        if name is not None:
+            row.name = name
+        if email is not None:
+            row.email = email
+        if position is not None:
+            row.position = position
+        if department is not None:
+            row.department = department
         row.updated_at = now_iso()
         db.session.commit()
         return orm_to_domain.user(row)
+
+    def delete(self, user_id: str) -> bool:
+        """Полное удаление пользователя (hard delete).
+
+        FK на users.id в остальных таблицах уже настроены с ondelete=CASCADE
+        (участия в списках/watcher/reactions и т.п.) или ondelete=SET NULL
+        (created_by/assignee_id/updated_by/actor_id/author_id) на уровне
+        схемы БД (см. backend/app/models/models.py) -- поэтому удаление строки
+        users безопасно и не оставляет висячих ссылок.
+        """
+        row = UserORM.query.get(user_id)
+        if row is None:
+            return False
+        db.session.delete(row)
+        db.session.commit()
+        return True
 
     def get_by_login(self, login: str):
         row = UserORM.query.filter_by(login=login).first()
         return orm_to_domain.user(row) if row else None
 
-    def create(self, *, login, name, email, password_hash, global_role="user"):
+    def create(self, *, login, name, email, password_hash, global_role="user",
+               position=None, department=None):
         """Создание пользователя администратором через POST /api/users.
 
         Зеркалирует поля, которые уже заполняет app.auth.seed.seed_initial_users --
@@ -63,6 +89,8 @@ class UserRepository:
             timezone="Europe/Moscow",
             global_role=global_role,
             is_active=True,
+            position=position,
+            department=department,
             created_at=now_iso(),
             updated_at=now_iso(),
         )

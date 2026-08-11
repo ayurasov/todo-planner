@@ -12,4 +12,6 @@ export class UserRepository {
   async createUser(_payload) { throw new Error('Not implemented') }
   /** Сброс пароля администратором. Возвращает { ...user, temporaryPassword }. */
   async resetPassword(_id) { throw new Error('Not implemented') }
+  /** Полное удаление пользователя администратором. */
+  async deleteUser(_id) { throw new Error('Not implemented') }
 }

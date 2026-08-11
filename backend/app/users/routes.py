@@ -26,9 +26,9 @@ from app.users import users_bp
 
 user_repository = UserRepository()
 
-ALLOWED_UPDATE_FIELDS = {"globalRole", "isActive"}
+ALLOWED_UPDATE_FIELDS = {"globalRole", "isActive", "name", "email", "position", "department"}
 ALLOWED_GLOBAL_ROLES = {"admin", "user"}
-ALLOWED_CREATE_FIELDS = {"login", "name", "email", "password", "globalRole"}
+ALLOWED_CREATE_FIELDS = {"login", "name", "email", "password", "globalRole", "position", "department"}
 
 
 def _not_found(name="user"):
@@ -41,7 +41,13 @@ def _validation_error(details):
 
 @users_bp.route("", methods=["GET"])
 def list_users(**kwargs):
-    users = user_repository.get_all_active()
+    # Global admin видит всех пользователей (включая деактивированных) для управления
+    # ролевой моделью (UsersView.vue); обычные пользователи -- только активных
+    # (для селекторов исполнителей/участников).
+    if permission_service.is_global_admin(current_user_id()):
+        users = user_repository.get_all()
+    else:
+        users = user_repository.get_all_active()
     return jsonify([domain_to_dto.user(u).model_dump(by_alias=True) for u in users])
 
 
@@ -72,10 +78,43 @@ def update_user(user_id, **kwargs):
     if is_active is not None and not isinstance(is_active, bool):
         return _validation_error([{"loc": ["isActive"], "msg": "must be boolean"}])
 
-    updated = user_repository.update(user_id, global_role=global_role, is_active=is_active)
+    name = payload.get("name")
+    if name is not None and not str(name).strip():
+        return _validation_error([{"loc": ["name"], "msg": "не может быть пустым"}])
+
+    email = payload.get("email")
+    if email is not None and not str(email).strip():
+        return _validation_error([{"loc": ["email"], "msg": "не может быть пустым"}])
+
+    position = payload.get("position")
+    department = payload.get("department")
+
+    updated = user_repository.update(
+        user_id,
+        global_role=global_role,
+        is_active=is_active,
+        name=name.strip() if name is not None else None,
+        email=email.strip() if email is not None else None,
+        position=position,
+        department=department,
+    )
     if updated is None:
         return _not_found()
     return jsonify(domain_to_dto.user(updated).model_dump(by_alias=True))
+
+
+@users_bp.route("/<string:user_id>", methods=["DELETE"])
+def delete_user(user_id, **kwargs):
+    if not permission_service.is_global_admin(current_user_id()):
+        return permission_denied_response("Удалять пользователей может только администратор")
+
+    if user_id == current_user_id():
+        return permission_denied_response("Нельзя удалить собственную учётную запись")
+
+    deleted = user_repository.delete(user_id)
+    if not deleted:
+        return _not_found()
+    return "", 204
 
 
 @users_bp.route("", methods=["POST"])
@@ -93,6 +132,8 @@ def create_user(**kwargs):
     name = (payload.get("name") or "").strip()
     email = (payload.get("email") or "").strip()
     global_role = payload.get("globalRole", "user")
+    position = payload.get("position")
+    department = payload.get("department")
 
     errors = []
     if not login:
@@ -121,6 +162,8 @@ def create_user(**kwargs):
         email=email,
         password_hash=generate_password_hash(plain_password),
         global_role=global_role,
+        position=position,
+        department=department,
     )
     dto = domain_to_dto.user(created).model_dump(by_alias=True)
     dto["temporaryPassword"] = plain_password
