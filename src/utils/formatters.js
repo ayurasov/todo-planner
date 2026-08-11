@@ -59,6 +59,12 @@ const WEEKDAY_LABEL_GENITIVE_PLURAL = {
  * weekdays — номера дней недели (0=вс..6=сб), актуальны только для weekly/biweekly.
  * Если recurrence отсутствует — встреча считается разовой.
  */
+export function formatTime(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+}
+
 export function formatMeetingRecurrence(recurrence) {
   if (!recurrence || !recurrence.freq) return 'Разовая'
   const days = [...(recurrence.weekdays || [])].sort((a, b) => a - b)

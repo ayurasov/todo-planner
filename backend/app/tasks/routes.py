@@ -160,6 +160,10 @@ def update_task(task_id, **kwargs):
         "priority": "priority", "assigneeId": "assignee_id", "watcherIds": "watcher_ids",
         "dueDate": "due_date", "startDate": "start_date", "tags": "tags",
         "pinned": "pinned", "displayStandalone": "display_standalone", "completedAt": "completed_at",
+        # meetingId/occurrenceId -- позволяет перепривязать задачу к другой подвстрече
+        # серии (или снять привязку через null) прямо из карточки задачи, без
+        # необходимости пересоздавать задачу внутри нужной подвстречи.
+        "meetingId": "meeting_id", "occurrenceId": "occurrence_id",
     }
     patch = {}
     old_values = {}

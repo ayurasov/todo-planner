@@ -121,7 +121,7 @@ class TaskRepository:
             "title": "title", "description": "description", "status": "status",
             "priority": "priority", "assignee_id": "assignee_id", "due_date": "due_date",
             "start_date": "start_date", "pinned": "pinned", "display_standalone": "display_standalone",
-            "completed_at": "completed_at",
+            "completed_at": "completed_at", "meeting_id": "meeting_id", "occurrence_id": "occurrence_id",
         }
         if not touch_only:
             for key, attr in simple_fields.items():
