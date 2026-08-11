@@ -38,10 +38,11 @@ pytest
   list owner/editor/viewer/assignee, пользователь без доступа — для view list /
   create task / edit task (свою/чужую) / delete task / manage members / delete
   list. Зеркалирует `src/services/PermissionService.js` на frontend.
-- `tests/test_auth.py` (Промпт 20) — login (успех/неверный пароль/деактивированный
+- `tests/test_auth.py` (Промпт 20/23) — login (успех/неверный пароль/деактивированный
   аккаунт/невалидный payload), logout, `/me`, глобальный login guard,
-  `/csrf-token` и CSRF-защита mutating-запросов (отдельная фикстура `csrf_client`
-  с включённым `WTF_CSRF_ENABLED`, в остальных тестах CSRF отключён ради простоты).
+  `/csrf-token`, `POST /api/auth/change-password` и CSRF-защита mutating-запросов
+  (отдельная фикстура `csrf_client` с включённым `WTF_CSRF_ENABLED`, в остальных
+  тестах CSRF отключён ради простоты).
 - `tests/test_crud_dto.py` (Промпт 20) — CRUD для tasks/lists с проверкой, что
   response-DTO приходит в camelCase (`listId`, `dueDate`, `ownerIds`, ...), как
   ожидает `src/repositories/http/apiClient.js`, а не в snake_case ORM-полей.
@@ -65,7 +66,8 @@ ruff check .  # минимальный конфиг в backend/ruff.toml (E/F/W,
 
 - `config.py` — профили `development` / `testing` / `production`.
 - `app/extensions.py` — единые инстансы `db` (Flask-SQLAlchemy), `sess`
-  (Flask-Session), `cors` (Flask-CORS), `csrf` (Flask-WTF CSRFProtect).
+  (Flask-Session), `cors` (Flask-CORS), `csrf` (Flask-WTF CSRFProtect),
+  `limiter` (Flask-Limiter).
 - `app/<module>/__init__.py` + `routes.py` — по одному blueprint на ресурс:
   `health`, `auth`, `users`, `lists`, `tasks`, `meetings`, `recurrence`,
   `history`, `notifications`, `saved_views`, `comments`, `checklists`, `notes`.
@@ -105,7 +107,7 @@ ruff check .  # минимальный конфиг в backend/ruff.toml (E/F/W,
 Слои изолированы: `app/models` ничего не знает о domain/dto, `app/domain` не
 импортирует SQLAlchemy/Pydantic, `app/dto` не импортирует SQLAlchemy.
 
-## Аутентификация (Промпт 11)
+## Аутентификация (Промпт 11 / 23)
 
 Реализована cookie-session аутентификация, совместимая с
 `src/repositories/http/apiClient.js`:
@@ -114,33 +116,50 @@ ruff check .  # минимальный конфиг в backend/ruff.toml (E/F/W,
   проверяет `password_hash` через `werkzeug.security.check_password_hash`,
   отклоняет `is_active = false`, создаёт server-side session и возвращает
   `{"user": ...}` без `password_hash`.
+- `POST /api/auth/login` дополнительно защищён rate limiting (`Flask-Limiter`) —
+  лимит читается из `LOGIN_RATE_LIMIT` (по умолчанию `10 per minute;50 per hour`).
 - `POST /api/auth/logout` очищает сессию.
 - `GET /api/auth/me` возвращает текущего пользователя по `session["user_id"]`,
   иначе отдаёт стабильный JSON `{"error": "auth_required", "message": "Требуется авторизация"}`
   со статусом `401`.
 - `GET /api/auth/csrf-token` возвращает `{"csrfToken": "..."}` через
   `flask_wtf.csrf.generate_csrf()`.
+- `POST /api/auth/change-password` принимает `{ "currentPassword": "...", "newPassword": "..." }`
+  для уже залогиненного пользователя, требует правильный текущий пароль и обновляет
+  `password_hash` (`newPassword` минимум 8 символов).
 - Глобальный guard (`app/auth/security.py`) требует логин для всех route'ов,
   кроме `/api/health`, `/api/auth/login` и `/api/auth/csrf-token`.
+
+### Production hardening
+
+Production-профиль (`FLASK_ENV=production`) теперь явно включает и требует:
+
+- `SESSION_COOKIE_SECURE=True`
+- `SESSION_COOKIE_HTTPONLY=True`
+- `SESSION_COOKIE_SAMESITE` из env (по умолчанию `Lax`)
+- обязательный `SECRET_KEY` из env, без fallback на placeholder/дефолт
+- `ProxyFix` для корректной работы за reverse-proxy (`X-Forwarded-*`)
+
+Если `SECRET_KEY` пустой или равен известному placeholder (`change-me-in-production`,
+`dev-secret-key`), приложение падает на старте с явной ошибкой (fail-fast).
 
 ### Bootstrap initial users
 
 При первом запуске приложение:
 
-1. вызывает `db.create_all()` для каркаса;
-2. если таблица `users` пуста, создаёт пользователей `admin` и `user`;
-3. генерирует случайные временные пароли, сохраняет **только hash**;
-4. выводит открытые пароли **один раз** в консоль.
+1. вызывает `db.create_all()` для каркаса только в `testing`;
+2. в development/production ожидает уже применённые Alembic-миграции;
+3. если таблица `users` пуста, создаёт пользователей `admin` и `user`;
+4. генерирует случайные временные пароли, сохраняет **только hash**;
+5. выводит открытые пароли **один раз** в лог (`app.logger.warning`), а не через `print()`.
 
-Пример консольного вывода при самом первом запуске:
+Пример однократного вывода:
 
 ```text
-============================================================
 Todo Planner: созданы начальные пользователи (пароли показываются только сейчас):
   login=admin  password=...
   login=user   password=...
 Сохраните эти пароли — повторно они не выводятся и не хранятся в открытом виде.
-============================================================
 ```
 
 ### Примеры curl (auth)
@@ -162,7 +181,18 @@ curl -i \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: $CSRF" \
   -X POST http://localhost:5000/api/auth/login \
-  -d '{"login":"admin","password":"<password-from-console>"}'
+  -d '{"login":"admin","password":"<password-from-log>"}'
+```
+
+Сменить пароль:
+
+```bash
+curl -i \
+  -b cookies.txt -c cookies.txt \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: $CSRF" \
+  -X POST http://localhost:5000/api/auth/change-password \
+  -d '{"currentPassword":"<old>","newPassword":"<new-strong-password>"}'
 ```
 
 Проверить текущего пользователя:
@@ -259,108 +289,40 @@ def update_task(task_id):
 `MockUserRepository.js` (эталон, которым руководствовался mock-репозиторий
 на фронтенде).
 
-### Примеры curl (users/lists)
+## Production logging / reverse-proxy / backups
 
-```bash
-# список пользователей
-curl -b cookies.txt http://localhost:5000/api/users
+### Structured logging
 
-# admin меняет роль другого пользователя
-curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
-  -X PATCH http://localhost:5000/api/users/<user-id> -d '{"globalRole": "admin"}'
+`app/__init__.py` перенастраивает Flask/Werkzeug logging на JSON-lines в stdout.
+Каждая запись содержит `timestamp`, `level`, `logger`, `message`, а в request-контексте
+ещё и `method`, `path`, `remote_addr`, `user_id`. Непойманные исключения логируются через
+`app.logger.exception(...)`, а не `print()`.
 
-# создать список (создатель = owner)
-curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
-  -X POST http://localhost:5000/api/lists -d '{"title": "Работа"}'
+Это упрощает интеграцию с `docker logs`, journald, Loki, ELK и т.п.
 
-# добавить участника со списка со ролью viewer
-curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
-  -X POST http://localhost:5000/api/lists/<list-id>/memberships -d '{"userId": "<user-id>", "role": "viewer"}'
+### Reverse-proxy / TLS
 
-# попытка viewer-а удалить список -> 403 permission_denied
-curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" \
-  -X DELETE http://localhost:5000/api/lists/<list-id>
-```
+Backend рассчитан на работу **за nginx/Caddy reverse-proxy**. Для production:
 
-## Meetings / Recurrence / Notifications / SavedViews (Промпт 17)
+- наружу публикуется TLS-терминатор (в проекте выбран Caddy, см. корневой `Caddyfile.example`);
+- внутренний nginx (`frontend`) продолжает отдавать SPA и проксировать `/api` на backend;
+- backend получает `X-Forwarded-For` / `X-Forwarded-Proto`, которые обрабатываются `ProxyFix`.
 
-### Client/server split: meetings/recurrence/notifications
+Это важно для корректной работы:
 
-Некоторые вычисления, которые в mock-режиме делал фронтенд (`src/services`,
-`src/stores`), теперь либо перенесены на backend как единственный источник
-правды, либо остаются "как есть" на фронте, если они опираются на уже
-существующие server-side эндпоинты и не создают риска рассинхронизации между
-клиентами:
+- `SESSION_COOKIE_SECURE=True`
+- CSRF и scheme-aware redirect/cookie поведения
+- rate limiting по реальному IP клиента, а не по IP reverse-proxy
+- audit / error logging с реальным `remote_addr`
 
-- **unfinishedCount встреч** — перенесено на backend.
-  `MeetingRepository.unfinished_total_count` считает количество задач серии
-  (`tasks.meeting_id == meetings.id`) со статусом, отличным от `done`/`cancelled`,
-  и это поле возвращается в `MeetingResponseDTO.unfinishedCount` при любом
-  чтении встречи (`GET /meetings`, `GET /meetings/:id`, create/update). Это
-  аналог `MeetingDetailView.vue.unfinishedTotalCount`, но posчитанный один раз
-  на сервере, а не пересчитываемый каждым клиентом из полного списка задач.
-- **Генерация следующего инстанса completion_based-серии** — перенесено на
-  backend. `RecurrenceRepository.on_task_completed` (порт
-  `RecurrenceService.js.onTaskCompleted` + `computeNextOccurrence`) вызывается
-  из `app/tasks/routes.py.update_task` в момент перехода `status -> done`,
-  а не только на фронте (`tasksStore` там же вызывал `recurrenceService`).
-  `fixed_schedule`-шаблоны не генерируются здесь — их инстансы создаются
-  заранее background job'ом (вне скопа этого шага, см. Roadmap).
-- **unfinishedGroupsByOccurrence на MeetingDetailView.vue** — оставлено на
-  фронтенде как есть. Это чисто UI-группировка уже полученного списка задач
-  серии (`GET /tasks?listId=...` + фильтр `meetingId`/`occurrenceId` на
-  клиенте), не требует отдельного backend-агрегата и не создаёт рисков
-  рассинхронизации, так как исходные данные (задачи) уже приходят с сервера.
-- **due_soon / overdue уведомления** — временно остаются как создание через
-  `POST /notifications` с фронтенда (аналог того, как это делал
-  `tasksStore`/`NotificationService.js` в mock-режиме): клиент сам сравнивает
-  `dueDate` задач с текущим временем и создаёт уведомление через этот
-  эндпоинт. Полноценный перенос на серверный scheduler/background job,
-  который сканирует все `due_date` независимо от того, открыт ли у кого-то
-  клиент, — задача Промпта 19 (см. Roadmap), в этом шаге не реализована.
+### Backup baseline
 
-### Meetings
+План базовой эксплуатационной готовности для production описан в корневом `README.md`:
 
-| Метод | Путь | Описание |
-| --- | --- | --- |
-| GET | `/api/meetings` | все встречи, каждая с `unfinishedCount` |
-| POST | `/api/meetings` | создание встречи + участников |
-| GET | `/api/meetings/:id` | одна встреча |
-| PATCH | `/api/meetings/:id` | частичное обновление; `occurrences` в теле полностью заменяет список подстреч (порт `meetingsStore.ensureOccurrences`/`updateOccurrence`) |
-| DELETE | `/api/meetings/:id` | удаление; связанные задачи получают `meetingId=null` |
-| GET | `/api/meetings/:id/occurrences` | список подстреч регулярной серии |
-
-### Recurrence templates
-
-| Метод | Путь | Описание |
-| --- | --- | --- |
-| GET | `/api/recurrence?listId=` | список шаблонов, опционально по списку |
-| POST | `/api/recurrence` | создание шаблона |
-| GET | `/api/recurrence/:id` | один шаблон |
-| PATCH | `/api/recurrence/:id` | частичное обновление |
-| DELETE | `/api/recurrence/:id` | удаление |
-
-### Notifications
-
-| Метод | Путь | Описание |
-| --- | --- | --- |
-| GET | `/api/notifications?userId=` | по умолчанию — уведомления текущего пользователя |
-| POST | `/api/notifications` | создание уведомления (временное решение, см. выше) |
-| PATCH | `/api/notifications/:id` | `{ read: true/false }` |
-| DELETE | `/api/notifications/:id` | удаление |
-| POST | `/api/notifications/mark-all-read` | массовая отметка прочитанным для текущего пользователя |
-
-### Saved views
-
-Личный ресурс — всегда привязан к `user_id` текущего пользователя;
-PATCH/DELETE чужого вида возвращают `403 permission_denied`.
-
-| Метод | Путь | Описание |
-| --- | --- | --- |
-| GET | `/api/saved-views?userId=` | по умолчанию — виды текущего пользователя |
-| POST | `/api/saved-views` | создание |
-| PATCH | `/api/saved-views/:id` | частичное обновление |
-| DELETE | `/api/saved-views/:id` | удаление |
+- ежедневный `pg_dump -Fc` через sidecar/cron-подобный цикл в `docker-compose.yml`;
+- retention по `BACKUP_RETENTION_DAYS`;
+- восстановление через `pg_restore`;
+- для SQLite (dev/test) — файловые snapshot backups на уровне хоста.
 
 ## Оставшиеся заглушки 501
 
@@ -420,6 +382,7 @@ cd backend
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export FLASK_ENV=production
+export SECRET_KEY=$(python -c 'import secrets; print(secrets.token_hex(32))')
 export DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/dbname
 alembic upgrade head
 python wsgi.py
