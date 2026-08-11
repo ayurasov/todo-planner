@@ -125,6 +125,20 @@ python wsgi.py
 # временные пароли для пользователей admin/user — сохраните их сразу
 ```
 
+Для ручного/авто-тестирования матрицы ролей (не только admin/user) запустите дополнительно seed-скрипт с
+реалистичным набором участников:
+
+```bash
+cd backend
+source .venv/bin/activate
+export FLASK_ENV=development
+python seed_demo_data.py
+# создаёт demo-admin1/demo-admin2 (global admin), demo-alice/demo-bob/demo-carol
+# (обычные пользователи) и списки с разными комбинациями ролей owner/editor/
+# viewer/assignee — пароли печатаются в консоль один раз. Скрипт идемпотентен,
+# повторный запуск не создаёт дублей.
+```
+
 Запуск фронтенда (в отдельном терминале):
 
 ```bash
@@ -137,7 +151,8 @@ npm run dev
 ```
 
 - Открыть http://localhost:5173 — приложение покажет `LoginView`, пока не будет активной сессии.
-- Авторизоваться логином/паролем из консоли backend (`admin` или `user`).
+- Авторизоваться логином/паролем из консоли backend (`admin` или `user`, либо `demo-*` после запуска
+  `seed_demo_data.py`).
 - Сессии — cookie-based (`Flask-Session`, не JWT), CSRF — заголовок `X-CSRF-Token`, полученный через
   `GET /api/auth/csrf-token` (детали см. `backend/README.md`).
 
@@ -151,7 +166,8 @@ npm run dev
 ## Smoke-checklist (ручная проверка)
 
 Выполнять после любого значимого изменения в auth/permissions/repositories слоях, в режиме `VITE_API_MODE=http`
-(если не указано иное).
+(если не указано иное). Для шагов 8-9 предварительно запустите `python seed_demo_data.py` (см. выше) — он
+создаёт пользователей с ролями Owner/Editor, необходимыми для этих проверок.
 
 1. **Login/logout** — открыть `/`, убедиться в редиректе на `/login`; ввести логин/пароль из консоли backend →
    попасть на `/my-tasks`; выполнить logout (кнопка в `AppTopBar`/`SettingsView`) → редирект обратно на `/login`,
@@ -172,6 +188,17 @@ npm run dev
    состоит явным участником (bypass через `is_global_admin`).
 7. **Переключение mock ↔ http только через `.env`** — поменять `VITE_API_MODE` в `.env`, перезапустить
    `npm run dev` (без правок в `src/`) → приложение должно продолжать работать в новом режиме.
+8. **Editor может создавать/редактировать задачи, но не управлять участниками и не удалять список** —
+   залогиниться как `demo-bob` (Editor в списке `Demo: Marketing`), убедиться, что кнопки "Создать задачу" и
+   редактирование любой задачи списка доступны и проходят успешно; открыть настройки списка/участников — пункт
+   управления участниками и кнопка удаления списка должны быть скрыты/disabled в UI, а прямой `curl -X POST
+   .../api/lists/:id/memberships` и `curl -X DELETE .../api/lists/:id` от имени Editor — вернуть `403`.
+9. **Owner может управлять участниками и удалять список, Viewer/Assignee — нет** — залогиниться как
+   `demo-alice` (Owner в `Demo: Marketing`), добавить/удалить участника через `Lists Manager` → должно пройти
+   успешно (`201`/`204`); затем залогиниться как `demo-carol` (Viewer в этом же списке) — раздел управления
+   участниками должен быть скрыт в UI, а `curl -X POST .../api/lists/:id/memberships` от её имени — вернуть
+   `403`. Дополнительно проверить, что Assignee (`demo-carol` в списке `Demo: Engineering`) может редактировать
+   только назначенные на неё задачи, но получает `403` при попытке отредактировать чужую задачу того же списка.
 
 ## Известные ограничения
 
@@ -201,3 +228,7 @@ npm run dev
   задач, — включая изменения списков, участников, ролей и попытки 403.
 - **E2E tests** — автоматизированные сценарии (Playwright/Cypress) для smoke-checklist выше, чтобы не проверять
   login/logout/403/401/permissions вручную перед каждым релизом.
+- **Role-matrix integration tests** — `backend/tests/test_role_matrix.py` (Промпт 18) уже покрывает матрицу
+  ролей на уровне HTTP API; следующий шаг — аналогичные frontend-тесты (Vitest) на `PermissionService.js` и
+  `useTaskPermissions`/`useListPermissions`, чтобы фиксировать паритет с backend автоматически, а не только
+  вручную по smoke-checklist.
