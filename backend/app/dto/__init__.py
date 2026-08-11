@@ -8,6 +8,7 @@ from app.dto.schemas import (
     UserResponseDTO,
     LoginRequestDTO,
     LoginResponseDTO,
+    ChangePasswordRequestDTO,
     ListResponseDTO,
     ListCreateDTO,
     ListUpdateDTO,
@@ -40,6 +41,7 @@ from app.dto.schemas import (
 
 __all__ = [
     "CamelModel", "UserResponseDTO", "LoginRequestDTO", "LoginResponseDTO",
+    "ChangePasswordRequestDTO",
     "ListResponseDTO", "ListCreateDTO", "ListUpdateDTO", "ListMembershipResponseDTO",
     "ChecklistItemResponseDTO", "ChecklistItemCreateDTO", "CommentResponseDTO",
     "CommentCreateDTO", "NoteResponseDTO", "NoteUpdateDTO", "AttachmentResponseDTO",

@@ -8,6 +8,11 @@
   совместимости с будущими клиентами;
 - BASE_URL фронтенда = '/api' -> весь URL-space backend строится под этим
   префиксом на уровне blueprints, а не здесь.
+
+Промпт 23 (security review): production-профиль больше не допускает дефолтный
+секрет -- отсутствие SECRET_KEY или известный placeholder в окружении валит
+старт приложения с явной ошибкой (fail-fast), а не тихо работает на
+предсказуемом значении.
 """
 
 import os
@@ -15,11 +20,21 @@ import os
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 DEFAULT_SQLITE_URI = f"sqlite:///{os.path.join(BASE_DIR, 'todo_planner.db')}"
 
+_INSECURE_DEV_SECRET_KEY = "dev-secret-key"
+# Плейсхолдеры, встретившиеся в .env.example (корень/backend) и docker-compose.yml --
+# если кто-то скопирует .env без редактирования, production всё равно должен
+# упасть с явной ошибкой, а не тихо заработать с предсказуемым секретом.
+_KNOWN_INSECURE_SECRET_KEYS = {
+    _INSECURE_DEV_SECRET_KEY,
+    "change-me-in-production",
+    "",
+}
+
 
 class BaseConfig:
     """Общие настройки для всех окружений."""
 
-    SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key")
+    SECRET_KEY = os.environ.get("SECRET_KEY", _INSECURE_DEV_SECRET_KEY)
 
     DATABASE_URL = os.environ.get("DATABASE_URL")
     SQLALCHEMY_DATABASE_URI = os.environ.get(
@@ -36,8 +51,12 @@ class BaseConfig:
     SESSION_USE_SIGNER = True
     SESSION_FILE_DIR = os.path.join(BASE_DIR, ".flask_session")
     SESSION_COOKIE_NAME = "todo_planner_session"
+    # HttpOnly -- cookie недоступна из JS (защита от XSS-кражи сессии).
     SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = "Lax"
+    # Lax -- баланс между CSRF-защитой и обычными top-level GET-переходами;
+    # может быть переопределен через SESSION_COOKIE_SAMESITE env, если frontend и backend
+    # разнесены по разным origin и нужен 'None' (тогда обязателен Secure=True + HTTPS).
+    SESSION_COOKIE_SAMESITE = os.environ.get("SESSION_COOKIE_SAMESITE", "Lax")
     SESSION_COOKIE_SECURE = False
 
     WTF_CSRF_ENABLED = True
@@ -51,6 +70,17 @@ class BaseConfig:
         if origin.strip()
     ]
     CORS_SUPPORTS_CREDENTIALS = True
+
+    # Rate limiting (Flask-Limiter) -- защита /api/auth/login от brute-force.
+    # Файловый storage подходит для single-instance deployment; для multi-worker/
+    # multi-instance production ставьте RATELIMIT_STORAGE_URI=redis://... (Flask-Limiter
+    # поддерживает это из коробки, добавление Redis в docker-compose -- отдельный шаг).
+    RATELIMIT_ENABLED = os.environ.get("RATELIMIT_ENABLED", "true").lower() != "false"
+    RATELIMIT_STORAGE_URI = os.environ.get("RATELIMIT_STORAGE_URI", "memory://")
+    RATELIMIT_DEFAULT = None
+    RATELIMIT_HEADERS_ENABLED = True
+    # /api/auth/login: не более 10 попыток в минуту и 50 в час с одного IP.
+    LOGIN_RATE_LIMIT = os.environ.get("LOGIN_RATE_LIMIT", "10 per minute;50 per hour")
 
 
 class DevelopmentConfig(BaseConfig):
@@ -66,6 +96,7 @@ class TestingConfig(BaseConfig):
     WTF_CSRF_ENABLED = False
     SESSION_TYPE = "filesystem"
     SESSION_FILE_DIR = os.path.join(BASE_DIR, ".flask_session_test")
+    RATELIMIT_ENABLED = False
 
 
 class ProductionConfig(BaseConfig):
@@ -80,6 +111,26 @@ class ProductionConfig(BaseConfig):
         "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", "5")),
     }
 
+    def __init__(self):
+        raise RuntimeError("ProductionConfig используется как класс, не инстанцируется")
+
+
+def _require_production_secret_key():
+    """Fail-fast: в production запрещён дефолтный/известный placeholder SECRET_KEY.
+    Без этой проверки приложение тихо стартовало бы с предсказуемым секретом,
+    что ломает безопасность сессии и CSRF-токенов.
+    """
+
+    secret_key = os.environ.get("SECRET_KEY")
+    if not secret_key or secret_key in _KNOWN_INSECURE_SECRET_KEYS:
+        raise RuntimeError(
+            "SECRET_KEY не задан (или используется известный insecure-плейсхолдер, "
+            "например 'change-me-in-production'). "
+            "Для FLASK_ENV=production обязательно установите переменную окружения "
+            "SECRET_KEY на длинную случайную строку (например, "
+            "`python -c 'import secrets; print(secrets.token_hex(32))'`) перед запуском."
+        )
+
 
 config_by_name = {
     "development": DevelopmentConfig,
@@ -90,4 +141,6 @@ config_by_name = {
 
 def get_config(name=None):
     name = name or os.environ.get("FLASK_ENV", "development")
+    if name == "production":
+        _require_production_secret_key()
     return config_by_name.get(name, DevelopmentConfig)

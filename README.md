@@ -12,7 +12,8 @@
 
 ```bash
 cp .env.example .env
-# отредактируйте SECRET_KEY, POSTGRES_PASSWORD, DATABASE_URL, FRONTEND_ORIGIN
+# обязательно задайте SECRET_KEY, POSTGRES_PASSWORD, DATABASE_URL, FRONTEND_ORIGIN
+# SECRET_KEY: python -c "import secrets; print(secrets.token_hex(32))"
 
 docker compose up -d --build
 ```
@@ -23,8 +24,9 @@ docker compose up -d --build
 - `backend` — Flask/Gunicorn контейнер из `backend/Dockerfile`; перед стартом приложения
   entrypoint ждёт доступность Postgres и выполняет `alembic upgrade head`.
 - `frontend` — статическая сборка Vite в nginx; nginx отдаёт SPA и проксирует `/api/*`
-  в backend (`http://backend:5000/api/*`), поэтому снаружи приложение доступно на
-  одном origin, обычно `http://<server>`.
+  в backend (`http://backend:5000/api/*`), поэтому приложение работает в same-origin режиме.
+- `backup` — sidecar на `postgres:16-alpine`, который делает ежедневный `pg_dump -Fc`
+  в volume `db_backups` и удаляет файлы старше `BACKUP_RETENTION_DAYS`.
 
 После запуска:
 
@@ -38,18 +40,125 @@ docker compose up -d --build
   healthcheck на `/api/health`.
 - `Dockerfile` (корень проекта) — multi-stage сборка фронтенда: `npm ci` + `npm run build`,
   финальный runtime-образ — `nginx:alpine`.
-- `docker-compose.yml` — три сервиса (`db`, `backend`, `frontend`) с healthchecks и порядком старта:
-  `backend` зависит от healthy `db`, `frontend` зависит от healthy `backend`.
+- `docker-compose.yml` — сервисы `db`, `backend`, `frontend`, `backup` с healthchecks и порядком старта:
+  `backend` зависит от healthy `db`, `frontend` зависит от healthy `backend`, `backup` ждёт healthy `db`.
 
 ### Продовые переменные
 
 См. корневой `.env.example`:
 
 - `DATABASE_URL` — строка подключения к Postgres для backend;
-- `SECRET_KEY` — секрет Flask-сессий/CSRF;
+- `SECRET_KEY` — обязательный секрет Flask-сессий/CSRF; без него backend **не стартует**;
 - `FRONTEND_ORIGIN` — публичный origin фронтенда (например, `https://todo.example.com`);
+- `SESSION_COOKIE_SAMESITE` — политика cookie (`Lax` по умолчанию; `None` только вместе с HTTPS);
+- `RATELIMIT_STORAGE_URI` и `LOGIN_RATE_LIMIT` — настройки rate limiting для `POST /api/auth/login`;
+- `BACKUP_RETENTION_DAYS` — сколько дней хранить `pg_dump`-бэкапы;
 - `VITE_API_MODE=http` — фронтенд собирается в HTTP-режиме;
 - `VITE_API_BASE_URL=/api` — фронтенд обращается к backend через same-origin nginx proxy.
+
+### HTTPS / reverse-proxy
+
+Для реального сервера приложение должно публиковаться **не напрямую через `frontend:80`**, а через reverse-proxy с TLS.
+В проекте выбран **Caddy** как наиболее простой вариант: он сам выпускает и продлевает сертификаты Let's Encrypt.
+
+Минимальная схема:
+
+1. Оставить `frontend` как внутренний nginx на `:80` внутри compose-сети.
+2. Убрать внешний `ports: ["80:80"]` у `frontend` в production-сборке.
+3. Поставить перед ним Caddy с `ports: ["80:80", "443:443"]`.
+4. Настроить `reverse_proxy frontend:80` и домен в `Caddyfile`.
+
+В репозитории уже добавлен `Caddyfile.example`:
+
+```caddy
+# замените todo.example.com на ваш домен
+
+todo.example.com {
+    reverse_proxy frontend:80
+
+    encode gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+}
+```
+
+Пример сервиса Caddy для `docker-compose.yml`:
+
+```yaml
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+```
+
+Важно:
+
+- `FRONTEND_ORIGIN` в `.env` должен совпадать с публичным `https://...` доменом.
+- В production backend ставит `SESSION_COOKIE_SECURE=True`, `SESSION_COOKIE_HTTPONLY=True`
+  и требует реальный `SECRET_KEY` из env; при использовании `SESSION_COOKIE_SAMESITE=None`
+  HTTPS обязателен.
+- `ProxyFix` в backend уже включён для production, поэтому `X-Forwarded-For` / `X-Forwarded-Proto`
+  от nginx/Caddy корректно учитываются для логов, CSRF/secure-cookies и rate limiting.
+
+### Backup / ротация
+
+В `docker-compose.yml` добавлен сервис `backup`, который раз в день в `03:00 UTC` выполняет:
+
+```bash
+pg_dump -Fc -f /backups/todo_planner_YYYYmmddTHHMMSSZ.dump
+find /backups -name '*.dump' -mtime +$BACKUP_RETENTION_DAYS -delete
+```
+
+Это минимальный, но рабочий baseline для эксплуатации:
+
+- backup-файлы лежат в Docker volume `db_backups`;
+- retention регулируется переменной `BACKUP_RETENTION_DAYS` (по умолчанию 14);
+- формат `-Fc` подходит для точечного восстановления через `pg_restore`.
+
+Примеры ручных команд:
+
+```bash
+# список файлов
+
+docker volume inspect todo-planner_db_backups
+
+# разовый manual backup
+
+docker compose exec backup sh -c 'FILE=/backups/manual_$(date -u +%Y%m%dT%H%M%SZ).dump && pg_dump -Fc -f "$FILE" && echo $FILE'
+
+# восстановление в пустую БД (пример)
+
+docker compose exec -T db dropdb -U "$POSTGRES_USER" "$POSTGRES_DB"
+docker compose exec -T db createdb -U "$POSTGRES_USER" "$POSTGRES_DB"
+docker compose exec -T backup sh -c 'pg_restore -d "$PGDATABASE" /backups/<backup-file>.dump'
+```
+
+Для SQLite (development/testing) достаточно ротации snapshot-копий файла БД по cron на хосте;
+для production-окружения основной сценарий здесь — Postgres + `pg_dump`.
+
+### Логирование и базовые security-controls
+
+Backend для production теперь включает:
+
+- `SESSION_COOKIE_SECURE=True`, `SESSION_COOKIE_HTTPONLY=True`, настраиваемый `SESSION_COOKIE_SAMESITE`;
+- fail-fast старт при пустом/placeholder `SECRET_KEY`;
+- rate limiting на `POST /api/auth/login` (`Flask-Limiter`) против brute-force;
+- `POST /api/auth/change-password` для авторизованного пользователя;
+- structured JSON logging через `app.logger`/stdout вместо `print()` для ошибок и operational log shipping.
 
 ### Обновление после новой версии
 
@@ -128,7 +237,7 @@ GitHub Actions workflow (`.github/workflows/`):
 - **`backend-ci.yml`** — триггерится по путям `backend/**`. Шаги:
   `pip install -r requirements.txt -r requirements-dev.txt` →
   `ruff check .` (минимальный конфиг в `backend/ruff.toml`) → `pytest`
-  (тесты из Промпта 20). Падает при любой ошибке линтинга или упавшем тесте.
+  (тесты из Промпта 20/23). Падает при любой ошибке линтинга или упавшем тесте.
 
 Статус обоих workflow отражён бейджами в начале этого файла.
 
@@ -246,7 +355,7 @@ pip install -r requirements.txt
 cp .env.example .env
 export FLASK_ENV=development
 python wsgi.py
-# слушает http://localhost:5000, при первом запуске печатает в консоль
+# слушает http://localhost:5000, при первом запуске печатает в лог
 # временные пароли для пользователей admin/user — сохраните их сразу
 ```
 
@@ -260,7 +369,7 @@ export FLASK_ENV=development
 python seed_demo_data.py
 # создаёт demo-admin1/demo-admin2 (global admin), demo-alice/demo-bob/demo-carol
 # (обычные пользователи) и списки с разными комбинациями ролей owner/editor/
-# viewer/assignee — пароли печатаются в консоль один раз. Скрипт идемпотентен,
+# viewer/assignee — пароли печатаются в лог один раз. Скрипт идемпотентен,
 # повторный запуск не создаёт дублей.
 ```
 
@@ -276,7 +385,7 @@ npm run dev
 ```
 
 - Открыть http://localhost:5173 — приложение покажет `LoginView`, пока не будет активной сессии.
-- Авторизоваться логином/паролем из консоли backend (`admin` или `user`, либо `demo-*` после запуска
+- Авторизоваться логином/паролем из логов backend (`admin` или `user`, либо `demo-*` после запуска
   `seed_demo_data.py`).
 - Сессии — cookie-based (`Flask-Session`, не JWT), CSRF — заголовок `X-CSRF-Token`, полученный через
   `GET /api/auth/csrf-token` (детали см. `backend/README.md`).
@@ -294,7 +403,7 @@ npm run dev
 (если не указано иное). Для шагов 8-9 предварительно запустите `python seed_demo_data.py` (см. выше) — он
 создаёт пользователей с ролями Owner/Editor, необходимыми для этих проверок.
 
-1. **Login/logout** — открыть `/`, убедиться в редиректе на `/login`; ввести логин/пароль из консоли backend →
+1. **Login/logout** — открыть `/`, убедиться в редиректе на `/login`; ввести логин/пароль из логов backend →
    попасть на `/my-tasks`; выполнить logout (кнопка в `AppTopBar`/`SettingsView`) → редирект обратно на `/login`,
    повторный заход на `/my-tasks` без логина снова уводит на `/login`.
 2. **Получение CSRF token** — открыть devtools → Network при первой загрузке приложения, убедиться, что
@@ -337,9 +446,11 @@ npm run dev
   (`PermissionService.js`) — это чисто UX-слой без реальной защиты. В http-режиме проверяются и клиент (для
   мгновенного UX — скрытие кнопок, disabled-состояния), и сервер (`permission_service.py`, реальный источник
   истины, отдаёт 403 на нарушения).
-- Backend CRUD-роуты для `tasks`/`lists`/`users`/`meetings` и остальных ресурсов на момент этого README всё ещё
-  частично возвращают `501 Not Implemented` — auth и permission-guards реализованы и покрыты contract-ready
-  заглушками, но полноценная бизнес-логика поверх ORM для каждого ресурса — отдельный шаг после auth/permissions.
+- **Rate limiting по умолчанию memory-based.** Текущая конфигурация `Flask-Limiter` подходит для single-instance
+  deployment; при нескольких backend-репликах или gunicorn worker'ах для строгой общей квоты лучше вынести
+  `RATELIMIT_STORAGE_URI` в Redis.
+- **Backup-rotation здесь базовая.** Ежедневный `pg_dump` в Docker volume решает baseline-восстановление, но не
+  заменяет offsite/backblaze/s3-репликацию, мониторинг успешности backup-job и регулярные restore-drill проверки.
 
 ## Roadmap: что дальше после v2
 
