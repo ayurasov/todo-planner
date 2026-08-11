@@ -4,6 +4,8 @@
 """
 
 from app.models.models import (
+    DepartmentORM,
+    ManagerDepartmentORM,
     UserORM,
     ListORM,
     ListMembershipORM,
@@ -27,6 +29,7 @@ from app.models.models import (
 )
 
 __all__ = [
+    "DepartmentORM", "ManagerDepartmentORM",
     "UserORM", "ListORM", "ListMembershipORM", "MeetingORM", "MeetingAttendeeORM",
     "MeetingOccurrenceORM", "RecurrenceTemplateORM", "TaskORM", "TaskTagORM",
     "TaskWatcherORM", "ChecklistItemORM", "NoteORM", "AttachmentORM",

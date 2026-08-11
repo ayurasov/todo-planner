@@ -54,6 +54,34 @@ class JSONVariant(TypeDecorator):
 ID_LEN = 36
 
 
+class DepartmentORM(db.Model):
+    """Отдел/служба -- плоский справочник (без иерархии, без parent_id),
+    настраиваемый администратором. Используется для тегирования пользователей,
+    списков задач и встреч (см. department_id в UserORM/ListORM/MeetingORM), а
+    также для определения зоны ответственности руководителя (ManagerDepartmentORM).
+    """
+
+    __tablename__ = "departments"
+
+    id = db.Column(db.String(ID_LEN), primary_key=True)
+    name = db.Column(db.Text, nullable=False, unique=True)
+    created_at = db.Column(TZDateTime(), nullable=False)
+    updated_at = db.Column(TZDateTime(), nullable=False)
+
+
+class ManagerDepartmentORM(db.Model):
+    """Связь many-to-many "руководитель -- отделы, которыми он управляет".
+    Один руководитель (UserORM.global_role == 'manager') может быть назначен
+    руководителем нескольких отделов/служб одновременно -- поэтому это
+    отдельная таблица связей, а не одиночный department_id на UserORM.
+    """
+
+    __tablename__ = "manager_departments"
+
+    user_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    department_id = db.Column(db.String(ID_LEN), db.ForeignKey("departments.id", ondelete="CASCADE"), primary_key=True)
+
+
 class UserORM(db.Model):
     __tablename__ = "users"
 
@@ -68,6 +96,10 @@ class UserORM(db.Model):
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     position = db.Column(db.Text)
     department = db.Column(db.Text)
+    # department_id -- ссылка на настраиваемый справочник Department (плоский
+    # список, без иерархии). Отдельно от manager_departments -- это отдел, в
+    # котором сам сотрудник работает, а не который он возглавляет.
+    department_id = db.Column(db.String(ID_LEN), db.ForeignKey("departments.id", ondelete="SET NULL"))
     created_at = db.Column(TZDateTime(), nullable=False)
     updated_at = db.Column(TZDateTime(), nullable=False)
 
@@ -84,6 +116,7 @@ class ListORM(db.Model):
     settings = db.Column(JSONVariant(), nullable=False, default=dict)
     archived = db.Column(db.Boolean, nullable=False, default=False)
     order_index = db.Column(db.Integer, nullable=False, default=0)
+    department_id = db.Column(db.String(ID_LEN), db.ForeignKey("departments.id", ondelete="SET NULL"))
     created_at = db.Column(TZDateTime(), nullable=False)
     updated_at = db.Column(TZDateTime(), nullable=False)
 
@@ -110,6 +143,7 @@ class MeetingORM(db.Model):
     archived = db.Column(db.Boolean, nullable=False, default=False)
     order_index = db.Column(db.Integer, nullable=False, default=0)
     recurrence = db.Column(JSONVariant())
+    department_id = db.Column(db.String(ID_LEN), db.ForeignKey("departments.id", ondelete="SET NULL"))
     created_by = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="SET NULL"))
     created_at = db.Column(TZDateTime(), nullable=False)
 
