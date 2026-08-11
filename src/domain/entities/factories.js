@@ -77,10 +77,10 @@ export function createMeeting({
 }
 
 // occurrences — материализованные подвстречи регулярной серии. Каждая:
-// { id, date (ISO), description, link, generatedAt }. Первая подвстреча — это
-// сама дата meeting.date, дальше идут будущие даты по правилу recurrence.
-// Появляются автоматически за день до начала (см. MeetingOccurrenceService.ensureOccurrences),
-// описание/ссылку пользователь заполняет вручную по каждой конкретной подвстрече.
+// { id, date (ISO), description, link, generatedAt }. В отличие от старой модели,
+// ни одна подвстреча не создаётся автоматически: пользователь добавляет их вручную
+// кнопкой "Добавить подвстречу серии" (см. meetingsStore.addOccurrence и
+// MeetingOccurrenceService.computeNextSuggestedDate для подсказки следующей даты).
 export function createMeetingOccurrence({ id, meetingId, date, description = '', link = '', generatedAt = new Date().toISOString() }) {
   return { id: id || nextId('occ'), meetingId, date, description, link, generatedAt }
 }

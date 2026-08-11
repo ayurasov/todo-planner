@@ -13,8 +13,9 @@ import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 import RichTextEditor from '../components/common/RichTextEditor.vue'
-import { formatDateTime, formatMeetingRecurrence } from '../utils/formatters'
+import { formatDateTime, formatTime, formatMeetingRecurrence } from '../utils/formatters'
 import { meetingSummaryParser, MATCHED_PATTERN_LABEL } from '../services/MeetingSummaryParser'
+import { meetingOccurrenceService } from '../services/MeetingOccurrenceService'
 
 const props = defineProps({ id: { type: String, required: true } })
 const router = useRouter()
@@ -42,6 +43,9 @@ const activeOccurrence = ref(null)
 const occurrenceDraft = ref({ description: '', link: '' })
 const occurrenceEditing = ref(false)
 
+const addingOccurrence = ref(false)
+const newOccurrenceDraft = ref({ date: '', time: '', description: '', link: '' })
+
 const WEEKDAY_OPTIONS = [
   { value: 1, label: 'Пн' },
   { value: 2, label: 'Вт' },
@@ -57,7 +61,6 @@ onMounted(async () => {
   if (!tasksStore.loaded) await tasksStore.load()
   if (!listsStore.loaded) await listsStore.load()
   if (!usersStore.loaded) await usersStore.load()
-  if (isRecurring.value) await meetingsStore.ensureOccurrences(props.id)
   // Группировка по исполнителю внутри подвстреч больше не форсируется —
   // задачи каждой подвстречи показываются простым списком без лишней
   // иерархии; пользователь может сам включить нужную группировку в
@@ -149,6 +152,39 @@ function startEditOccurrence() {
   occurrenceEditing.value = true
 }
 
+function openAddOccurrenceForm() {
+  const suggested = meetingOccurrenceService.computeNextSuggestedDate(meeting.value)
+  const d = suggested ? new Date(suggested) : new Date()
+  newOccurrenceDraft.value = {
+    date: d.toISOString().slice(0, 10),
+    time: d.toTimeString().slice(0, 5),
+    description: '',
+    link: '',
+  }
+  addingOccurrence.value = true
+}
+
+function closeAddOccurrenceForm() {
+  addingOccurrence.value = false
+}
+
+async function submitAddOccurrence() {
+  if (!newOccurrenceDraft.value.date) return
+  const isoDate = new Date(`${newOccurrenceDraft.value.date}T${newOccurrenceDraft.value.time || '00:00'}`).toISOString()
+  await meetingsStore.addOccurrence(props.id, {
+    date: isoDate,
+    description: newOccurrenceDraft.value.description,
+    link: newOccurrenceDraft.value.link.trim(),
+  })
+  addingOccurrence.value = false
+}
+
+async function removeOccurrenceConfirm(occ) {
+  if (!confirm('Удалить эту подвстречу? Задачи, привязанные к ней, останутся, но потеряют привязку к подвстрече.')) return
+  await meetingsStore.removeOccurrence(props.id, occ.id, { tasksStore })
+  if (activeOccurrence.value?.id === occ.id) closeOccurrence()
+}
+
 async function saveOccurrence() {
   await meetingsStore.updateOccurrence(props.id, activeOccurrence.value.id, {
     description: occurrenceDraft.value.description,
@@ -218,6 +254,13 @@ function toggleEditAttendee(userId) {
   else editDraft.value.attendeeIds.splice(idx, 1)
 }
 
+function withTimeOfDay(baseDate, timeStr) {
+  const [h, m] = (timeStr || '00:00').split(':').map(Number)
+  const d = new Date(baseDate)
+  d.setHours(h || 0, m || 0, 0, 0)
+  return d.toISOString()
+}
+
 function toggleWeekday(day) {
   const idx = editDraft.value.recurrenceWeekdays.indexOf(day)
   if (idx === -1) editDraft.value.recurrenceWeekdays.push(day)
@@ -225,8 +268,13 @@ function toggleWeekday(day) {
 }
 
 async function saveEdit() {
-  if (!editDraft.value.title.trim() || !editDraft.value.date) return
-  const isoDate = new Date(`${editDraft.value.date}T${editDraft.value.time || '00:00'}`).toISOString()
+  if (!editDraft.value.title.trim()) return
+  if (!isRecurring.value && !editDraft.value.date) return
+  // Для регулярной встречи дата серии (meeting.date) не редактируется — это дата
+  // создания встречи, меняется только время суток по умолчанию для серии.
+  const isoDate = isRecurring.value
+    ? withTimeOfDay(meeting.value.date, editDraft.value.time || '00:00')
+    : new Date(`${editDraft.value.date}T${editDraft.value.time || '00:00'}`).toISOString()
   const recurrence = editDraft.value.recurrenceEnabled
     ? {
         freq: editDraft.value.recurrenceFreq,
@@ -289,7 +337,7 @@ function toggleArchived() {
         <span v-if="meeting.archived" class="tag archived-tag">В архиве</span>
       </h2>
       <div class="meeting-meta meeting-meta-wrap">
-        <span class="meta-item"><AppIcon name="alarm" :size="12" /> {{ formatDateTime(meeting.date) }}</span>
+        <span class="meta-item"><AppIcon name="alarm" :size="12" /> {{ isRecurring ? formatTime(meeting.date) : formatDateTime(meeting.date) }}</span>
         <span class="meeting-recurrence meta-item"><AppIcon :name="meetingTypeIcon" :size="12" /> {{ recurrenceLabel }}</span>
         <a v-if="meeting.link" :href="meeting.link" target="_blank" rel="noopener" class="meta-item meeting-link"><AppIcon name="link" :size="12" /> Присоединиться к звонку</a>
         <span v-if="author">· Автор: {{ author.name }}</span>
@@ -322,8 +370,16 @@ function toggleArchived() {
         </div>
       </div>
 
-      <h3 class="tasks-title occurrences-title">Подвстречи серии (все подвстречи и все их задачи)</h3>
+      <div class="occurrences-header-row">
+        <h3 class="tasks-title occurrences-title">Подвстречи серии (все подвстречи и все их задачи)</h3>
+        <button v-if="canManageMeeting" class="btn btn-primary btn-sm" @click="openAddOccurrenceForm">
+          <AppIcon name="plus" :size="13" /> Добавить подвстречу серии
+        </button>
+      </div>
       <QuickFiltersBar :task-count="recurringVisibleTasks.length" :meeting-mode="false" />
+      <div v-if="!occurrenceGroups.length" class="empty-state-inline">
+        Подвстреч пока нет — добавьте первую кнопкой «Добавить подвстречу серии».
+      </div>
       <div class="occurrence-list">
         <div v-for="group in occurrenceGroups" :key="group.occurrence.id" class="occurrence-card card">
           <div class="occurrence-header-wrap">
@@ -334,6 +390,9 @@ function toggleArchived() {
             </button>
             <button v-if="canManageMeeting" class="btn btn-ghost btn-sm" @click="openSummaryParser(group.occurrence)">
               <AppIcon name="layers" :size="13" /> Разбор резюме встречи в задачи
+            </button>
+            <button v-if="canManageMeeting" class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить подвстречу" @click="removeOccurrenceConfirm(group.occurrence)">
+              <AppIcon name="trash" :size="13" />
             </button>
           </div>
 
@@ -358,6 +417,43 @@ function toggleArchived() {
       />
       <TaskListPanel :tasks="meetingTasks" :meeting-mode="true" empty-text="К этой встрече пока не привязано ни одной задачи" />
     </template>
+
+    <div v-if="addingOccurrence" class="modal-overlay" @click.self="closeAddOccurrenceForm">
+      <div class="modal card scroll-thin">
+        <div class="modal-header">
+          <h3>Добавить подвстречу серии</h3>
+          <button class="btn btn-ghost btn-sm" @click="closeAddOccurrenceForm"><AppIcon name="close" :size="13" /></button>
+        </div>
+        <div class="modal-body">
+          <p class="hint-text">
+            Дата/время предзаполнены ближайшим слотом по регламенту серии — при
+            необходимости поправьте перед сохранением.
+          </p>
+          <div class="field-row">
+            <div class="field-group">
+              <label>Дата</label>
+              <input v-model="newOccurrenceDraft.date" type="date" />
+            </div>
+            <div class="field-group">
+              <label>Время</label>
+              <input v-model="newOccurrenceDraft.time" type="time" />
+            </div>
+          </div>
+          <div class="field-group">
+            <label>Ссылка на материалы (опционально)</label>
+            <input v-model="newOccurrenceDraft.link" placeholder="https://..." />
+          </div>
+          <div class="field-group">
+            <label>Описание (опционально)</label>
+            <RichTextEditor v-model="newOccurrenceDraft.description" placeholder="Что обсуждалось / повестка..." />
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" @click="closeAddOccurrenceForm">Отмена</button>
+          <button class="btn btn-primary" @click="submitAddOccurrence">Добавить</button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="activeOccurrence" class="modal-overlay" @click.self="closeOccurrence">
       <div class="modal modal-occurrence card scroll-thin">
@@ -467,12 +563,12 @@ function toggleArchived() {
             <input v-model="editDraft.title" />
           </div>
           <div class="field-row">
-            <div class="field-group">
+            <div v-if="!isRecurring" class="field-group">
               <label>Дата</label>
               <input v-model="editDraft.date" type="date" />
             </div>
             <div class="field-group">
-              <label>Время</label>
+              <label>{{ isRecurring ? 'Время серии' : 'Время' }}</label>
               <input v-model="editDraft.time" type="time" />
             </div>
             <div class="field-group color-field">
@@ -480,6 +576,7 @@ function toggleArchived() {
               <input v-model="editDraft.color" type="color" />
             </div>
           </div>
+          <p v-if="isRecurring" class="hint-text">Дата серии — дата создания встречи, её нельзя изменить. Дату каждой подвстречи задаёте отдельно.</p>
           <div class="field-group">
             <label>Ссылка на звонок</label>
             <input v-model="editDraft.link" placeholder="https://meet.example.com/..." />
@@ -554,6 +651,8 @@ function toggleArchived() {
 .btn-danger-ghost:hover { background: #fdeceb; }
 
 .tasks-title { font-size: 13px; font-weight: 600; margin: 0 0 8px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.03em; }
+.occurrences-header-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 20px; }
+.occurrences-header-row .occurrences-title { margin-top: 0; }
 .occurrences-title { margin-top: 20px; }
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
 .empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }

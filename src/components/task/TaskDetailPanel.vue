@@ -42,6 +42,17 @@ const commentsAllowed = computed(() => parentList.value?.settings?.allowComments
 const isSubtask = computed(() => !!liveTask.value.parentTaskId)
 const parentTask = computed(() => isSubtask.value ? tasksStore.byId(liveTask.value.parentTaskId) : null)
 const linkedMeeting = computed(() => liveTask.value.meetingId ? meetingsStore.meetingById(liveTask.value.meetingId) : null)
+// Задача, привязанная к регулярной серии, может быть перенесена на другую
+// подвстречу той же серии (или отвязана от подвстречи вовсе, оставаясь при
+// этом привязанной к серии в целом) прямо из карточки — без необходимости
+// пересоздавать её через "Добавить задачу для этой подвстречи".
+const linkedMeetingOccurrences = computed(() => (
+  linkedMeeting.value?.recurrence ? meetingsStore.occurrencesOf(linkedMeeting.value.id) : []
+))
+async function changeTaskOccurrence(event) {
+  const value = event.target.value
+  await tasksStore.updateTaskField(liveTask.value.id, 'occurrenceId', value || null)
+}
 const currentAssignee = computed(() => usersStore.byId(liveTask.value.assigneeId))
 const checklistProgress = computed(() => {
   if (!checklist.value.length) return null
@@ -157,6 +168,13 @@ const HISTORY_ICON = {
             <div v-if="linkedMeeting" class="meeting-crumb">
               <AppIcon name="calendar" :size="13" /> <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
               <span class="meeting-crumb-date">{{ formatDateTime(linkedMeeting.date) }}</span>
+              <select
+                v-if="linkedMeetingOccurrences.length" class="occurrence-picker" :value="liveTask.occurrenceId || ''"
+                :disabled="!canEditThisTask" title="Подвстреча серии" @change="changeTaskOccurrence"
+              >
+                <option value="">Без привязки к подвстрече</option>
+                <option v-for="occ in linkedMeetingOccurrences" :key="occ.id" :value="occ.id">{{ formatDateTime(occ.date) }}</option>
+              </select>
             </div>
           </div>
           <input
@@ -436,5 +454,9 @@ const HISTORY_ICON = {
 .meeting-crumb-title,
 .list-crumb-title { font-weight: 600; color: var(--color-text); }
 .meeting-crumb-date { color: var(--color-text-muted); }
+.occurrence-picker {
+  font-size: 12px; border: 1px solid var(--color-border); border-radius: 6px;
+  padding: 2px 6px; background: #fff; color: var(--color-text); margin-left: 4px;
+}
 
 </style>

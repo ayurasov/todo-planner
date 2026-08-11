@@ -5,7 +5,7 @@ import { useMeetingsStore } from '../stores/meetingsStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
 import { useDragReorder } from '../composables/useDragReorder'
-import { formatDateTime, formatMeetingRecurrence } from '../utils/formatters'
+import { formatDateTime, formatTime, formatMeetingRecurrence } from '../utils/formatters'
 import AppIcon from '../components/common/AppIcon.vue'
 import RichTextEditor from '../components/common/RichTextEditor.vue'
 
@@ -29,6 +29,13 @@ const editDraft = ref({
   title: '', date: '', time: '', description: '', link: '', attendeeIds: [], color: '#4f7cff',
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
 })
+
+function withTimeOfDay(date, timeStr) {
+  const [h, m] = (timeStr || '00:00').split(':').map(Number)
+  const d = new Date(date)
+  d.setHours(h || 0, m || 0, 0, 0)
+  return d
+}
 
 const WEEKDAY_OPTIONS = [
   { value: 1, label: 'Пн' },
@@ -114,8 +121,13 @@ function toggleDraftAttendee(userId) {
 }
 
 async function submitCreate() {
-  if (!draft.value.title.trim() || !draft.value.date) return
-  const isoDate = new Date(`${draft.value.date}T${draft.value.time || '00:00'}`).toISOString()
+  if (!draft.value.title.trim()) return
+  if (!draft.value.recurrenceEnabled && !draft.value.date) return
+  // Для регулярной встречи date серии = момент создания (см. правило "дата — это
+  // дата создания, отображается только время"); время суток берётся из поля "Время".
+  const isoDate = draft.value.recurrenceEnabled
+    ? withTimeOfDay(new Date(), draft.value.time || '00:00').toISOString()
+    : new Date(`${draft.value.date}T${draft.value.time || '00:00'}`).toISOString()
   const recurrence = draft.value.recurrenceEnabled
     ? {
         freq: draft.value.recurrenceFreq,
@@ -269,7 +281,7 @@ function isRecurringMeeting(meeting) {
         <p v-if="m.description" class="meeting-card-desc">{{ stripHtml(m.description) }}</p>
       </div>
       <div class="meeting-card-meta">
-        <span class="meeting-card-date"><AppIcon name="alarm" :size="11" /> {{ formatDateTime(m.date) }}</span>
+        <span class="meeting-card-date"><AppIcon name="alarm" :size="11" /> {{ isRecurringMeeting(m) ? formatTime(m.date) : formatDateTime(m.date) }}</span>
         <a v-if="m.link" :href="m.link" target="_blank" class="tag link-tag" @click.stop><AppIcon name="link" :size="11" /> Звонок</a>
         <span v-if="m.attendeeIds?.length" class="tag attendees-tag"><AppIcon name="users" :size="11" /> {{ m.attendeeIds.length }}</span>
         <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag"><AppIcon name="check" :size="11" /> {{ taskCountByMeeting[m.id] }} задач</span>
@@ -295,12 +307,12 @@ function isRecurringMeeting(meeting) {
           <input v-model="draft.title" placeholder="Например: Планёрка по проекту" @keyup.enter="submitCreate" />
         </div>
         <div class="field-row">
-          <div class="field-group">
+          <div v-if="!draft.recurrenceEnabled" class="field-group">
             <label>Дата</label>
             <input v-model="draft.date" type="date" />
           </div>
           <div class="field-group">
-            <label>Время</label>
+            <label>{{ draft.recurrenceEnabled ? 'Время (для всех подвстреч серии по умолчанию)' : 'Время' }}</label>
             <input v-model="draft.time" type="time" />
           </div>
           <div class="field-group color-field">
@@ -308,6 +320,10 @@ function isRecurringMeeting(meeting) {
             <input v-model="draft.color" type="color" />
           </div>
         </div>
+        <p v-if="draft.recurrenceEnabled" class="hint-text">
+          Для регулярной встречи датой серии считается дата создания — отображается только время.
+          Подвстречи вы добавите отдельно после создания, каждая со своей датой.
+        </p>
         <div class="field-group">
           <label>Ссылка на звонок (опционально)</label>
           <input v-model="draft.link" placeholder="https://meet.example.com/..." />
@@ -429,6 +445,7 @@ function isRecurringMeeting(meeting) {
 </template>
 
 <style scoped>
+.hint-text { font-size: 12px; color: var(--color-text-muted); line-height: 1.5; margin: 0 0 4px; }
 .view-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .view-title { display: flex; align-items: center; gap: 8px; }
 .view-title h2 { margin: 0; font-size: 19px; }
