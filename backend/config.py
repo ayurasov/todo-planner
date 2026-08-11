@@ -13,6 +13,7 @@
 import os
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+DEFAULT_SQLITE_URI = f"sqlite:///{os.path.join(BASE_DIR, 'todo_planner.db')}"
 
 
 class BaseConfig:
@@ -20,12 +21,16 @@ class BaseConfig:
 
     SECRET_KEY = os.environ.get("SECRET_KEY", "dev-secret-key")
 
+    DATABASE_URL = os.environ.get("DATABASE_URL")
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "SQLALCHEMY_DATABASE_URI", f"sqlite:///{os.path.join(BASE_DIR, 'todo_planner.db')}"
+        "SQLALCHEMY_DATABASE_URI",
+        DATABASE_URL or DEFAULT_SQLITE_URI,
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+    }
 
-    # --- Flask-Session: server-side sessions, не JWT ---
     SESSION_TYPE = os.environ.get("SESSION_TYPE", "filesystem")
     SESSION_PERMANENT = False
     SESSION_USE_SIGNER = True
@@ -33,15 +38,13 @@ class BaseConfig:
     SESSION_COOKIE_NAME = "todo_planner_session"
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_SECURE = False  # переопределяется в ProductionConfig
+    SESSION_COOKIE_SECURE = False
 
-    # --- Flask-WTF / CSRFProtect ---
     WTF_CSRF_ENABLED = True
-    WTF_CSRF_HEADERS = ["X-CSRF-Token", "X-CSRFToken"]  # apiClient.js + Flask-WTF default
+    WTF_CSRF_HEADERS = ["X-CSRF-Token", "X-CSRFToken"]
     WTF_CSRF_TIME_LIMIT = None
-    WTF_CSRF_SSL_STRICT = False  # переопределяется в ProductionConfig
+    WTF_CSRF_SSL_STRICT = False
 
-    # --- CORS: только origin фронтенда, с поддержкой credentials ---
     CORS_ORIGINS = [
         origin.strip()
         for origin in os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173").split(",")
@@ -59,7 +62,8 @@ class TestingConfig(BaseConfig):
     TESTING = True
     ENV = "testing"
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
-    WTF_CSRF_ENABLED = False  # упрощает тестовые POST/PATCH запросы
+    SQLALCHEMY_ENGINE_OPTIONS = {}
+    WTF_CSRF_ENABLED = False
     SESSION_TYPE = "filesystem"
     SESSION_FILE_DIR = os.path.join(BASE_DIR, ".flask_session_test")
 
@@ -69,6 +73,12 @@ class ProductionConfig(BaseConfig):
     ENV = "production"
     SESSION_COOKIE_SECURE = True
     WTF_CSRF_SSL_STRICT = True
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        "pool_pre_ping": True,
+        "pool_recycle": 1800,
+        "pool_size": int(os.environ.get("DB_POOL_SIZE", "5")),
+        "max_overflow": int(os.environ.get("DB_MAX_OVERFLOW", "5")),
+    }
 
 
 config_by_name = {
