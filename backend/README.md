@@ -49,6 +49,18 @@ pytest
 Frontend-тесты (`vitest`) запускаются отдельно из корня проекта — см. корневой
 `README.md`.
 
+### Линтинг
+
+```bash
+ruff check .  # минимальный конфиг в backend/ruff.toml (E/F/W, без E501/E741)
+```
+
+### CI
+
+На push/PR по путям `backend/**` GitHub Actions запускает `ruff check .` и
+`pytest` (workflow `.github/workflows/backend-ci.yml`) — см. раздел «CI/CD»
+в корневом `README.md`, включая инструкцию по включению branch protection.
+
 ## Структура
 
 - `config.py` — профили `development` / `testing` / `production`.
