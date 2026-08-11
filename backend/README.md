@@ -1,4 +1,4 @@
-# Todo Planner — Backend (Flask, каркас)
+# Todo Planner — Backend (Flask)
 
 Backend спроектирован как реализация под уже существующий frontend
 HTTP-слой `src/repositories/http/apiClient.js` (cookie-based сессии,
@@ -30,9 +30,11 @@ curl http://localhost:5000/api/health
 - `app/<module>/__init__.py` + `routes.py` — по одному blueprint на ресурс:
   `health`, `auth`, `users`, `lists`, `tasks`, `meetings`, `recurrence`,
   `history`, `notifications`, `saved_views`, `comments`, `checklists`, `notes`.
-- Все роуты, кроме `GET /api/health`, — заглушки `501 Not Implemented`.
-  Бизнес-логика (репозитории, сервисы поверх ORM/domain/DTO) сюда сознательно
-  не включена — это следующий шаг.
+- `app/repositories/` — слой доступа к данным (SQLAlchemy-запросы), возвращает
+  domain-объекты через `app.mappers.orm_to_domain`. Реализованы `UserRepository`
+  и `ListRepository` (Промпт 15). Остальные ресурсы (`tasks`, `meetings`,
+  `recurrence`, `history`, `notifications`, `saved_views`, `comments`,
+  `checklists`, `notes`) — это ещё заглушки `501 Not Implemented`, следующий шаг.
 - `wsgi.py` — entrypoint для `gunicorn wsgi:app`.
 
 ## Соответствие фронтенду
@@ -47,7 +49,7 @@ curl http://localhost:5000/api/health
 
 ## ORM / domain / DTO слои (Промпт 10)
 
-Добавлен слой преобразования данных, не подключённый к routes:
+Слой преобразования данных:
 
 - `app/models/` — SQLAlchemy ORM-модели, 1:1 с таблицами `backend/migrations/*.up.sql`.
 - `app/domain/entities.py` — dataclass-сущности, независимые от ORM/Flask/Pydantic;
@@ -60,51 +62,7 @@ curl http://localhost:5000/api/health
   `dto_to_domain.*` без побочных эффектов и без query к БД.
 
 Слои изолированы: `app/models` ничего не знает о domain/dto, `app/domain` не
-импортирует SQLAlchemy/Pydantic, `app/dto` не импортирует SQLAlchemy. Это
-готовит почву для будущих `services`, которые будут работать только с
-domain-объектами — и для `http`-репозитория на фронтенде, который получит
-те же camelCase-поля, что уже возвращает `mock`-репозиторий
-(`src/repositories/mock/*`), обеспечивая dual-mode без изменений в Pinia store.
-
-### Пример потока 1: задача (Task)
-
-```python
-from app.models import TaskORM
-from app.mappers import orm_to_domain, domain_to_dto
-
-task_orm = TaskORM.query.get(task_id)          # persistence (SQLAlchemy)
-task = orm_to_domain.task(task_orm)             # -> Task (dataclass, snake_case)
-dto = domain_to_dto.task(task)                  # -> TaskResponseDTO (camelCase)
-return jsonify(dto.model_dump(by_alias=True))
-# {"id": "...", "listId": "...", "assigneeId": "...", "completedAt": null, ...}
-```
-
-### Пример потока 2: пользователь (User) при логине
-
-```python
-from app.models import UserORM
-from app.mappers import orm_to_domain, domain_to_dto
-
-user_orm = UserORM.query.filter_by(login=login).first()
-user = orm_to_domain.user(user_orm)             # -> User (global_role, is_active)
-dto = domain_to_dto.user(user)                  # -> UserResponseDTO
-return jsonify(dto.model_dump(by_alias=True))
-# {"id": "...", "globalRole": "admin", "isActive": true, ...}
-```
-
-### Пример потока 3: создание задачи (request -> domain)
-
-```python
-from app.dto import TaskCreateDTO
-from app.mappers import dto_to_domain
-
-payload = TaskCreateDTO.model_validate(request.get_json())  # camelCase JSON от фронта
-task = dto_to_domain.task_from_create(payload)               # -> Task (id ещё не назначен)
-# далее (в будущем шаге services) task.id генерируется и строка сохраняется в TaskORM
-```
-
-Routes/services в этом шаге не реализованы — эндпоинты продолжают
-возвращать `501 Not Implemented` (см. `app/tasks/routes.py` и другие).
+импортирует SQLAlchemy/Pydantic, `app/dto` не импортирует SQLAlchemy.
 
 ## Аутентификация (Промпт 11)
 
@@ -144,7 +102,7 @@ Todo Planner: созданы начальные пользователи (пар
 ============================================================
 ```
 
-### Примеры curl
+### Примеры curl (auth)
 
 Получить CSRF token и сохранить cookie jar:
 
@@ -181,40 +139,11 @@ curl -i \
   -X POST http://localhost:5000/api/auth/logout
 ```
 
-### Примеры HTTPie
-
-Получить CSRF token:
-
-```bash
-http --session=todo GET :5000/api/auth/csrf-token
-```
-
-Логин:
-
-```bash
-http --session=todo POST :5000/api/auth/login \
-  X-CSRF-Token:<csrf-token> \
-  login=admin password=<password-from-console>
-```
-
-Текущий пользователь:
-
-```bash
-http --session=todo GET :5000/api/auth/me
-```
-
-Logout:
-
-```bash
-http --session=todo POST :5000/api/auth/logout X-CSRF-Token:<csrf-token>
-```
-
 ## PermissionService mirror (Промпт 12)
 
-Backend теперь содержит `app/services/permission_service.py` — зеркальное
-продолжение frontend `src/services/PermissionService.js`. Идея та же:
-frontend-проверки остаются UX-слоем, но реальным источником истины для
-авторизации становится backend.
+`app/services/permission_service.py` — зеркальное продолжение frontend
+`src/services/PermissionService.js`. Frontend-проверки остаются UX-слоем,
+реальным источником истины для авторизации является backend.
 
 ### Mapping правил
 
@@ -223,7 +152,7 @@ frontend-проверки остаются UX-слоем, но реальным 
 | `_isGlobalAdmin(userId)` -> `user.globalRole === 'admin'` даёт полный bypass | `PermissionService.is_global_admin(user_id)` проверяет `UserORM.global_role == 'admin'` и используется в начале всех проверок |
 | `getRole(listId, userId)` читает роль пользователя в списке | `PermissionService.get_role(list_id, user_id)` читает `ListMembershipORM.role` |
 | `canViewList` разрешает доступ, если у пользователя есть любая list-role | `can_view_list` возвращает `True`, если есть membership, либо если пользователь global admin |
-| `canCreateTask` разрешает только `owner/editor` | `can_create_task` использует тот же набор ролей `owner/editor` |
+| `canCreateTask` разрешает только `owner/editor` | `can_create_task` использует тот же набор ролей `owner/editor`; также используется route-ом `PATCH /lists/:id` как правило "кто может редактировать список" |
 | `canEditTask` для задач в списке: `owner/editor`, либо `assignee` только своей задачи | `can_edit_task(task, user_id)` воспроизводит ровно это правило |
 | `canEditTask` для задач без списка: только `createdBy` или `assigneeId` | `can_edit_task` для `task.list_id is None` использует тот же fallback |
 | `canAssign` разрешает `owner/editor` | `can_assign` использует тот же набор ролей |
@@ -234,8 +163,6 @@ frontend-проверки остаются UX-слоем, но реальным 
 | `isTaskVisible(task, { role, userId, isGlobalAdmin })` скрывает от `assignee` чужие задачи, если он не watcher | `is_task_visible(task, role=..., user_id=..., is_global_admin=...)` реализует то же правило |
 
 ### Route guards
-
-Добавлены helper-декораторы:
 
 ```python
 from app.services.permission_service import require_list_permission, require_task_permission
@@ -255,16 +182,68 @@ def update_task(task_id):
 { "error": "permission_denied", "message": "Недостаточно прав ..." }
 ```
 
-Именно такой ответ backend должен отдавать дальше, чтобы frontend мог
-превращать его в `PermissionDeniedError` и корректно откатывать optimistic UI.
+## Users / Lists — реализованная бизнес-логика (Промпт 15)
 
-### Фильтрация GET-ответов
+`app/repositories/user_repository.py` и `app/repositories/list_repository.py` —
+чистый слой доступа к данным (SQLAlchemy → domain через `app.mappers.orm_to_domain`),
+подключённый к route'ам `app/users/routes.py` и `app/lists/routes.py`.
 
-При реализации реальных `GET /api/lists`, `GET /api/tasks` и других read-endpoints
-следующий шаг должен использовать этот же сервис:
+### Users
 
-- списки — фильтровать через `permission_service.get_accessible_list_ids(user_id)`;
-- задачи — для каждой задачи вычислять роль пользователя в её списке и затем
-  пропускать через `permission_service.is_task_visible(...)`;
-- задачи без списка (`list_id = null`) не должны утекать чужому пользователю,
-  если отдельно не будет введено правило для приватных задач-сирот.
+| Метод | Путь | Права | Описание |
+| --- | --- | --- | --- |
+| GET | `/api/users` | любой авторизованный | активные пользователи, без `password_hash` |
+| GET | `/api/users/:id` | любой авторизованный | один пользователь |
+| PATCH | `/api/users/:id` | только `global_role == admin` | `{ globalRole? , isActive? }` — ровно те поля, что шлёт `UsersView.vue` через `usersStore.updateUser` |
+
+Не-admin получает `403 {"error": "permission_denied", ...}`. Неизвестные поля
+в PATCH-теле или недопустимое значение `globalRole`/`isActive` — `400
+{"error": "validation_error", "details": [...]}`.
+
+### Lists
+
+| Метод | Путь | Права (`permission_service`) | Описание |
+| --- | --- | --- | --- |
+| GET | `/api/lists` | видны только доступные (`get_accessible_list_ids`); все — для global admin | |
+| POST | `/api/lists` | любой авторизованный | создатель автоматически становится `owner` через membership |
+| GET | `/api/lists/:id` | `can_view_list` | |
+| PATCH | `/api/lists/:id` | `can_create_task` (правило "owner/editor списка", то же, что и для создания задач) | частичное обновление: title/description/color/isShared/defaultView/settings/archived/order |
+| DELETE | `/api/lists/:id` | `can_delete_list` (только `owner`) | `ON DELETE CASCADE` удаляет memberships/tasks в БД |
+| GET | `/api/lists/:id/memberships` | `can_view_list` | |
+| POST | `/api/lists/:id/memberships` | `can_manage_members` (только `owner`) | `{ userId, role }`, `role ∈ {owner, editor, assignee, viewer}`; повторный вызов для существующего userId обновляет роль (совместимо с `HttpListRepository.updateMemberRole`, который вызывает тот же `POST`) |
+| DELETE | `/api/lists/:id/memberships/:userId` | `can_manage_members` | |
+
+Ответы всех ресурсов — через существующие DTO (`app.dto.schemas`), camelCase,
+поля 1:1 с `src/repositories/mock/MockListRepository.js` /
+`MockUserRepository.js` (эталон, которым руководствовался mock-репозиторий
+на фронтенде).
+
+### Примеры curl (users/lists)
+
+```bash
+# список пользователей
+curl -b cookies.txt http://localhost:5000/api/users
+
+# admin меняет роль другого пользователя
+curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
+  -X PATCH http://localhost:5000/api/users/<user-id> -d '{"globalRole": "admin"}'
+
+# создать список (создатель = owner)
+curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
+  -X POST http://localhost:5000/api/lists -d '{"title": "Работа"}'
+
+# добавить участника со списка со ролью viewer
+curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" -H "Content-Type: application/json" \
+  -X POST http://localhost:5000/api/lists/<list-id>/memberships -d '{"userId": "<user-id>", "role": "viewer"}'
+
+# попытка viewer-а удалить список -> 403 permission_denied
+curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" \
+  -X DELETE http://localhost:5000/api/lists/<list-id>
+```
+
+## Оставшиеся заглушки 501
+
+Все остальные ресурсы (`tasks`, `meetings`, `recurrence`, `history`,
+`notifications`, `saved_views`, `comments`, `checklists`, `notes`) пока
+возвращают `501 Not Implemented` — их бизнес-логика реализуется отдельными
+шагами (см. корневой README.md, раздел "Roadmap").
