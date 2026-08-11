@@ -19,7 +19,7 @@ settings.LOGIN_RATE_LIMIT) -- защита от brute-force подбора па�
 печатались в лог один раз, без возможности самостоятельно сменить их.
 """
 
-from flask import jsonify, request, session
+from flask import current_app, jsonify, request, session
 from flask_wtf.csrf import generate_csrf
 from pydantic import ValidationError
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -31,12 +31,8 @@ from app.extensions import db, limiter
 from app.mappers import orm_to_domain, domain_to_dto
 from app.models import UserORM
 
-current_app_config = None  # noqa: E305 -- placeholder removed below, see LOGIN_RATE_LIMIT usage
-
 
 def _login_rate_limit():
-    from flask import current_app
-
     return current_app.config.get("LOGIN_RATE_LIMIT", "10 per minute;50 per hour")
 
 
