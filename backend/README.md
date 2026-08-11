@@ -31,10 +31,12 @@ curl http://localhost:5000/api/health
   `health`, `auth`, `users`, `lists`, `tasks`, `meetings`, `recurrence`,
   `history`, `notifications`, `saved_views`, `comments`, `checklists`, `notes`.
 - `app/repositories/` — слой доступа к данным (SQLAlchemy-запросы), возвращает
-  domain-объекты через `app.mappers.orm_to_domain`. Реализованы `UserRepository`
-  и `ListRepository` (Промпт 15). Остальные ресурсы (`tasks`, `meetings`,
-  `recurrence`, `history`, `notifications`, `saved_views`, `comments`,
-  `checklists`, `notes`) — это ещё заглушки `501 Not Implemented`, следующий шаг.
+  domain-объекты через `app.mappers.orm_to_domain`. Реализованы
+  `UserRepository`, `ListRepository`, `TaskRepository` +
+  `ChecklistItemRepository`/`NoteRepository`/`CommentRepository`,
+  `MeetingRepository`, `RecurrenceRepository`, `NotificationRepository`,
+  `SavedViewRepository`. Из crud-ресурсов заглушкой `501 Not Implemented`
+  остаются только вложения (`attachments`).
 - `wsgi.py` — entrypoint для `gunicorn wsgi:app`.
 
 ## Соответствие фронтенду
@@ -241,9 +243,88 @@ curl -i -b cookies.txt -c cookies.txt -H "X-CSRF-Token: $CSRF" \
   -X DELETE http://localhost:5000/api/lists/<list-id>
 ```
 
+## Meetings / Recurrence / Notifications / SavedViews (Промпт 17)
+
+### Client/server split: meetings/recurrence/notifications
+
+Некоторые вычисления, которые в mock-режиме делал фронтенд (`src/services`,
+`src/stores`), теперь либо перенесены на backend как единственный источник
+правды, либо остаются "как есть" на фронте, если они опираются на уже
+существующие server-side эндпоинты и не создают риска рассинхронизации между
+клиентами:
+
+- **unfinishedCount встреч** — перенесено на backend.
+  `MeetingRepository.unfinished_total_count` считает количество задач серии
+  (`tasks.meeting_id == meetings.id`) со статусом, отличным от `done`/`cancelled`,
+  и это поле возвращается в `MeetingResponseDTO.unfinishedCount` при любом
+  чтении встречи (`GET /meetings`, `GET /meetings/:id`, create/update). Это
+  аналог `MeetingDetailView.vue.unfinishedTotalCount`, но posчитанный один раз
+  на сервере, а не пересчитываемый каждым клиентом из полного списка задач.
+- **Генерация следующего инстанса completion_based-серии** — перенесено на
+  backend. `RecurrenceRepository.on_task_completed` (порт
+  `RecurrenceService.js.onTaskCompleted` + `computeNextOccurrence`) вызывается
+  из `app/tasks/routes.py.update_task` в момент перехода `status -> done`,
+  а не только на фронте (`tasksStore` там же вызывал `recurrenceService`).
+  `fixed_schedule`-шаблоны не генерируются здесь — их инстансы создаются
+  заранее background job'ом (вне скопа этого шага, см. Roadmap).
+- **unfinishedGroupsByOccurrence на MeetingDetailView.vue** — оставлено на
+  фронтенде как есть. Это чисто UI-группировка уже полученного списка задач
+  серии (`GET /tasks?listId=...` + фильтр `meetingId`/`occurrenceId` на
+  клиенте), не требует отдельного backend-агрегата и не создаёт рисков
+  рассинхронизации, так как исходные данные (задачи) уже приходят с сервера.
+- **due_soon / overdue уведомления** — временно остаются как создание через
+  `POST /notifications` с фронтенда (аналог того, как это делал
+  `tasksStore`/`NotificationService.js` в mock-режиме): клиент сам сравнивает
+  `dueDate` задач с текущим временем и создаёт уведомление через этот
+  эндпоинт. Полноценный перенос на серверный scheduler/background job,
+  который сканирует все `due_date` независимо от того, открыт ли у кого-то
+  клиент, — задача Промпта 19 (см. Roadmap), в этом шаге не реализована.
+
+### Meetings
+
+| Метод | Путь | Описание |
+| --- | --- | --- |
+| GET | `/api/meetings` | все встречи, каждая с `unfinishedCount` |
+| POST | `/api/meetings` | создание встречи + участников |
+| GET | `/api/meetings/:id` | одна встреча |
+| PATCH | `/api/meetings/:id` | частичное обновление; `occurrences` в теле полностью заменяет список подстреч (порт `meetingsStore.ensureOccurrences`/`updateOccurrence`) |
+| DELETE | `/api/meetings/:id` | удаление; связанные задачи получают `meetingId=null` |
+| GET | `/api/meetings/:id/occurrences` | список подстреч регулярной серии |
+
+### Recurrence templates
+
+| Метод | Путь | Описание |
+| --- | --- | --- |
+| GET | `/api/recurrence?listId=` | список шаблонов, опционально по списку |
+| POST | `/api/recurrence` | создание шаблона |
+| GET | `/api/recurrence/:id` | один шаблон |
+| PATCH | `/api/recurrence/:id` | частичное обновление |
+| DELETE | `/api/recurrence/:id` | удаление |
+
+### Notifications
+
+| Метод | Путь | Описание |
+| --- | --- | --- |
+| GET | `/api/notifications?userId=` | по умолчанию — уведомления текущего пользователя |
+| POST | `/api/notifications` | создание уведомления (временное решение, см. выше) |
+| PATCH | `/api/notifications/:id` | `{ read: true/false }` |
+| DELETE | `/api/notifications/:id` | удаление |
+| POST | `/api/notifications/mark-all-read` | массовая отметка прочитанным для текущего пользователя |
+
+### Saved views
+
+Личный ресурс — всегда привязан к `user_id` текущего пользователя;
+PATCH/DELETE чужого вида возвращают `403 permission_denied`.
+
+| Метод | Путь | Описание |
+| --- | --- | --- |
+| GET | `/api/saved-views?userId=` | по умолчанию — виды текущего пользователя |
+| POST | `/api/saved-views` | создание |
+| PATCH | `/api/saved-views/:id` | частичное обновление |
+| DELETE | `/api/saved-views/:id` | удаление |
+
 ## Оставшиеся заглушки 501
 
-Все остальные ресурсы (`tasks`, `meetings`, `recurrence`, `history`,
-`notifications`, `saved_views`, `comments`, `checklists`, `notes`) пока
-возвращают `501 Not Implemented` — их бизнес-логика реализуется отдельными
-шагами (см. корневой README.md, раздел "Roadmap").
+Остаются заглушками только вложения задач: `GET/POST /tasks/:id/attachments`
+(файловое хранилище — отдельная задача, см. корневой README.md, раздел
+"Roadmap").
