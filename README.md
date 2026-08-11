@@ -1,5 +1,8 @@
 # Todo Planner — Frontend-only MVP v1
 
+[![Frontend CI](https://github.com/ayurasov/todo-planner/actions/workflows/frontend-ci.yml/badge.svg)](https://github.com/ayurasov/todo-planner/actions/workflows/frontend-ci.yml)
+[![Backend CI](https://github.com/ayurasov/todo-planner/actions/workflows/backend-ci.yml/badge.svg)](https://github.com/ayurasov/todo-planner/actions/workflows/backend-ci.yml)
+
 Веб-планировщик задач на Vue 3 + Vite + Pinia + Vue Router + ECharts.
 Реализован по утверждённой архитектуре (repository/adapter pattern, готовый к переходу на Flask+SQLite v2 без переписывания UI).
 
@@ -52,6 +55,51 @@ npm run test:watch  # watch-режим для локальной разрабо�
   и генерация следующего инстанса задачи.
 
 Backend-тесты (`pytest`) запускаются отдельно — см. `backend/README.md`.
+
+### Линтинг
+
+```bash
+npm run lint  # eslint . — минимальный flat-конфиг в eslint.config.js
+```
+
+## CI/CD (Промпт 21)
+
+На каждый push в `main` и на каждый pull request запускаются два независимых
+GitHub Actions workflow (`.github/workflows/`):
+
+- **`frontend-ci.yml`** — триггерится по путям `src/**`, `package.json` и
+  конфигам сборки/тестов. Шаги: `npm ci` → `npm run lint` (eslint) →
+  `npm run test` (vitest из Промпта 20) → `npm run build`. Падает при любой
+  ошибке линтинга, упавшем тесте или неудачной сборке.
+- **`backend-ci.yml`** — триггерится по путям `backend/**`. Шаги:
+  `pip install -r requirements.txt -r requirements-dev.txt` →
+  `ruff check .` (минимальный конфиг в `backend/ruff.toml`) → `pytest`
+  (тесты из Промпта 20). Падает при любой ошибке линтинга или упавшем тесте.
+
+Статус обоих workflow отражён бейджами в начале этого файла.
+
+### Как включить branch protection (блокировка merge при красном CI)
+
+Сами workflow только запускают проверки и падают при ошибках — чтобы это
+реально блокировало merge pull request'ов, нужно один раз включить branch
+protection rules в настройках репозитория (workflow этого не делают
+автоматически):
+
+1. Откройте **Settings → Branches** в репозитории на GitHub.
+2. В разделе **Branch protection rules** нажмите **Add branch protection rule**
+   (или **Add rule**).
+3. В поле **Branch name pattern** укажите `main`.
+4. Включите **Require status checks to pass before merging**.
+5. В списке статус-чеков найдите и отметьте `Lint, test & build` (job из
+   `frontend-ci.yml`) и `Lint & test` (job из `backend-ci.yml`) — они
+   появятся в списке после первого запуска workflow на любом PR.
+6. Рекомендуется также включить **Require branches to be up to date before
+   merging**, чтобы CI гонял актуальный код перед merge.
+7. Сохраните правило (**Create** / **Save changes**).
+
+После этого GitHub заблокирует кнопку **Merge** на любом PR, где хотя бы один
+из выбранных статус-чеков не прошёл (красный крестик), пока ошибки не будут
+исправлены.
 
 ## Данные
 
@@ -234,7 +282,7 @@ npm run dev
 - **Проверка прав асимметрична по режимам.** В mock-режиме permissions проверяются только клиентом
   (`PermissionService.js`) — это чисто UX-слой без реальной защиты. В http-режиме проверяются и клиент (для
   мгновенного UX — скрытие кнопок, disabled-состояния), и сервер (`permission_service.py`, реальный источник
-  истины, отдаёт 403 на нарушения) [cite:775].
+  истины, отдаёт 403 на нарушения).
 - Backend CRUD-роуты для `tasks`/`lists`/`users`/`meetings` и остальных ресурсов на момент этого README всё ещё
   частично возвращают `501 Not Implemented` — auth и permission-guards реализованы и покрыты contract-ready
   заглушками, но полноценная бизнес-логика поверх ORM для каждого ресурса — отдельный шаг после auth/permissions.
