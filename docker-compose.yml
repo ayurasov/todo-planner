@@ -32,7 +32,7 @@ services:
       # Без дефолта нарочно: config.py._require_production_secret_key() упадёт старт приложения
       # с явной ошибкой, если SECRET_KEY не задан в .env -- скопирование .env.example без
       # редактирования не даст тихо заработать с insecure-секретом.
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY обязателен: сгенерируйте python -c "import secrets; print(secrets.token_hex(32))" и положите в .env}
+      SECRET_KEY: "${SECRET_KEY:?Set SECRET_KEY in .env (generate via python -c \"import secrets; print(secrets.token_hex(32))\")}"
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
       SESSION_COOKIE_SAMESITE: ${SESSION_COOKIE_SAMESITE:-Lax}
       RATELIMIT_STORAGE_URI: ${RATELIMIT_STORAGE_URI:-memory://}
@@ -60,7 +60,7 @@ services:
     environment:
       BACKEND_UPSTREAM: backend:5000
     ports:
-      - "80:80"
+      - "39665:80"
     depends_on:
       backend:
         condition: service_healthy
