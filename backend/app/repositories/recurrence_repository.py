@@ -4,14 +4,14 @@ RecurrenceRepository -- CRUD для RecurrenceTemplateORM и порт логик
 на backend.
 
 Зачем: в http-режиме генерация следующего инстанса задачи для
-COMPLETION_BASED-шаблона должна выполняться в momент complete_task на backend
-(единой источник правды, независимо от того, какой клиент завершил
+COMPLETION_BASED-шаблона должна выполняться в момент complete_task на backend
+(единый источник правды, независимо от того, какой клиент завершил
 задачу), а не только на фронте -- см. app/tasks/routes.py update_task и
 backend/README.md, раздел "Client/server split".
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.domain.entities import RecurrenceTemplate
 from app.extensions import db
@@ -29,12 +29,9 @@ def _parse_iso(value: str) -> datetime:
     return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def _last_day_of_month(year: int, month: int) -> int:
-    if month == 12:
-        next_month_first = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
-    else:
-        next_month_first = datetime(year, month + 1, 1, tzinfo=timezone.utc)
-    return (next_month_first.date().replace(day=1) - next_month_first.date().replace(day=1).replace(day=1)).days or 28
+def _last_day_in_month(year: int, month: int) -> int:
+    next_first = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+    return (next_first - timedelta(days=1)).day
 
 
 def compute_next_occurrence(from_date: str, rule: dict) -> datetime:
@@ -48,9 +45,9 @@ def compute_next_occurrence(from_date: str, rule: dict) -> datetime:
     interval = rule.get("interval") or 1
 
     if freq == RECURRENCE_FREQ_DAILY:
-        return base + _days(interval)
+        return base + timedelta(days=interval)
     if freq == RECURRENCE_FREQ_WEEKLY:
-        return base + _days(7 * interval)
+        return base + timedelta(days=7 * interval)
     if freq == RECURRENCE_FREQ_MONTHLY:
         total_month_index = base.month - 1 + interval
         target_year = base.year + total_month_index // 12
@@ -59,21 +56,7 @@ def compute_next_occurrence(from_date: str, rule: dict) -> datetime:
         last_day = _last_day_in_month(target_year, target_month)
         safe_day = min(target_day, last_day)
         return base.replace(year=target_year, month=target_month, day=safe_day)
-    return base + _days(interval)
-
-
-def _days(n: int):
-    from datetime import timedelta
-    return timedelta(days=n)
-
-
-def _last_day_in_month(year: int, month: int) -> int:
-    if month == 12:
-        next_first = datetime(year + 1, 1, 1)
-    else:
-        next_first = datetime(year, month + 1, 1)
-    from datetime import timedelta
-    return (next_first - timedelta(days=1)).day
+    return base + timedelta(days=interval)
 
 
 class RecurrenceRepository:
