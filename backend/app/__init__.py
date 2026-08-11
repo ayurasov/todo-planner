@@ -5,9 +5,10 @@ cookie-сессии + CSRF-заголовок, единый префикс /api,
 """
 
 from flask import Flask
+from sqlalchemy import inspect
 
 from config import get_config
-from app.extensions import db, sess, cors, csrf
+from app.extensions import db, sess, cors, csrf, migrate
 
 from app.health import health_bp
 from app.auth import auth_bp
@@ -41,6 +42,7 @@ def create_app(config_name=None):
 
 def _register_extensions(app):
     db.init_app(app)
+    migrate.init_app(app, db)
     sess.init_app(app)
     csrf.init_app(app)
     cors.init_app(
@@ -67,13 +69,22 @@ def _register_blueprints(app):
 
 
 def _bootstrap_database(app):
-    """Создаёт таблицы (если их ещё нет) и при первом заведении базы
-    создаёт начальных пользователей с выводом одноразовых паролей в консоль.
-    В production рекомендуется заменить `db.create_all()` на полноценный механизм
-    миграций (backend/migrations/*.sql), но для каркаса он достаточен.
+    """Для testing по-прежнему поднимаем схему автоматически в in-memory SQLite.
+    Для development/production схема должна управляться Alembic-миграциями.
+    Начальных пользователей сидим только если таблица users уже существует.
     """
 
     with app.app_context():
-        db.create_all()
+        if app.config.get("TESTING"):
+            db.create_all()
+            seed_initial_users(app)
+            return
 
-    seed_initial_users(app)
+        inspector = inspect(db.engine)
+        if "users" in inspector.get_table_names():
+            seed_initial_users(app)
+            return
+
+        app.logger.warning(
+            "База данных ещё не инициализирована. Выполните 'alembic upgrade head' перед запуском приложения."
+        )

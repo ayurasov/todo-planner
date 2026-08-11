@@ -38,6 +38,14 @@ def _loads(value, default):
         return default
 
 
+def _iso(value):
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    return value.astimezone(__import__("datetime").timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+
 class orm_to_domain:
     """ORM-модель (app.models) -> domain dataclass (app.domain.entities)."""
 
@@ -53,8 +61,8 @@ class orm_to_domain:
             is_active=bool(row.is_active),
             login=row.login,
             password_hash=row.password_hash,
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            created_at=_iso(row.created_at),
+            updated_at=_iso(row.updated_at),
         )
 
     @staticmethod
@@ -70,8 +78,8 @@ class orm_to_domain:
             archived=bool(row.archived),
             order=row.order_index,
             owner_ids=owner_ids or [],
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            created_at=_iso(row.created_at),
+            updated_at=_iso(row.updated_at),
         )
 
     @staticmethod
@@ -81,7 +89,7 @@ class orm_to_domain:
             list_id=row.list_id,
             user_id=row.user_id,
             role=row.role,
-            added_at=row.added_at,
+            added_at=_iso(row.added_at),
         )
 
     @staticmethod
@@ -96,17 +104,17 @@ class orm_to_domain:
             priority=row.priority,
             assignee_id=row.assignee_id,
             watcher_ids=watcher_ids or [],
-            due_date=row.due_date,
-            start_date=row.start_date,
+            due_date=_iso(row.due_date),
+            start_date=_iso(row.start_date),
             recurrence_template_id=row.recurrence_template_id,
             tags=tags or [],
             pinned=bool(row.pinned),
-            created_at=row.created_at,
+            created_at=_iso(row.created_at),
             created_by=row.created_by,
-            updated_at=row.updated_at,
+            updated_at=_iso(row.updated_at),
             updated_by=row.updated_by,
-            last_activity_at=row.last_activity_at,
-            completed_at=row.completed_at,
+            last_activity_at=_iso(row.last_activity_at),
+            completed_at=_iso(row.completed_at),
             display_standalone=bool(row.display_standalone),
             meeting_id=row.meeting_id,
             occurrence_id=row.occurrence_id,
@@ -118,10 +126,10 @@ class orm_to_domain:
         return d.Meeting(
             id=row.id,
             title=row.title,
-            date=row.date,
+            date=_iso(row.date),
             description=row.description,
             created_by=row.created_by,
-            created_at=row.created_at,
+            created_at=_iso(row.created_at),
             attendee_ids=attendee_ids or [],
             color=row.color,
             archived=bool(row.archived),
@@ -137,10 +145,10 @@ class orm_to_domain:
         return d.MeetingOccurrence(
             id=row.id,
             meeting_id=row.meeting_id,
-            date=row.date,
+            date=_iso(row.date),
             description=row.description,
             link=row.link,
-            generated_at=row.generated_at,
+            generated_at=_iso(row.generated_at),
         )
 
     @staticmethod
@@ -153,7 +161,7 @@ class orm_to_domain:
             rule=_loads(row.rule, {}),
             timezone=row.timezone,
             generate_ahead_count=row.generate_ahead_count,
-            last_generated_instance_date=row.last_generated_instance_date,
+            last_generated_instance_date=_iso(row.last_generated_instance_date),
             checklist_template=_loads(row.checklist_template, []),
         )
 
@@ -174,8 +182,8 @@ class orm_to_domain:
             id=row.id,
             task_id=row.task_id,
             content_json=_loads(row.content, {"type": "doc", "content": []}),
-            created_at=row.created_at,
-            updated_at=row.updated_at,
+            created_at=_iso(row.created_at),
+            updated_at=_iso(row.updated_at),
             updated_by=row.updated_by,
         )
 
@@ -190,7 +198,7 @@ class orm_to_domain:
             task_id=row.task_id,
             note_id=row.note_id,
             uploaded_by=row.uploaded_by,
-            uploaded_at=row.uploaded_at,
+            uploaded_at=_iso(row.uploaded_at),
         )
 
     @staticmethod
@@ -200,7 +208,7 @@ class orm_to_domain:
             task_id=row.task_id,
             actor_id=row.actor_id,
             type=row.type,
-            timestamp=row.timestamp,
+            timestamp=_iso(row.timestamp),
             field=row.field,
             old_value=row.old_value,
             new_value=row.new_value,
@@ -214,8 +222,8 @@ class orm_to_domain:
             task_id=row.task_id,
             author_id=row.author_id,
             text=row.text,
-            created_at=row.created_at,
-            edited_at=row.edited_at,
+            created_at=_iso(row.created_at),
+            edited_at=_iso(row.edited_at),
             mentions=mentions or [],
         )
 
@@ -242,7 +250,7 @@ class orm_to_domain:
             task_id=row.task_id,
             list_id=row.list_id,
             actor_id=row.actor_id,
-            created_at=row.created_at,
+            created_at=_iso(row.created_at),
             read=bool(row.read),
         )
 
@@ -265,7 +273,7 @@ class orm_to_domain:
             provider=row.provider,
             status=row.status,
             sync_settings=_loads(row.sync_settings, {}),
-            last_synced_at=row.last_synced_at,
+            last_synced_at=_iso(row.last_synced_at),
         )
 
 

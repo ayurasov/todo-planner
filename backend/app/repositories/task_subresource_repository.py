@@ -65,7 +65,7 @@ class NoteRepository:
         timestamp = now_iso()
         row = NoteORM(
             id=new_id(), task_id=task_id,
-            content=self._dump(content_json or {"type": "doc", "content": []}),
+            content=content_json or {"type": "doc", "content": []},
             updated_by=updated_by, created_at=timestamp, updated_at=timestamp,
         )
         db.session.add(row)
@@ -77,16 +77,11 @@ class NoteRepository:
         if row is None:
             return None
         if content_json is not None:
-            row.content = self._dump(content_json)
+            row.content = content_json
         row.updated_by = updated_by
         row.updated_at = now_iso()
         db.session.commit()
         return orm_to_domain.note(row)
-
-    @staticmethod
-    def _dump(content_json):
-        import json
-        return json.dumps(content_json)
 
 
 class CommentRepository:

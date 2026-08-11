@@ -23,11 +23,10 @@ class SavedViewRepository:
         return self._to_domain(row) if row else None
 
     def create(self, *, user_id, name, filters=None, sort=None, group_by=None, pinned=False):
-        import json
         row = SavedViewORM(
             id=new_id(), user_id=user_id, name=name,
-            filters=json.dumps(filters or {}),
-            sort=json.dumps(sort or {"field": "score", "dir": "desc"}),
+            filters=filters or {},
+            sort=sort or {"field": "score", "dir": "desc"},
             group_by=group_by, pinned=pinned,
         )
         db.session.add(row)
@@ -35,16 +34,15 @@ class SavedViewRepository:
         return self._to_domain(row)
 
     def update(self, view_id: str, patch: dict):
-        import json
         row = SavedViewORM.query.get(view_id)
         if row is None:
             return None
         if "name" in patch:
             row.name = patch["name"]
         if "filters" in patch:
-            row.filters = json.dumps(patch["filters"] or {})
+            row.filters = patch["filters"] or {}
         if "sort" in patch:
-            row.sort = json.dumps(patch["sort"] or {"field": "score", "dir": "desc"})
+            row.sort = patch["sort"] or {"field": "score", "dir": "desc"}
         if "group_by" in patch:
             row.group_by = patch["group_by"]
         if "pinned" in patch:
