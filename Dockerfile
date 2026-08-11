@@ -9,6 +9,14 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 COPY . .
+
+# Vite вшивает VITE_*-переменные в bundle во время build, поэтому они должны
+# быть доступны как build args (docker-compose.yml передаёт их из .env).
+ARG VITE_API_MODE=http
+ARG VITE_API_BASE_URL=/api
+ENV VITE_API_MODE=${VITE_API_MODE} \
+    VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
 RUN npm run build
 
 # ---- Runtime: nginx отдаёт dist/ + reverse-proxy на backend ----
