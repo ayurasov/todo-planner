@@ -74,3 +74,130 @@ npm run preview
 ### Обработка 403/401 в stores
 
 `src/stores/utils/withPermissionHandling.js` — единая готча для mutating actions (`tasksStore._guarded`, `listsStore._guarded`, `usersStore.updateUser`). При `PermissionDeniedError` от backend вызывается `rollback`, если передан, в `notificationsStore.items` кладётся toast, и ошибка ретроуится для UI. При `AuthRequiredError` — редирект на `/login`. В mock-режиме эти ошибки никогда не выбрасываются, поведение mock не меняется.
+
+## Architecture v2 / Runtime modes
+
+Этот раздел описывает **текущую фактическую архитектуру** (не план) на момент завершения перехода v1 → v2:
+фронтенд (Vue 3 + Pinia) умеет работать как полностью автономно (mock), так и поверх настоящего backend
+(Flask + SQLite + server-side сессии + server-side permissions), не меняя ни код stores, ни компоненты UI —
+только переменную окружения.
+
+Фактически реализовано на момент этого раздела:
+
+- Полный набор экранов: My Tasks, Team Tasks, List View, Lists Manager, Meetings + Meeting Detail (с разбором
+  резюме встречи в задачи через `MeetingSummaryParser`), History, Analytics, Settings, Users (admin-only), Login.
+- Bubble view ("пузырьковая" группировка Не выполнено / Выполнено, `src/domain/ranking/bubbleSort.js`) и Quick
+  Filters (`filtersStore.js`) как отдельные, независимые от группировки/сортировки механизмы.
+- История изменений задач (`HistoryService` + `HistoryRepository`/`HttpHistoryRepository`).
+- Полноценный auth-экран (`LoginView.vue`) и `authStore` с bootstrap-последовательностью csrf → me.
+- 11 HTTP-репозиториев (`src/repositories/http/*`), зеркалирующих mock-репозитории 1:1 по контракту.
+- Backend-каркас: Flask blueprints на каждый ресурс, ORM/domain/DTO слои с мэппером camelCase ↔ snake_case,
+  cookie-session аутентификация (`/api/auth/*`), CSRF-защита, и зеркальный `PermissionService` на Python,
+  повторяющий правила фронтенд `PermissionService.js` (см. `backend/README.md`, раздел "PermissionService mirror").
+
+### Режим A — `VITE_API_MODE=mock` (полностью локальный)
+
+Запуск:
+
+```bash
+npm install
+cp .env.example .env        # VITE_API_MODE=mock (или не создавать .env — mock это default)
+npm run dev
+```
+
+- Backend не требуется вообще.
+- Все данные — в `localStorage` браузера (переживают reload), сид генерируется при первом запуске.
+- Permissions проверяются только на клиенте (`PermissionService.js`) — это UX-слой, а не защита; любой,
+  кто откроет devtools, может обойти проверку. Приемлемо для локальной разработки/демо без реального backend.
+
+### Режим B — `VITE_API_MODE=http` (Flask + SQLite + session auth + server-side permissions)
+
+Запуск backend:
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+export FLASK_ENV=development
+python wsgi.py
+# слушает http://localhost:5000, при первом запуске печатает в консоль
+# временные пароли для пользователей admin/user — сохраните их сразу
+```
+
+Запуск фронтенда (в отдельном терминале):
+
+```bash
+cp .env.example .env
+# в .env выставить:
+#   VITE_API_MODE=http
+#   VITE_API_BASE_URL=http://localhost:5000/api
+npm install
+npm run dev
+```
+
+- Открыть http://localhost:5173 — приложение покажет `LoginView`, пока не будет активной сессии.
+- Авторизоваться логином/паролем из консоли backend (`admin` или `user`).
+- Сессии — cookie-based (`Flask-Session`, не JWT), CSRF — заголовок `X-CSRF-Token`, полученный через
+  `GET /api/auth/csrf-token` (детали см. `backend/README.md`).
+
+### Переключение mock ↔ http
+
+Переключение — это правка **только** `.env` (`VITE_API_MODE=mock` или `http` + `VITE_API_BASE_URL`), без
+изменения кода. `src/repositories/index.js` — единственная точка, которая читает эту переменную и подставляет
+нужный набор репозиториев; все stores и компоненты обращаются только к экспортам из `src/repositories/index.js`
+и не знают, какой режим активен.
+
+## Smoke-checklist (ручная проверка)
+
+Выполнять после любого значимого изменения в auth/permissions/repositories слоях, в режиме `VITE_API_MODE=http`
+(если не указано иное).
+
+1. **Login/logout** — открыть `/`, убедиться в редиректе на `/login`; ввести логин/пароль из консоли backend →
+   попасть на `/my-tasks`; выполнить logout (кнопка в `AppTopBar`/`SettingsView`) → редирект обратно на `/login`,
+   повторный заход на `/my-tasks` без логина снова уводит на `/login`.
+2. **Получение CSRF token** — открыть devtools → Network при первой загрузке приложения, убедиться, что
+   выполняется `GET /api/auth/csrf-token` до `POST /api/auth/login`, и что последующие мутирующие запросы
+   (`POST/PATCH/DELETE`) содержат заголовок `X-CSRF-Token`.
+3. **401 → экран логина** — вручную удалить cookie сессии (или дождаться истечения) и обновить страницу /
+   выполнить любое действие → приложение должно показать `LoginView`, а не белый экран/необработанную ошибку.
+4. **403 → откат optimistic update + toast** — залогиниться пользователем без прав на список/задачу (например,
+   `Viewer` в чужом списке), попытаться изменить статус задачи → изменение в UI должно откатиться к исходному
+   значению, а в списке уведомлений должен появиться toast «Недостаточно прав».
+5. **Viewer не может редактировать задачу ни через UI, ни через API** — в UI кнопки редактирования должны быть
+   скрыты/disabled (`useTaskPermissions`); дополнительно проверить прямым `curl -b cookies.txt -X PATCH
+   .../api/tasks/:id ...` от имени Viewer — backend должен вернуть `403 {"error": "permission_denied"}`, а не 200.
+6. **Admin видит экран пользователей и все списки** — залогиниться как `admin`, открыть `/settings/users`
+   (должен открыться, а не редиректить назад), и убедиться, что в `Lists Manager` видны списки, где admin не
+   состоит явным участником (bypass через `is_global_admin`).
+7. **Переключение mock ↔ http только через `.env`** — поменять `VITE_API_MODE` в `.env`, перезапустить
+   `npm run dev` (без правок в `src/`) → приложение должно продолжать работать в новом режиме.
+
+## Известные ограничения
+
+- **Нет real-time sync между несколькими клиентами.** Если два пользователя одновременно открывают одну задачу
+  или список, изменения одного не долетают до другого без ручного обновления страницы — WebSocket/SSE слоя нет.
+- **Возможны повторные полные загрузки после мутаций.** Stores (`tasksStore`, `listsStore` и др.) не полностью
+  нормализованы (нет единого entity-cache с автоматической инвалидацией по связям), поэтому отдельные операции
+  дозагружают смежные данные (например, `checklistByTask`/`commentsByTask`) отдельными запросами вместо одного
+  батч-запроса.
+- **Проверка прав асимметрична по режимам.** В mock-режиме permissions проверяются только клиентом
+  (`PermissionService.js`) — это чисто UX-слой без реальной защиты. В http-режиме проверяются и клиент (для
+  мгновенного UX — скрытие кнопок, disabled-состояния), и сервер (`permission_service.py`, реальный источник
+  истины, отдаёт 403 на нарушения) [cite:775].
+- Backend CRUD-роуты для `tasks`/`lists`/`users`/`meetings` и остальных ресурсов на момент этого README всё ещё
+  частично возвращают `501 Not Implemented` — auth и permission-guards реализованы и покрыты contract-ready
+  заглушками, но полноценная бизнес-логика поверх ORM для каждого ресурса — отдельный шаг после auth/permissions.
+
+## Roadmap: что дальше после v2
+
+- **Webhooks / real-time sync** — WebSocket или SSE канал для обновления задач/списков у всех подключённых
+  клиентов без polling.
+- **Background jobs** — очередь (Celery/RQ) для генерации повторяющихся задач по расписанию, напоминаний
+  due-soon/overdue и других отложенных операций вместо клиентского `scanDueNotifications`.
+- **Import summary via LLM** — замена regex-эвристики `MeetingSummaryParser` на реальный LLM-based парсер
+  резюме встреч в задачи (контракт `SummaryParser` уже спроектирован как заменяемая абстракция).
+- **Audit logging** — отдельный неизменяемый журнал действий (кто/что/когда), шире, чем текущая `History`
+  задач, — включая изменения списков, участников, ролей и попытки 403.
+- **E2E tests** — автоматизированные сценарии (Playwright/Cypress) для smoke-checklist выше, чтобы не проверять
+  login/logout/403/401/permissions вручную перед каждым релизом.
