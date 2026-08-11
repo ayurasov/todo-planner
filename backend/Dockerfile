@@ -31,7 +31,11 @@ ENV PATH="/opt/venv/bin:$PATH" \
     FLASK_ENV=production
 
 COPY . .
-RUN chmod +x docker-entrypoint.sh \
+# sed убирает возможные CRLF (\r) в docker-entrypoint.sh -- защита от ошибки
+# "exec ./docker-entrypoint.sh: no such file or directory" при клонировании/копировании
+# репозитория на машине с autocrlf=true (см. также .gitattributes в корне репозитория).
+RUN sed -i 's/\r$//' docker-entrypoint.sh \
+    && chmod +x docker-entrypoint.sh \
     && chown -R appuser:appuser /app
 
 USER appuser
