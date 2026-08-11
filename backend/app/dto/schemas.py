@@ -39,6 +39,16 @@ class LoginResponseDTO(CamelModel):
     user: UserResponseDTO
 
 
+class ChangePasswordRequestDTO(CamelModel):
+    """POST /api/auth/change-password -- смена пароля залогиненным пользователем.
+    `current_password` обязателен, чтобы захват чужой активной сессии (XSS/CSRF
+    через браузер жертвы) не мог молциа сменить пароль без знания текущего.
+    """
+
+    current_password: str = Field(alias="currentPassword")
+    new_password: str = Field(alias="newPassword", min_length=8)
+
+
 # --- Lists ---
 
 class ListResponseDTO(CamelModel):
