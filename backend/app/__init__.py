@@ -4,11 +4,15 @@ Application factory. Backend спроектирован как реализац�
 cookie-сессии + CSRF-заголовок, единый префикс /api, без JWT.
 """
 
-from flask import Flask
+import logging
+import sys
+
+from flask import Flask, request
 from sqlalchemy import inspect
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import get_config
-from app.extensions import db, sess, cors, csrf, migrate
+from app.extensions import db, sess, cors, csrf, migrate, limiter
 
 from app.health import health_bp
 from app.auth import auth_bp
@@ -28,9 +32,91 @@ from app.auth.security import install_login_guard
 from app.auth.seed import seed_initial_users
 
 
+class _RequestContextFilter(logging.Filter):
+    """Добавляет метод/путь запроса и id текущего пользователя к каждой
+    log-записи, если она сделана внутри request-контекста (вне контекста --
+    пустые значения, без исключений).
+    """
+
+    def filter(self, record):  # noqa: A003
+        from flask import has_request_context, session
+
+        if has_request_context():
+            record.method = request.method
+            record.path = request.path
+            record.remote_addr = request.headers.get("X-Forwarded-For", request.remote_addr)
+            record.user_id = session.get("user_id") if session else None
+        else:
+            record.method = None
+            record.path = None
+            record.remote_addr = None
+            record.user_id = None
+        return True
+
+
+class _JsonLogFormatter(logging.Formatter):
+    """Структурированный (JSON-line) вывод вместо print()/текстовых тресбеков,
+    чтобы логи можно было парсить/агрегировать (docker logs -> journald/ELK/Loki
+    и т.п.) без regex-эвристик.
+    """
+
+    def format(self, record):
+        import json
+        import datetime
+
+        payload = {
+            "timestamp": datetime.datetime.fromtimestamp(
+                record.created, tz=datetime.timezone.utc
+            ).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+            "method": getattr(record, "method", None),
+            "path": getattr(record, "path", None),
+            "remote_addr": getattr(record, "remote_addr", None),
+            "user_id": getattr(record, "user_id", None),
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=False)
+
+
+def _configure_logging(app):
+    """Заменяет дефолтный Flask/Werkzeug-логирование (и возможные print())
+    на структурированный JSON-вывод в stdout -- тоесть, как ожидается от
+    container-приложений (docker/nginx logs -> journald/агрегатор), без зависимости
+    от файловой системы внутри контейнера.
+    """
+
+    handler = logging.StreamHandler(stream=sys.stdout)
+    handler.setFormatter(_JsonLogFormatter())
+    handler.addFilter(_RequestContextFilter())
+
+    app.logger.handlers = [handler]
+    app.logger.setLevel(logging.DEBUG if app.config.get("DEBUG") else logging.INFO)
+    app.logger.propagate = False
+
+    werkzeug_logger = logging.getLogger("werkzeug")
+    werkzeug_logger.handlers = [handler]
+    werkzeug_logger.propagate = False
+
+    @app.errorhandler(Exception)
+    def _log_unhandled_exception(exc):  # noqa: WPS430
+        app.logger.exception("Unhandled exception during request")
+        raise exc
+
+
 def create_app(config_name=None):
     app = Flask(__name__)
     app.config.from_object(get_config(config_name))
+
+    _configure_logging(app)
+
+    if app.config.get("ENV") == "production":
+        # nginx reverse-proxy передаёт X-Forwarded-For/-Proto -- ProxyFix восстанавливает
+        # реальный remote_addr/scheme, иначе rate limiting (Flask-Limiter) и аудит-логи
+        # стали бы видеть только IP nginx-контейнера.
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     _register_extensions(app)
     _register_blueprints(app)
@@ -45,6 +131,7 @@ def _register_extensions(app):
     migrate.init_app(app, db)
     sess.init_app(app)
     csrf.init_app(app)
+    limiter.init_app(app)
     cors.init_app(
         app,
         origins=app.config["CORS_ORIGINS"],
