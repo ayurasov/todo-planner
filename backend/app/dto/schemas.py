@@ -7,7 +7,7 @@ Pydantic DTO -- request/response-схемы HTTP-слоя backend v2.
 `populate_by_name=True` позволяет создавать DTO как из camelCase JSON
 (входящие запросы), так и из python-объектов по snake_case-именам (мапперы).
 
-Здесь нет бизнес-логики и нет импортов SQLAlchemy -- только форма данных.
+здесь нет бизнес-логики и нет импортов SQLAlchemy -- только форма данных.
 """
 
 from typing import Optional, List, Dict, Any
@@ -237,6 +237,11 @@ class MeetingResponseDTO(CamelModel):
     link: str = ""
     recurrence: Optional[Dict[str, Any]] = None
     occurrences: List[MeetingOccurrenceResponseDTO] = Field(default_factory=list)
+    # Готовая агрегация "не выполнено в серии" -- перенесено с фронта
+    # (MeetingDetailView.vue unfinishedTotalCount) на backend, считается на
+    # MeetingRepository.unfinished_total_count и отдаётся всегда готовым полем
+    # (см. backend/README.md).
+    unfinished_count: int = Field(default=0, alias="unfinishedCount")
 
 
 class MeetingCreateDTO(CamelModel):
@@ -259,6 +264,7 @@ class MeetingUpdateDTO(CamelModel):
     recurrence: Optional[Dict[str, Any]] = None
     archived: Optional[bool] = None
     order: Optional[int] = None
+    occurrences: Optional[List[Dict[str, Any]]] = None
 
 
 # --- Recurrence templates ---
@@ -334,6 +340,16 @@ class NotificationResponseDTO(CamelModel):
     actor_id: Optional[str] = Field(default=None, alias="actorId")
     created_at: Optional[str] = Field(default=None, alias="createdAt")
     read: bool = False
+
+
+class NotificationCreateDTO(CamelModel):
+    type: str
+    title: str
+    body: str = ""
+    task_id: Optional[str] = Field(default=None, alias="taskId")
+    list_id: Optional[str] = Field(default=None, alias="listId")
+    actor_id: Optional[str] = Field(default=None, alias="actorId")
+    user_id: Optional[str] = Field(default=None, alias="userId")
 
 
 class NotificationUpdateDTO(CamelModel):
