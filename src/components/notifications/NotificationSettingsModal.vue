@@ -35,7 +35,7 @@ function setThreshold(e) {
           </label>
           <label class="checkbox-row">
             <input type="checkbox" :checked="notificationsStore.settings.channels.email" @change="notificationsStore.toggleChannel('email')" />
-            E-mail (заглушка, реализуется в v2)
+            E-mail
           </label>
         </div>
 
