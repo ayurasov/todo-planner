@@ -11,6 +11,7 @@ import { formatDateTime, formatDate } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
 import AppIcon from '../common/AppIcon.vue'
 import RichTextEditor from '../common/RichTextEditor.vue'
+import ConfirmModal from '../common/ConfirmModal.vue'
 
 const props = defineProps({ task: { type: Object, required: true } })
 const emit = defineEmits(['close'])
@@ -30,6 +31,9 @@ const editingTitle = ref(false)
 const titleDraft = ref(props.task.title)
 const titleInputEl = ref(null)
 const assigneeMenuOpen = ref(false)
+// См. TaskContextMenu.vue — единое модальное подтверждение вместо window.confirm(),
+// чтобы удаление задачи выглядело одинаково независимо от того, откуда оно вызвано.
+const confirmDeleteOpen = ref(false)
 
 const liveTask = computed(() => tasksStore.byId(props.task.id) || props.task)
 const { canEditThisTask, canToggleStatus, canDeleteThisTask, reason: permissionReason } = useTaskPermissions(liveTask)
@@ -103,10 +107,17 @@ function cancelEditTitle() {
 }
 
 function requestDelete() {
-  if (confirm('Удалить задачу и все подзадачи? Действие нельзя отменить.')) {
-    tasksStore.removeTask(liveTask.value.id)
-    emit('close')
-  }
+  confirmDeleteOpen.value = true
+}
+
+function confirmDelete() {
+  tasksStore.removeTask(liveTask.value.id)
+  confirmDeleteOpen.value = false
+  emit('close')
+}
+
+function cancelDelete() {
+  confirmDeleteOpen.value = false
 }
 
 function setStatus(s) { updateField('status', s) }
@@ -332,6 +343,15 @@ const HISTORY_ICON = {
       </div>
     </Transition>
   </div>
+
+  <ConfirmModal
+    v-if="confirmDeleteOpen"
+    title="Удалить задачу?"
+    message="Задача и все её подзадачи будут удалены без возможности восстановления."
+    confirm-text="Удалить"
+    @confirm="confirmDelete"
+    @cancel="cancelDelete"
+  />
 </template>
 
 <style scoped>
