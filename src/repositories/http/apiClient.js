@@ -6,7 +6,7 @@
  *
  * ВАЖНО: этот файл не используется, пока VITE_API_MODE !== 'http'
  * (см. src/repositories/index.js). Он подготовлен заранее, чтобы переход
- * на реальный backend не требовал переписывания stores/services/UI —
+ * на реальный backend не требовал переписывания stores/services/UI --
  * только смены реализации репозиториев.
  */
 
@@ -73,4 +73,21 @@ export const apiClient = {
   patch: (path, body) => request(path, { method: 'PATCH', body }),
   put: (path, body) => request(path, { method: 'PUT', body }),
   delete: (path) => request(path, { method: 'DELETE' }),
+}
+
+/**
+ * Абсолютный URL для ручных fetch-запросов (multipart/form-data загрузка файлов),
+ * которые не могут идти через request() выше -- там всегда ставится
+ * Content-Type: application/json и body всегда JSON.stringify. См. HttpUserRepository.uploadAvatar.
+ */
+export function apiUploadUrl(path) {
+  return new URL(BASE_URL + path, window.location.origin).toString()
+}
+
+/**
+ * Заголовки с CSRF-токеном для ручных fetch-запросов (без Content-Type --
+ * браузер сам выставит корректный multipart-заголовок с boundary для FormData).
+ */
+export function csrfHeaders() {
+  return csrfToken ? { 'X-CSRF-Token': csrfToken } : {}
 }
