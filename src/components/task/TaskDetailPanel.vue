@@ -70,6 +70,10 @@ const STATUS_META = {
   cancelled: { label: 'Отменено', color: '#9aa3b2', bg: '#f1f2f5' },
 }
 
+function htmlToNoteDoc(html) {
+  return { type: 'doc', content: [{ type: 'paragraph', text: html || '' }] }
+}
+
 onMounted(async () => {
   if (!meetingsStore.loaded) await meetingsStore.load()
   await tasksStore.loadChecklist(props.task.id)
@@ -137,7 +141,7 @@ async function submitComment() {
 
 async function saveNote() {
   const existingNoteId = notes.value[0]?.id
-  await tasksStore.saveNote(props.task.id, existingNoteId, { type: 'doc', content: [{ type: 'paragraph', text: noteContent.value }] })
+  await tasksStore.saveNote(props.task.id, existingNoteId, htmlToNoteDoc(noteContent.value))
 }
 
 function updateDescription(html) {
@@ -324,8 +328,7 @@ const HISTORY_ICON = {
                 </div>
 
                 <div v-else-if="activityTab === 'notes'" key="notes" class="notes-tab">
-                  <p class="hint-text">Визуальный редактор заметок абстрагирован через EditorAdapter (в MVP — текстовый ввод, в v2 — rich-text с изображениями/таблицами/вложениями).</p>
-                  <textarea v-model="noteContent" rows="5" placeholder="Текст заметки..." @change="saveNote" />
+                  <RichTextEditor v-model="noteContent" placeholder="Текст заметки..." @update:model-value="saveNote" />
                 </div>
 
                 <div v-else-if="activityTab === 'history'" key="history" class="history-tab">
@@ -467,8 +470,7 @@ const HISTORY_ICON = {
 .fade-tab-enter-from, .fade-tab-leave-to { opacity: 0; }
 
 .hint-text { font-size: 12px; color: var(--color-text-muted); margin-bottom: 10px; line-height: 1.5; }
-.notes-tab textarea { width: 100%; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; font-size: 13.5px; outline: none; }
-.notes-tab textarea:focus { border-color: var(--color-primary); }
+.notes-tab :deep(.rich-content) { min-height: 180px; }
 
 .history-entry { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--color-border); }
 .history-entry:last-child { border-bottom: none; }
