@@ -1,25 +1,31 @@
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useUsersStore } from '../stores/usersStore'
+import { useDepartmentsStore } from '../stores/departmentsStore'
 import { useIsAdmin } from '../composables/usePermissions'
 
 const usersStore = useUsersStore()
+const departmentsStore = useDepartmentsStore()
 const isAdmin = useIsAdmin()
 
-const ROLE_LABEL = { admin: 'Администратор', user: 'Пользователь' }
+onMounted(() => {
+  departmentsStore.load()
+})
+
+const ROLE_LABEL = { admin: 'Администратор', manager: 'Руководитель', user: 'Пользователь' }
+
+function departmentName(departmentId) {
+  if (!departmentId) return '—'
+  return departmentsStore.byId(departmentId)?.name || '—'
+}
 
 // --- Фильтрация и сортировка ---
 const searchQuery = ref('')
-const roleFilter = ref('all') // all | admin | user
+const roleFilter = ref('all') // all | admin | manager | user
 const statusFilter = ref('all') // all | active | inactive
-const departmentFilter = ref('all')
+const departmentFilter = ref('all') // all | departmentId
 const sortBy = ref('name') // name | department | position | role | status
 const sortDir = ref('asc') // asc | desc
-
-const departments = computed(() => {
-  const set = new Set(usersStore.users.map((u) => u.department).filter(Boolean))
-  return [...set].sort((a, b) => a.localeCompare(b, 'ru'))
-})
 
 function isSelf(user) {
   return usersStore.currentUser?.id === user.id
@@ -29,20 +35,20 @@ const filteredSortedUsers = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   let list = usersStore.users.filter((u) => {
     if (q) {
-      const hay = `${u.name} ${u.email} ${u.login || ''} ${u.position || ''} ${u.department || ''}`.toLowerCase()
+      const hay = `${u.name} ${u.email} ${u.login || ''} ${u.position || ''} ${departmentName(u.departmentId)}`.toLowerCase()
       if (!hay.includes(q)) return false
     }
     if (roleFilter.value !== 'all' && u.globalRole !== roleFilter.value) return false
     if (statusFilter.value === 'active' && !u.isActive) return false
     if (statusFilter.value === 'inactive' && u.isActive) return false
-    if (departmentFilter.value !== 'all' && u.department !== departmentFilter.value) return false
+    if (departmentFilter.value !== 'all' && u.departmentId !== departmentFilter.value) return false
     return true
   })
 
   const dir = sortDir.value === 'asc' ? 1 : -1
   const getKey = (u) => {
     switch (sortBy.value) {
-      case 'department': return u.department || ''
+      case 'department': return departmentName(u.departmentId)
       case 'position': return u.position || ''
       case 'role': return u.globalRole || ''
       case 'status': return u.isActive ? '1' : '0'
@@ -77,11 +83,11 @@ const showCreateForm = ref(false)
 const createError = ref('')
 const creating = ref(false)
 const newUser = reactive({
-  login: '', name: '', email: '', globalRole: 'user', password: '', position: '', department: '',
+  login: '', name: '', email: '', globalRole: 'user', password: '', position: '', departmentId: '', managerDepartmentIds: [],
 })
 
 function resetCreateForm() {
-  Object.assign(newUser, { login: '', name: '', email: '', globalRole: 'user', password: '', position: '', department: '' })
+  Object.assign(newUser, { login: '', name: '', email: '', globalRole: 'user', password: '', position: '', departmentId: '', managerDepartmentIds: [] })
   createError.value = ''
 }
 
@@ -105,7 +111,8 @@ async function submitCreateUser() {
       globalRole: newUser.globalRole,
       password: newUser.password.trim() || undefined,
       position: newUser.position.trim() || undefined,
-      department: newUser.department.trim() || undefined,
+      departmentId: newUser.departmentId || null,
+      managerDepartmentIds: newUser.globalRole === 'manager' ? newUser.managerDepartmentIds : undefined,
     })
     showCreateForm.value = false
     temporaryPasswordInfo.value = { login: created.login, password: created.temporaryPassword }
@@ -121,14 +128,15 @@ async function submitCreateUser() {
 const editingUser = ref(null)
 const editError = ref('')
 const savingEdit = ref(false)
-const editForm = reactive({ name: '', email: '', position: '', department: '' })
+const editForm = reactive({ name: '', email: '', position: '', departmentId: '', managerDepartmentIds: [] })
 
 function openEditForm(user) {
   editingUser.value = user
   editForm.name = user.name || ''
   editForm.email = user.email || ''
   editForm.position = user.position || ''
-  editForm.department = user.department || ''
+  editForm.departmentId = user.departmentId || ''
+  editForm.managerDepartmentIds = Array.isArray(user.managerDepartmentIds) ? [...user.managerDepartmentIds] : []
   editError.value = ''
 }
 
@@ -144,12 +152,16 @@ async function submitEditUser() {
   }
   savingEdit.value = true
   try {
-    await usersStore.updateUser(editingUser.value.id, {
+    const patch = {
       name: editForm.name.trim(),
       email: editForm.email.trim(),
       position: editForm.position.trim() || null,
-      department: editForm.department.trim() || null,
-    })
+      departmentId: editForm.departmentId || null,
+    }
+    if (editingUser.value.globalRole === 'manager') {
+      patch.managerDepartmentIds = editForm.managerDepartmentIds
+    }
+    await usersStore.updateUser(editingUser.value.id, patch)
     closeEditForm()
   } catch (err) {
     const detailMsg = err?.payload?.details?.map((d) => d.msg).join('; ')
@@ -206,8 +218,9 @@ function closePasswordModal() {
 
   <section v-if="isAdmin" class="card users-section">
     <p class="hint-text">
-      Управление ролями, активностью, должностью и отделом пользователей. Изменение своей собственной
-      роли или активности заблокировано — это защищает от случайной потери прав администратора.
+      увление ролями, активностью, должностью и отделом пользователей. Роль "Руководитель" даёт
+      видимость списков/задач всего отдела (можно назначить сразу несколько отделов/служб).
+      Изменение своей собственной роли или активности заблокировано.
     </p>
 
     <div class="filters-bar">
@@ -223,7 +236,7 @@ function closePasswordModal() {
       </select>
       <select v-model="departmentFilter" class="filter-select">
         <option value="all">Все отделы</option>
-        <option v-for="d in departments" :key="d" :value="d">{{ d }}</option>
+        <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
       </select>
     </div>
 
@@ -242,11 +255,14 @@ function closePasswordModal() {
           <div class="user-info">
             <span class="user-name">{{ u.name }}<span v-if="isSelf(u)" class="self-badge">Вы</span></span>
             <span class="user-email">{{ u.email }}</span>
+            <span v-if="u.globalRole === 'manager' && u.managerDepartmentIds?.length" class="managed-badge">
+              руковит: {{ u.managerDepartmentIds.map(departmentName).join(', ') }}
+            </span>
           </div>
         </div>
 
         <span class="text-cell">{{ u.position || '—' }}</span>
-        <span class="text-cell">{{ u.department || '—' }}</span>
+        <span class="text-cell">{{ departmentName(u.departmentId) }}</span>
 
         <select
           class="role-select"
@@ -283,7 +299,7 @@ function closePasswordModal() {
             :title="isSelf(u) ? 'Нельзя удалить самого себя' : ''"
             @click="askDelete(u)"
           >
-            Удалить
+            удалить
           </button>
         </div>
       </div>
@@ -316,13 +332,22 @@ function closePasswordModal() {
         <input v-model="newUser.position" type="text" placeholder="Менеджер проектов" />
       </label>
       <label class="field">
-        <span>Отдел</span>
-        <input v-model="newUser.department" type="text" placeholder="Продажи" />
+        <span>Отдел/служба</span>
+        <select v-model="newUser.departmentId">
+          <option value="">— не выбран —</option>
+          <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
+        </select>
       </label>
       <label class="field">
         <span>Роль</span>
         <select v-model="newUser.globalRole">
           <option v-for="(label, role) in ROLE_LABEL" :key="role" :value="role">{{ label }}</option>
+        </select>
+      </label>
+      <label v-if="newUser.globalRole === 'manager'" class="field">
+        <span>Отделы/службы, которыми руководит (можно несколько)</span>
+        <select v-model="newUser.managerDepartmentIds" multiple size="4">
+          <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
       </label>
       <label class="field">
@@ -356,8 +381,17 @@ function closePasswordModal() {
         <input v-model="editForm.position" type="text" placeholder="Менеджер проектов" />
       </label>
       <label class="field">
-        <span>Отдел</span>
-        <input v-model="editForm.department" type="text" placeholder="Продажи" />
+        <span>Отдел/служба</span>
+        <select v-model="editForm.departmentId">
+          <option value="">— не выбран —</option>
+          <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
+        </select>
+      </label>
+      <label v-if="editingUser.globalRole === 'manager'" class="field">
+        <span>Отделы/службы, которыми руководит (можно несколько)</span>
+        <select v-model="editForm.managerDepartmentIds" multiple size="4">
+          <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
+        </select>
       </label>
       <p v-if="editError" class="error-text">{{ editError }}</p>
       <div class="modal-actions">
@@ -372,15 +406,15 @@ function closePasswordModal() {
   <!-- Модалка подтверждения удаления -->
   <div v-if="confirmDeleteUser" class="modal-backdrop" @click.self="confirmDeleteUser = null">
     <div class="modal-card">
-      <h3>Удалить пользователя?</h3>
+      <h3>удалить пользователя?</h3>
       <p class="hint-text">
         Пользователь «{{ confirmDeleteUser.name }}» будет удалён без возможности восстановления.
-        Его задачи, комментарии и участие в списках будут переприсвоены/обезличены согласно правилам системы.
+        его задачи, комментарии и участие в списках будут переприсвоены/обезличены согласно правилам системы.
       </p>
       <div class="modal-actions">
         <button class="btn btn-sm btn-ghost" @click="confirmDeleteUser = null">Отмена</button>
         <button class="btn btn-sm btn-danger" :disabled="deletingId === confirmDeleteUser.id" @click="confirmDelete">
-          {{ deletingId === confirmDeleteUser.id ? 'Удаление...' : 'Удалить' }}
+          {{ deletingId === confirmDeleteUser.id ? 'удаление...' : 'удалить' }}
         </button>
       </div>
     </div>
@@ -391,7 +425,7 @@ function closePasswordModal() {
     <div class="modal-card">
       <h3>Временный пароль</h3>
       <p class="hint-text">
-        Сохраните и передайте пароль пользователю сейчас — повторно он не будет показан.
+        сохраните и передайте пароль пользователю сейчас — повторно он не будет показан.
       </p>
       <div class="password-box">
         <div><strong>Логин:</strong> {{ temporaryPasswordInfo.login }}</div>
@@ -446,6 +480,7 @@ function closePasswordModal() {
   padding: 1px 6px; border-radius: 10px;
 }
 .user-email { font-size: 12px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
+.managed-badge { font-size: 11px; color: #4f7cff; overflow: hidden; text-overflow: ellipsis; }
 .role-select { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 9px; font-size: 12.5px; }
 .role-select:disabled { opacity: 0.6; cursor: not-allowed; }
 .status-btn:disabled { opacity: 0.6; cursor: not-allowed; }
