@@ -94,6 +94,26 @@ const seriesTasksWithoutOccurrence = computed(() => {
   return recurringVisibleTasks.value.filter((t) => !t.occurrenceId)
 })
 
+/**
+ * Задачи, вообще не привязанные ни к какой встрече (t.meetingId пусто), но
+ * находящиеся в тех же списках, где есть задачи этой серии встреч. Требование:
+ * бейдж "НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ" должен также учитывать такие задачи —
+ * то есть незавершённые задачи без привязки к встрече в списках, связанных с
+ * этой серией, а не только задачи с meetingId === props.id.
+ */
+const relatedListIds = computed(() => new Set(meetingTasks.value.map((t) => t.listId).filter(Boolean)))
+
+const standaloneUnfinishedTasks = computed(() => {
+  if (!isRecurring.value) return []
+  if (!relatedListIds.value.size) return []
+  return tasksStore.tasks.filter((t) => (
+    !t.parentTaskId
+    && !t.meetingId
+    && relatedListIds.value.has(t.listId)
+    && t.status !== 'done' && t.status !== 'cancelled'
+  )).sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0))
+})
+
 const unfinishedGroupsByOccurrence = computed(() => {
   if (!isRecurring.value) return []
   const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
@@ -108,7 +128,9 @@ const unfinishedGroupsByOccurrence = computed(() => {
     .sort((a, b) => a.order - b.order)
 })
 
-const unfinishedTotalCount = computed(() => unfinishedGroupsByOccurrence.value.reduce((sum, g) => sum + g.count, 0))
+const unfinishedTotalCount = computed(() => (
+  unfinishedGroupsByOccurrence.value.reduce((sum, g) => sum + g.count, 0) + standaloneUnfinishedTasks.value.length
+))
 
 const filteredMeetingTasks = computed(() => filtersStore.apply(meetingTasks.value))
 const recurringVisibleTasks = computed(() => {
@@ -381,11 +403,13 @@ function toggleArchived() {
       <div v-if="unfinishedTotalCount" class="series-alert-bubble">НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ ({{ unfinishedTotalCount }})</div>
       <div v-else class="series-alert-subtitle">По серии нет невыполненных задач</div>
 
-      <div v-if="unfinishedGroupsByOccurrence.length" class="series-occ-list">
+      <div v-if="unfinishedGroupsByOccurrence.length || standaloneUnfinishedTasks.length" class="series-occ-list">
         <p class="hint-text series-occ-hint">
           Сводка невыполненных задач по всей серии (только статус "не выполнено"/"в работе").
           Полный список задач каждой подвстречи, включая выполненные — в разделе
           «Подвстречи серии» ниже; каждая строка сводки соответствует подвстрече с той же датой.
+          Отдельно показаны невыполненные задачи без привязки к встрече вовсе, если они
+          находятся в тех же списках, что и задачи этой серии.
         </p>
         <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
           <div class="series-occ-marker">
@@ -394,6 +418,15 @@ function toggleArchived() {
           </div>
           <div class="series-occ-tasks">
             <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" :flat="true" />
+          </div>
+        </div>
+        <div v-if="standaloneUnfinishedTasks.length" class="series-occ-row card">
+          <div class="series-occ-marker">
+            <span class="series-occ-date">Без встречи</span>
+            <span class="series-occ-count">({{ standaloneUnfinishedTasks.length }})</span>
+          </div>
+          <div class="series-occ-tasks">
+            <TaskListPanel :tasks="standaloneUnfinishedTasks" :show-toolbar="false" :meeting-mode="true" :flat="true" />
           </div>
         </div>
       </div>
