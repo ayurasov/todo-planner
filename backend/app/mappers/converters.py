@@ -302,7 +302,7 @@ class domain_to_dto:
     @staticmethod
     def user(u: d.User) -> api_dto.UserResponseDTO:
         return api_dto.UserResponseDTO(
-            id=u.id, name=u.name, email=u.email, timezone=u.timezone,
+            id=u.id, name=u.name, email=u.email, login=u.login, timezone=u.timezone,
             avatar_url=u.avatar_url, global_role=u.global_role, is_active=u.is_active,
             position=u.position, department=u.department, department_id=u.department_id,
             managed_department_ids=u.managed_department_ids,

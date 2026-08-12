@@ -1,13 +1,16 @@
-<script setup>
 import { computed, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useUsersStore } from '../../stores/usersStore'
 import { useDepartmentsStore } from '../../stores/departmentsStore'
+import { useAuthStore } from '../../stores/authStore'
 import { getInitials, getAvatarColor } from '../../utils/avatar'
 import AppIcon from './AppIcon.vue'
 
 const emit = defineEmits(['close'])
+const router = useRouter()
 const usersStore = useUsersStore()
 const departmentsStore = useDepartmentsStore()
+const authStore = useAuthStore()
 
 const ROLE_LABEL = { admin: 'Администратор', manager: 'Руководитель', user: 'Пользователь' }
 
@@ -23,14 +26,24 @@ const managedDepartments = computed(() => {
   return ids.map(departmentName).join(', ')
 })
 
-// --- Загрузка своей фотографии ---
 const fileInputEl = ref(null)
 const uploading = ref(false)
 const uploadError = ref('')
+const avatarPreviewOpen = ref(false)
+const loggingOut = ref(false)
 
 function triggerFilePicker() {
   uploadError.value = ''
   fileInputEl.value?.click()
+}
+
+function openAvatarPreview() {
+  if (!user.value?.avatarUrl) return
+  avatarPreviewOpen.value = true
+}
+
+function closeAvatarPreview() {
+  avatarPreviewOpen.value = false
 }
 
 async function onFileSelected(event) {
@@ -71,7 +84,6 @@ async function removeAvatar() {
   }
 }
 
-// --- Смена пароля ---
 const showPasswordForm = ref(false)
 const passwordForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
 const passwordError = ref('')
@@ -118,6 +130,19 @@ async function submitPasswordChange() {
     changingPassword.value = false
   }
 }
+
+async function logout() {
+  loggingOut.value = true
+  try {
+    await authStore.logout()
+    usersStore.$reset()
+    closeAvatarPreview()
+    emit('close')
+    await router.replace('/login')
+  } finally {
+    loggingOut.value = false
+  }
+}
 </script>
 
 <template>
@@ -131,7 +156,9 @@ async function submitPasswordChange() {
       <div v-if="user" class="modal-body">
         <div class="profile-hero">
           <div class="avatar-wrap">
-            <img v-if="user.avatarUrl" :src="user.avatarUrl" class="avatar-img" alt="" />
+            <button v-if="user.avatarUrl" class="avatar-preview-btn" type="button" title="Открыть фото" @click="openAvatarPreview">
+              <img :src="user.avatarUrl" class="avatar-img" alt="Фото профиля" />
+            </button>
             <span v-else class="avatar-fallback" :style="{ background: getAvatarColor(user.name) }">
               {{ getInitials(user.name) }}
             </span>
@@ -193,7 +220,21 @@ async function submitPasswordChange() {
           </div>
         </div>
         <p v-if="passwordSuccess" class="success-text">{{ passwordSuccess }}</p>
+
+        <div class="section-title session-title">Сессия</div>
+        <div class="logout-actions">
+          <button class="btn btn-sm btn-danger" :disabled="loggingOut" @click="logout">
+            {{ loggingOut ? 'Выход...' : 'Выйти' }}
+          </button>
+        </div>
       </div>
+    </div>
+  </div>
+
+  <div v-if="avatarPreviewOpen && user?.avatarUrl" class="lightbox-overlay" @click.self="closeAvatarPreview">
+    <div class="lightbox-card card">
+      <button class="btn btn-ghost btn-icon btn-sm lightbox-close" @click="closeAvatarPreview"><AppIcon name="close" :size="13" /></button>
+      <img :src="user.avatarUrl" class="lightbox-image" alt="Фото профиля" />
     </div>
   </div>
 </template>
@@ -207,6 +248,7 @@ async function submitPasswordChange() {
 
 .profile-hero { display: flex; align-items: center; gap: 14px; padding: 6px 0 4px; }
 .avatar-wrap { position: relative; width: 64px; height: 64px; flex-shrink: 0; }
+.avatar-preview-btn { padding: 0; border: none; background: none; cursor: zoom-in; border-radius: 50%; display: block; }
 .avatar-img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; display: block; }
 .avatar-fallback {
   width: 64px; height: 64px; border-radius: 50%; color: #fff; display: flex; align-items: center;
@@ -230,19 +272,30 @@ async function submitPasswordChange() {
 .section-title {
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted);
   margin-top: 8px; border-top: 1px solid var(--color-border); padding-top: 10px;
-  display: flex; align-items: center; justify-content: space-between;
 }
-.password-title { text-transform: uppercase; }
-.info-grid { display: flex; flex-direction: column; gap: 6px; }
-.info-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; }
-.info-label { color: var(--color-text-muted); }
-.info-value { font-weight: 600; text-align: right; overflow: hidden; text-overflow: ellipsis; }
-
-.password-form { display: flex; flex-direction: column; gap: 10px; }
-.field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
-.field input { border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 9px; font-size: 13px; }
-.password-form-actions { display: flex; justify-content: flex-end; }
-.error-text { color: #d64545; font-size: 12px; margin: 0; }
-.success-text { color: var(--color-success); font-size: 12px; margin: 0; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.info-grid { display: grid; gap: 8px; }
+.info-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.info-label { font-size: 12px; color: var(--color-text-muted); }
+.info-value { font-size: 13px; color: var(--color-text); text-align: right; }
+.password-title, .session-title { display: flex; align-items: center; justify-content: space-between; }
+.password-form { display: grid; gap: 10px; }
+.field { display: grid; gap: 5px; font-size: 12px; color: var(--color-text-muted); }
+.field input {
+  width: 100%; border: 1px solid var(--color-border); border-radius: 10px; padding: 9px 11px;
+  outline: none; background: #fff; color: var(--color-text);
+}
+.field input:focus { border-color: var(--color-primary); }
+.password-form-actions, .logout-actions { display: flex; justify-content: flex-end; }
+.error-text { margin: 0; font-size: 12px; color: var(--color-danger); }
+.success-text { margin: 0; font-size: 12px; color: #1e9e4d; }
+.lightbox-overlay {
+  position: fixed; inset: 0; background: rgba(20, 25, 40, 0.65); display: flex; align-items: center;
+  justify-content: center; z-index: 120;
+}
+.lightbox-card {
+  position: relative; max-width: min(92vw, 720px); max-height: 92vh; padding: 14px; display: flex;
+  align-items: center; justify-content: center;
+}
+.lightbox-close { position: absolute; top: 8px; right: 8px; z-index: 1; }
+.lightbox-image { max-width: 100%; max-height: calc(92vh - 28px); border-radius: 14px; object-fit: contain; display: block; }
 </style>
