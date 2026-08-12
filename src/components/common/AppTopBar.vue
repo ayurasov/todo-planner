@@ -12,6 +12,7 @@ import { relativeDay, isOverdue } from '../../utils/formatters'
 import { getInitials, getAvatarColor } from '../../utils/avatar'
 import QuickCreateModal from '../task/QuickCreateModal.vue'
 import NotificationsPanel from '../notifications/NotificationsPanel.vue'
+import ProfileModal from './ProfileModal.vue'
 import AppIcon from './AppIcon.vue'
 import { useClickOutside } from '../../composables/useClickOutside'
 
@@ -116,12 +117,17 @@ function openCreate() {
         <NotificationsPanel v-if="notifOpen" @close="notifOpen = false" />
       </div>
 
-      <div v-if="usersStore.currentUser" class="current-user">
-        {{ usersStore.currentUser.name }}
-      </div>
+      <button v-if="usersStore.currentUser" class="current-user" title="Открыть профиль" @click="uiStore.openProfile()">
+        <img v-if="usersStore.currentUser.avatarUrl" :src="usersStore.currentUser.avatarUrl" class="current-user-avatar" alt="" />
+        <span v-else class="current-user-avatar current-user-avatar-fallback" :style="{ background: getAvatarColor(usersStore.currentUser.name) }">
+          {{ getInitials(usersStore.currentUser.name) }}
+        </span>
+        <span class="current-user-name">{{ usersStore.currentUser.name }}</span>
+      </button>
     </div>
   </header>
   <QuickCreateModal v-if="uiStore.quickCreateContext" :context="uiStore.quickCreateContext" @close="uiStore.closeQuickCreate()" />
+  <ProfileModal v-if="uiStore.profileModalOpen" @close="uiStore.closeProfile()" />
 </template>
 
 <style scoped>
@@ -165,5 +171,12 @@ function openCreate() {
   position: absolute; top: -3px; right: -3px; background: var(--color-danger); color: #fff; font-size: 9px;
   font-weight: 700; border-radius: 8px; padding: 1px 4px; min-width: 14px; text-align: center;
 }
-.current-user { font-size: 13px; font-weight: 600; color: var(--color-text); }
+.current-user {
+  display: flex; align-items: center; gap: 8px; border: none; background: none; cursor: pointer;
+  padding: 4px 8px 4px 4px; border-radius: 20px; transition: background 0.15s;
+}
+.current-user:hover { background: #f1f3f9; }
+.current-user-avatar { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; display: block; flex-shrink: 0; }
+.current-user-avatar-fallback { color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.current-user-name { font-size: 13px; font-weight: 600; color: var(--color-text); }
 </style>
