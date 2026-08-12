@@ -9,6 +9,12 @@ TaskRepository -- слой доступа к данным для ресурса 
 Роль manager (руководитель отдела/службы) видит дополнительно все задачи, где
 список/исполнитель/создатель относится к одному из его managed_department_ids --
 даже если он сам не состоит в membership списка (см. permission_service.can_view_task_via_department).
+
+Любой обычный пользователь, добавленный участником встречи (MeetingAttendeeORM),
+также видит все задачи этой встречи (task.meeting_id) независимо от membership
+списка задачи -- см. permission_service.can_view_task_via_meeting (инцидент: "обычный
+пользователь должен видеть только свои задачи и задачи в рамках встречи или списка,
+куда он добавлен участником").
 """
 
 from app.extensions import db
@@ -43,6 +49,8 @@ class TaskRepository:
         - global admin видит всё;
         - manager видит также задачи, связанные с его managed_department_ids (по списку/
           исполнителю/создателю), даже без membership -- permission_service.can_view_task_via_department;
+        - любой пользователь, добавленный участником встречи, к которой привязана задача
+          (task.meeting_id) -- permission_service.can_view_task_via_meeting;
         - свои задачи без списка (list_id is None): создатель или assignee.
         """
         is_admin = permission_service.is_global_admin(user_id)
@@ -65,6 +73,9 @@ class TaskRepository:
             if tags and not (set(tags) & set(task.tags)):
                 continue
             if is_admin:
+                result.append(task)
+                continue
+            if permission_service.can_view_task_via_meeting(task, user_id):
                 result.append(task)
                 continue
             if task.list_id is None:
