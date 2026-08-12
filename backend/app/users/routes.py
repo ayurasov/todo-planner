@@ -1,7 +1,7 @@
 """
 Реализация blueprint 'users' поверх UserRepository (app.repositories).
-Автентификация — глобальным guard в app.auth.security (401 для всего blueprint).
-PATCH /users/:id доступен только global admin (PermissionService.is_global_admin) --
+Автентификация — глобальным guard в app.auth.security (401 для всего
+blueprint). PATCH /users/:id доступен только global admin (PermissionService.is_global_admin) --
 зеркало frontend-правила UsersView.vue (редактировать роль/активность
 другого пользователя может только админ).
 
@@ -18,19 +18,28 @@ POST /users (создание) и POST /users/:id/reset-password -- тоже т�
 возвращается в JSON-ответе ОДИН РАЗ, как открытый текст -- аналог поведения
 app.auth.seed.seed_initial_users (пароль печатается один раз и не хранится в
 открытом виде). Ответственность фронтенда -- показать его администратору сразу
-и не сохранять.
+и не сохранять его.
+
+POST/DELETE /users/:id/avatar -- загрузка/сброс аватара. Доступно только global
+admin (зеркалит остальные mutating-эндпойнты этого blueprint) -- аватар редактируется
+из той же модалки UsersView.vue, что и остальные поля. Файл сохраняется
+на диск через app.uploads.routes.avatars_dir(), а users.avatar_url хранит только
+относительный путь вида /api/uploads/avatars/<filename> (см. HttpUserRepository.js).
 """
 
+import os
 import secrets
 
 from flask import jsonify, request
 from werkzeug.security import generate_password_hash
+from werkzeug.utils import secure_filename
 
 from app.auth.security import current_user_id
 from app.mappers import domain_to_dto
 from app.repositories import DepartmentRepository, UserRepository
 from app.repositories.user_repository import DuplicateEmailError, DuplicateLoginError
 from app.services.permission_service import permission_denied_response, permission_service
+from app.uploads.routes import avatars_dir
 from app.users import users_bp
 
 user_repository = UserRepository()
@@ -45,6 +54,8 @@ ALLOWED_CREATE_FIELDS = {
     "login", "name", "email", "password", "globalRole", "position", "department",
     "departmentId", "managerDepartmentIds",
 }
+ALLOWED_AVATAR_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "webp"}
+MAX_AVATAR_SIZE_BYTES = 5 * 1024 * 1024
 
 
 def _not_found(name="user"):
@@ -76,9 +87,6 @@ def _validate_manager_department_ids(manager_department_ids):
 
 @users_bp.route("", methods=["GET"])
 def list_users(**kwargs):
-    # Global admin видит всех пользователей (включая деактивированных) для управления
-    # ролевой моделью (UsersView.vue); обычные пользователи -- только активных
-    # (для селекторов исполнителей/участников).
     if permission_service.is_global_admin(current_user_id()):
         users = user_repository.get_all()
     else:
@@ -162,7 +170,7 @@ def delete_user(user_id, **kwargs):
         return permission_denied_response("Удалять пользователей может только администратор")
 
     if user_id == current_user_id():
-        return permission_denied_response("Нельзя удалить собственную учётную запись")
+        return permission_denied_response("Нельзя удалить собственную учётную заись")
 
     deleted = user_repository.delete(user_id)
     if not deleted:
@@ -205,10 +213,6 @@ def create_user(**kwargs):
     if user_repository.get_by_login(login) is not None:
         return _validation_error([{"loc": ["login"], "msg": "login уже занят"}])
 
-    # Email тоже уникален на уровне схемы (users.email UNIQUE) -- без этой проверки
-    # совпадение email (например, с уже существующим сотрудником/seed-пользователем)
-    # приводило к необработанному IntegrityError -> 500 при создании пользователя,
-    # в т.ч. с ролью 'manager' (см. incident report).
     if user_repository.get_by_email(email) is not None:
         return _validation_error([{"loc": ["email"], "msg": "email уже занят"}])
 
@@ -220,8 +224,6 @@ def create_user(**kwargs):
     if error is not None:
         return error
 
-    # Пароль можно передать явно (payload.password) или сгенерировать временный --
-    # так же, как это делает seed_initial_users для встроенных admin/user.
     plain_password = (payload.get("password") or "").strip() or secrets.token_urlsafe(9)
     if len(plain_password) < 8:
         return _validation_error([{"loc": ["password"], "msg": "минимум 8 символов"}])
@@ -246,7 +248,6 @@ def create_user(**kwargs):
         try:
             created = user_repository.update(created.id, managed_department_ids=manager_department_ids)
         except DuplicateEmailError:
-            # email тут не меняется -- защитная ветка на случай будущих изменений сигнатуры.
             pass
 
     dto = domain_to_dto.user(created).model_dump(by_alias=True)
@@ -267,3 +268,46 @@ def reset_password(user_id, **kwargs):
     dto = domain_to_dto.user(updated).model_dump(by_alias=True)
     dto["temporaryPassword"] = plain_password
     return jsonify(dto)
+
+
+@users_bp.route("/<string:user_id>/avatar", methods=["POST"])
+def upload_avatar(user_id, **kwargs):
+    if not permission_service.is_global_admin(current_user_id()):
+        return permission_denied_response("Изменять аватар может только администратор")
+
+    if user_repository.get_by_id(user_id) is None:
+        return _not_found()
+
+    uploaded_file = request.files.get("avatar")
+    if uploaded_file is None or not uploaded_file.filename:
+        return _validation_error([{"loc": ["avatar"], "msg": "файл не передан"}])
+
+    extension = uploaded_file.filename.rsplit(".", 1)[-1].lower() if "." in uploaded_file.filename else ""
+    if extension not in ALLOWED_AVATAR_EXTENSIONS:
+        return _validation_error([{"loc": ["avatar"], "msg": "допустимые форматы: png, jpg, jpeg, gif, webp"}])
+
+    uploaded_file.stream.seek(0, os.SEEK_END)
+    size_bytes = uploaded_file.stream.tell()
+    uploaded_file.stream.seek(0)
+    if size_bytes > MAX_AVATAR_SIZE_BYTES:
+        return _validation_error([{"loc": ["avatar"], "msg": "файл больше 5 МБ"}])
+
+    filename = secure_filename(f"{user_id}-{secrets.token_hex(6)}.{extension}")
+    uploaded_file.save(os.path.join(avatars_dir(), filename))
+
+    avatar_url = f"/api/uploads/avatars/{filename}"
+    updated = user_repository.set_avatar_url(user_id, avatar_url)
+    if updated is None:
+        return _not_found()
+    return jsonify(domain_to_dto.user(updated).model_dump(by_alias=True))
+
+
+@users_bp.route("/<string:user_id>/avatar", methods=["DELETE"])
+def delete_avatar(user_id, **kwargs):
+    if not permission_service.is_global_admin(current_user_id()):
+        return permission_denied_response("Изменять аватар может только администратор")
+
+    updated = user_repository.reset_avatar_url(user_id)
+    if updated is None:
+        return _not_found()
+    return jsonify(domain_to_dto.user(updated).model_dump(by_alias=True))
