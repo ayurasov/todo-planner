@@ -1,5 +1,5 @@
 /**
- * Единая точка внедрения репозиториев. За выбор реализации отвечает
+ * Единая точка внедрения репозиториев. За выбор реализации ответает
  * VITE_API_MODE ('mock' | 'http'). services/stores/UI не меняются, так как все они
  * обращаются только к этим итоговым экспортам ('mock' по умолчанию, если переменная
  * не задана -- поведение по умолчанию не изменилось).
@@ -23,6 +23,7 @@ if (API_MODE === 'http') {
   const { httpCommentRepository } = await import('./http/HttpCommentRepository')
   const { httpNotificationRepository } = await import('./http/HttpNotificationRepository')
   const { httpMeetingRepository } = await import('./http/HttpMeetingRepository')
+  const { httpDepartmentRepository } = await import('./http/HttpDepartmentRepository')
 
   repos = {
     taskRepository: httpTaskRepository,
@@ -36,6 +37,7 @@ if (API_MODE === 'http') {
     commentRepository: httpCommentRepository,
     notificationRepository: httpNotificationRepository,
     meetingRepository: httpMeetingRepository,
+    departmentRepository: httpDepartmentRepository,
   }
 } else {
   const { mockTaskRepository } = await import('./mock/MockTaskRepository')
@@ -49,6 +51,7 @@ if (API_MODE === 'http') {
   const { mockCommentRepository } = await import('./mock/MockCommentRepository')
   const { mockNotificationRepository } = await import('./mock/MockNotificationRepository')
   const { mockMeetingRepository } = await import('./mock/MockMeetingRepository')
+  const { MockDepartmentRepository } = await import('./mock/MockDepartmentRepository')
 
   repos = {
     taskRepository: mockTaskRepository,
@@ -62,6 +65,7 @@ if (API_MODE === 'http') {
     commentRepository: mockCommentRepository,
     notificationRepository: mockNotificationRepository,
     meetingRepository: mockMeetingRepository,
+    departmentRepository: new MockDepartmentRepository(mockUserRepository),
   }
 }
 
@@ -76,5 +80,6 @@ export const noteRepository = repos.noteRepository
 export const commentRepository = repos.commentRepository
 export const notificationRepository = repos.notificationRepository
 export const meetingRepository = repos.meetingRepository
+export const departmentRepository = repos.departmentRepository
 
 export const apiMode = API_MODE
