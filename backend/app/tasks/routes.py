@@ -8,7 +8,8 @@ NoteRepository/CommentRepository (app.repositories) и HistoryService (app.servi
   - POST /tasks -- если есть listId, требует can_create_task; без listId --
     "приватная" задача, доступна любому авторизованному.
   - GET /tasks/:id -- достуен любому, кто видит задачу (_can_view_task, включая
-    is_task_visible и permission_service.can_view_task_via_department для роли manager),
+    is_task_visible, permission_service.can_view_task_via_department для роли manager и
+    permission_service.can_view_task_via_meeting для участников встречи, к которой привязана задача),
     PATCH/DELETE -- @require_task_permission("can_edit_task"/"can_delete_task").
   - Сабресурсы (checklist-items/notes/comments) защищены правами
     родительской задачи: чтение -- через _can_view_task (та же видимость,
@@ -62,6 +63,10 @@ def _split_csv(value):
 
 def _can_view_task(task, user_id):
     if permission_service.is_global_admin(user_id):
+        return True
+    # участник встречи, к которой привязана задача, видит её независимо от
+    # membership в списке -- см. permission_service.can_view_task_via_meeting.
+    if permission_service.can_view_task_via_meeting(task, user_id):
         return True
     if task.list_id is None:
         if task.created_by == user_id or task.assignee_id == user_id:
