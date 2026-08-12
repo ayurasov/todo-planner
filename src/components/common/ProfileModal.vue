@@ -1,3 +1,4 @@
+<script setup>
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUsersStore } from '../../stores/usersStore'
