@@ -8,6 +8,10 @@ export const useUiStore = defineStore('ui', {
     openTaskId: null,
     quickCreateContext: null,
     sidebarCollapsed: sidebarStorage.load(false),
+    // Модалка собственного профиля (см. ProfileModal.vue) -- открывается кликом
+    // на имя/аватар в AppTopBar.vue. Состояние глобальное (а не локальное в AppTopBar),
+    // чтобы в будущем открывать её также из других мест (например, пункт в меню).
+    profileModalOpen: false,
   }),
   actions: {
     openTask(id) { this.openTaskId = id },
@@ -18,5 +22,7 @@ export const useUiStore = defineStore('ui', {
       this.sidebarCollapsed = !this.sidebarCollapsed
       sidebarStorage.save(this.sidebarCollapsed)
     },
+    openProfile() { this.profileModalOpen = true },
+    closeProfile() { this.profileModalOpen = false },
   },
 })
