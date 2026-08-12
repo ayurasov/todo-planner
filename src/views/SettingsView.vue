@@ -25,8 +25,8 @@ async function toggleCalendar() {
   <section class="card settings-section">
     <h3>Интеграция с календарём (Exchange)</h3>
     <p class="hint-text">
-      Опциональная интеграция для отображения занятости и регулярных встреч. В MVP используется mock-провайдер;
-      реальное подключение к Exchange запланировано как отдельный этап v2.
+      Опциональная интеграция для отображения занятости и регулярных встреч. Сейчас используется mock-провайдер;
+      реальное подключение к Exchange будет добавлено отдельным этапом.
     </p>
     <div class="calendar-status">
       <span class="status-badge" :class="calendarStore.status">{{ calendarStore.status }}</span>
