@@ -28,6 +28,8 @@ from app.saved_views import saved_views_bp
 from app.comments import comments_bp
 from app.checklists import checklists_bp
 from app.notes import notes_bp
+from app.analytics import analytics_bp
+from app.uploads import uploads_bp
 
 from app.auth.security import install_login_guard
 from app.auth.seed import seed_initial_users
@@ -162,6 +164,8 @@ def _register_blueprints(app):
     app.register_blueprint(comments_bp)
     app.register_blueprint(checklists_bp)
     app.register_blueprint(notes_bp)
+    app.register_blueprint(analytics_bp)
+    app.register_blueprint(uploads_bp)
 
 
 def _bootstrap_database(app):
