@@ -74,9 +74,27 @@ function convertFakeListParagraphs(root) {
   }
 }
 
+/**
+ * Удаляет из Word/Outlook HTML служебные блоки (<style>, <head>, <meta>, <xml>,
+ * <o:p> и прочие namespace-теги Office), которые при обычной санитизации
+ * превращались бы в голый текст (textContent тега <style> — тысячи символов CSS)
+ * и вставлялись в поле. Вызывается до sanitize().
+ */
+function stripWordJunk(tmp) {
+  // Удаляем целиком теги, содержимое которых не нужно вообще
+  tmp.querySelectorAll('style, head, meta, xml, script, link').forEach((el) => el.remove())
+  // Namespace-теги Office (o:p, w:sdt, m:oMath и т.п.) — заменяем на их текстовое содержимое
+  tmp.querySelectorAll('*').forEach((el) => {
+    if (el.tagName && el.tagName.includes(':')) {
+      el.replaceWith(document.createTextNode(el.textContent))
+    }
+  })
+}
+
 function sanitize(html) {
   const tmp = document.createElement('div')
   tmp.innerHTML = html || ''
+  stripWordJunk(tmp)
   convertFakeListParagraphs(tmp)
   const walk = (node) => {
     ;[...node.childNodes].forEach((child) => {
