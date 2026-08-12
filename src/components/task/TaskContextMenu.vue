@@ -30,7 +30,14 @@ const measuredSize = ref({ w: 264, h: 0 })
 // самого ConfirmModal (через @click.self) закрывает его без удаления.
 const confirmDeleteOpen = ref(false)
 
-useClickOutside(menuEl, () => emit('close'))
+// ConfirmModal рендерится через свой собственный Teleport в body, т.е. физически
+// находится ВНЕ menuEl в DOM. useClickOutside слушает mousedown на document —
+// без этой проверки нажатие на кнопку "Удалить"/"Отмена" внутри ConfirmModal
+// считалось "кликом снаружи" контекстного меню, emit('close') срабатывал на
+// mousedown раньше, чем click-хендлер самой кнопки модалки, весь TaskContextMenu
+// (а вместе с ним и ConfirmModal) размонтировался — из-за этого подтверждение
+// удаления через контекстное меню визуально "не работало".
+useClickOutside(menuEl, () => { if (!confirmDeleteOpen.value) emit('close') })
 onMounted(() => {
   mounted.value = true
   nextTick(() => {
