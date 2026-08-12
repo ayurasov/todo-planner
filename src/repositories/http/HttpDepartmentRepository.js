@@ -23,7 +23,7 @@ export class HttpDepartmentRepository extends DepartmentRepository {
   }
 
   async setManagers(departmentId, userIds) {
-    return apiClient.put ? apiClient.put(`/departments/${departmentId}/managers`, { userIds }) : apiClient.patch(`/departments/${departmentId}/managers`, { userIds })
+    return apiClient.put(`/departments/${departmentId}/managers`, { userIds })
   }
 }
 
