@@ -10,6 +10,12 @@ check constraint from 0001_initial_schema only allowed ('admin', 'user').
 The 'manager' role (руководитель отдела/службы, see ManagerDepartmentORM /
 permission_service.py) was introduced later at the application layer but the
 DB constraint was never updated to match.
+
+Прим.: drop_constraint/create_check_constraint выполняются через
+batch_alter_table -- SQLite не поддерживает ALTER TABLE DROP/ADD CONSTRAINT
+напрямую (NotImplementedError: No support for ALTER of constraints in
+SQLite dialect); batch mode использует copy-and-move и корректно
+работает как на SQLite, так и на PostgreSQL.
 """
 
 from alembic import op
@@ -21,18 +27,18 @@ depends_on = None
 
 
 def upgrade():
-    op.drop_constraint('ck_users_global_role', 'users', type_='check')
-    op.create_check_constraint(
-        'ck_users_global_role',
-        'users',
-        "global_role IN ('admin', 'manager', 'user')",
-    )
+    with op.batch_alter_table('users') as batch_op:
+        batch_op.drop_constraint('ck_users_global_role', type_='check')
+        batch_op.create_check_constraint(
+            'ck_users_global_role',
+            "global_role IN ('admin', 'manager', 'user')",
+        )
 
 
 def downgrade():
-    op.drop_constraint('ck_users_global_role', 'users', type_='check')
-    op.create_check_constraint(
-        'ck_users_global_role',
-        'users',
-        "global_role IN ('admin', 'user')",
-    )
+    with op.batch_alter_table('users') as batch_op:
+        batch_op.drop_constraint('ck_users_global_role', type_='check')
+        batch_op.create_check_constraint(
+            'ck_users_global_role',
+            "global_role IN ('admin', 'user')",
+        )
