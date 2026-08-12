@@ -136,7 +136,7 @@ async function submitPasswordChange() {
               {{ getInitials(user.name) }}
             </span>
             <button class="avatar-edit-btn" title="Изменить фото" :disabled="uploading" @click="triggerFilePicker">
-              <AppIcon name="camera" :size="13" />
+              <AppIcon name="edit" :size="12" />
             </button>
             <input ref="fileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onFileSelected" />
           </div>
