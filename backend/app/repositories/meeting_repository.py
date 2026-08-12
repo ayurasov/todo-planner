@@ -57,6 +57,14 @@ class MeetingRepository:
             created_by=created_by, created_at=timestamp,
         )
         db.session.add(row)
+        # MeetingORM <-> MeetingAttendeeORM связаны только через FK-колонку meeting_id,
+        # без SQLAlchemy relationship(). Без relationship unit-of-work не всегда строит
+        # правильный порядок INSERT между родителем и потомком в рамках одной транзакции --
+        # на Postgres это приводило к ForeignKeyViolation на meeting_attendees_meeting_id_fkey
+        # (see incident: создание регулярной встречи с несколькими участниками). Явный
+        # flush() отправляет INSERT meetings в БД до того, как добавляются attendee-строки,
+        # но не завершает транзакцию -- commit() ниже остаётся один, атомарность сохраняется.
+        db.session.flush()
         for user_id in (attendee_ids or []):
             db.session.add(MeetingAttendeeORM(meeting_id=row.id, user_id=user_id))
         db.session.commit()
