@@ -11,6 +11,14 @@ from app.models import ManagerDepartmentORM, UserORM
 from app.repositories.common import new_id, now_iso
 
 
+class DuplicateEmailError(Exception):
+    """Email уже занят другим пользователем (уникальность на уровне users.email)."""
+
+
+class DuplicateLoginError(Exception):
+    """Login уже занят другим пользователем (уникальность на уровне users.login)."""
+
+
 class UserRepository:
     def _managed_department_ids(self, user_id: str):
         rows = ManagerDepartmentORM.query.filter_by(user_id=user_id).all()
@@ -31,21 +39,37 @@ class UserRepository:
         row = UserORM.query.get(user_id)
         return self._to_domain(row) if row else None
 
+    def get_by_email(self, email: str):
+        row = UserORM.query.filter_by(email=email).first()
+        return self._to_domain(row) if row else None
+
     def update(self, user_id: str, *, global_role=None, is_active=None,
                name=None, email=None, position=None, department=None,
                department_id=None, clear_department_id=False,
                managed_department_ids=None):
-        """Точецное обновление только тех полей, что переданы (не None).
+        """Точечное обновление только тех полей, что переданы (не None).
 
         position/department -- старые свободные текстовые справочные поля (должность/отдел),
         department_id -- ссылка на новый плоский справочник Department (clear_department_id=True
         явно сбрасывает в NULL, т.к. None от department_id не отличить от "не менять").
         managed_department_ids -- полная замена списка отделов, которыми руководит
         данный руководитель (может быть несколько отделов/служб одновременно).
+
+        Перед изменением email заранее проверяем уникальность (см. DuplicateEmailError) --
+        иначе IntegrityError от UNIQUE-констрейнта users.email долетал бы до route как
+        необработанное исключение (500) вместо аккуратной 400-ошибки валидации (см.
+        incident: "не могу создать пользователя с правами руководитель / присвоить права
+        руководителя" -- 500 из-за совпавшего email при одновременном изменении роли).
         """
         row = UserORM.query.get(user_id)
         if row is None:
             return None
+
+        if email is not None and email != row.email:
+            existing = UserORM.query.filter(UserORM.email == email, UserORM.id != user_id).first()
+            if existing is not None:
+                raise DuplicateEmailError(email)
+
         if global_role is not None:
             row.global_role = global_role
         if is_active is not None:
@@ -100,7 +124,19 @@ class UserRepository:
         та же схема хэширования пароля (werkzeug generate_password_hash), тот же
         набор обязательных полей (login/name/email), только вызывается на лету,
         а не один раз при пустой БД.
+
+        Уникальность login/email проверяется явно до INSERT (см. DuplicateLoginError/
+        DuplicateEmailError) -- иначе IntegrityError от UNIQUE-констрейнта долетал бы
+        до route как необработанное исключение (500) вместо 400 validation_error.
+        Проверка login уже была в routes.create_user, но email не проверялся вовсе --
+        именно это приводило к 500 при создании пользователя с ролью 'manager', если
+        email случайно совпадал с уже существующим (в т.ч. seed-пользователями).
         """
+        if UserORM.query.filter_by(login=login).first() is not None:
+            raise DuplicateLoginError(login)
+        if UserORM.query.filter_by(email=email).first() is not None:
+            raise DuplicateEmailError(email)
+
         row = UserORM(
             id=new_id(),
             name=name,

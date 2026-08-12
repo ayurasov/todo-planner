@@ -3,7 +3,7 @@
 Автентификация — глобальным guard в app.auth.security (401 для всего blueprint).
 PATCH /users/:id доступен только global admin (PermissionService.is_global_admin) --
 зеркало frontend-правила UsersView.vue (редактировать роль/активность
-других пользователей может только админ).
+другого пользователя может только админ).
 
 Роли пользователя (globalRole): 'admin' | 'manager' | 'user'.
 'manager' -- руководитель одного или нескольких отделов/служб сразу (связь
@@ -14,7 +14,7 @@ PATCH /users/:id доступен только global admin (PermissionService.i
 сам сотрудник; не путать с managerDepartmentIds (отделы, которыми он руководит).
 
 POST /users (создание) и POST /users/:id/reset-password -- тоже только global admin.
-Пароль (при создании -- заданный явно, при сбросе -- сгенерированный вревоменный)
+Пароль (при создании -- заданный явно, при сбросе -- сгенерированный временный)
 возвращается в JSON-ответе ОДИН РАЗ, как открытый текст -- аналог поведения
 app.auth.seed.seed_initial_users (пароль печатается один раз и не хранится в
 открытом виде). Ответственность фронтенда -- показать его администратору сразу
@@ -29,6 +29,7 @@ from werkzeug.security import generate_password_hash
 from app.auth.security import current_user_id
 from app.mappers import domain_to_dto
 from app.repositories import DepartmentRepository, UserRepository
+from app.repositories.user_repository import DuplicateEmailError, DuplicateLoginError
 from app.services.permission_service import permission_denied_response, permission_service
 from app.users import users_bp
 
@@ -134,18 +135,22 @@ def update_user(user_id, **kwargs):
     if error is not None:
         return error
 
-    updated = user_repository.update(
-        user_id,
-        global_role=global_role,
-        is_active=is_active,
-        name=name.strip() if name is not None else None,
-        email=email.strip() if email is not None else None,
-        position=position,
-        department=department,
-        department_id=department_id,
-        clear_department_id=clear_department_id,
-        managed_department_ids=manager_department_ids,
-    )
+    try:
+        updated = user_repository.update(
+            user_id,
+            global_role=global_role,
+            is_active=is_active,
+            name=name.strip() if name is not None else None,
+            email=email.strip() if email is not None else None,
+            position=position,
+            department=department,
+            department_id=department_id,
+            clear_department_id=clear_department_id,
+            managed_department_ids=manager_department_ids,
+        )
+    except DuplicateEmailError:
+        return _validation_error([{"loc": ["email"], "msg": "email уже занят другим пользователем"}])
+
     if updated is None:
         return _not_found()
     return jsonify(domain_to_dto.user(updated).model_dump(by_alias=True))
@@ -200,6 +205,13 @@ def create_user(**kwargs):
     if user_repository.get_by_login(login) is not None:
         return _validation_error([{"loc": ["login"], "msg": "login уже занят"}])
 
+    # Email тоже уникален на уровне схемы (users.email UNIQUE) -- без этой проверки
+    # совпадение email (например, с уже существующим сотрудником/seed-пользователем)
+    # приводило к необработанному IntegrityError -> 500 при создании пользователя,
+    # в т.ч. с ролью 'manager' (см. incident report).
+    if user_repository.get_by_email(email) is not None:
+        return _validation_error([{"loc": ["email"], "msg": "email уже занят"}])
+
     error = _validate_department_id(department_id)
     if error is not None:
         return error
@@ -214,19 +226,28 @@ def create_user(**kwargs):
     if len(plain_password) < 8:
         return _validation_error([{"loc": ["password"], "msg": "минимум 8 символов"}])
 
-    created = user_repository.create(
-        login=login,
-        name=name,
-        email=email,
-        password_hash=generate_password_hash(plain_password),
-        global_role=global_role,
-        position=position,
-        department=department,
-        department_id=department_id,
-    )
+    try:
+        created = user_repository.create(
+            login=login,
+            name=name,
+            email=email,
+            password_hash=generate_password_hash(plain_password),
+            global_role=global_role,
+            position=position,
+            department=department,
+            department_id=department_id,
+        )
+    except DuplicateLoginError:
+        return _validation_error([{"loc": ["login"], "msg": "login уже занят"}])
+    except DuplicateEmailError:
+        return _validation_error([{"loc": ["email"], "msg": "email уже занят"}])
 
     if manager_department_ids is not None:
-        created = user_repository.update(created.id, managed_department_ids=manager_department_ids)
+        try:
+            created = user_repository.update(created.id, managed_department_ids=manager_department_ids)
+        except DuplicateEmailError:
+            # email тут не меняется -- защитная ветка на случай будущих изменений сигнатуры.
+            pass
 
     dto = domain_to_dto.user(created).model_dump(by_alias=True)
     dto["temporaryPassword"] = plain_password
