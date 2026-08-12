@@ -63,5 +63,43 @@ export const useUsersStore = defineStore('users', {
         this.users = this.users.filter((u) => u.id !== id)
       }, { notificationsStore: useNotificationsStore(), router })
     },
+
+    /**
+     * Загрузка аватара. Доступно самому пользователю (свой профиль, см.
+     * ProfileModal.vue) и администратору для любого пользователя (см.
+     * UsersView.vue) -- backend сам решает, разрешено ли конкретному
+     * user_id менять аватар данного id (см. backend/app/users/routes.py).
+     * Синхронизирует локальный список и currentUser, если меняется свой аватар.
+     */
+    async uploadAvatar(id, file) {
+      return withPermissionHandling(async () => {
+        const updated = await userRepository.uploadAvatar(id, file)
+        const idx = this.users.findIndex((u) => u.id === id)
+        if (idx !== -1) this.users[idx] = updated
+        if (this.currentUser?.id === id) this.currentUser = updated
+        return updated
+      }, { notificationsStore: useNotificationsStore(), router })
+    },
+
+    /** Сброс аватара на стандартный (заглушка с инициалами). */
+    async deleteAvatar(id) {
+      return withPermissionHandling(async () => {
+        const updated = await userRepository.deleteAvatar(id)
+        const idx = this.users.findIndex((u) => u.id === id)
+        if (idx !== -1) this.users[idx] = updated
+        if (this.currentUser?.id === id) this.currentUser = updated
+        return updated
+      }, { notificationsStore: useNotificationsStore(), router })
+    },
+
+    /**
+     * Смена пароля текущим авторизованным пользователем (свой профиль).
+     * Принимает { currentPassword, newPassword } -- см. ProfileModal.vue.
+     * Ошибки (неверный текущий пароль, слишком короткий новый) прокидываются
+     * вызывающему коду как есть, чтобы форма могла показать сообщение.
+     */
+    async changePassword(payload) {
+      return userRepository.changePassword(payload)
+    },
   },
 })
