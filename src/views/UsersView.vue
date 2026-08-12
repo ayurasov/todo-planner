@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useUsersStore } from '../stores/usersStore'
 import { useDepartmentsStore } from '../stores/departmentsStore'
 import { useIsAdmin } from '../composables/usePermissions'
+import { getInitials, getAvatarColor } from '../utils/avatar'
 
 const usersStore = useUsersStore()
 const departmentsStore = useDepartmentsStore()
@@ -208,6 +209,60 @@ async function handleResetPassword(user) {
 function closePasswordModal() {
   temporaryPasswordInfo.value = null
 }
+
+// --- Аватар пользователя (загрузка/сброс администратором) ---
+// Общий скрытый <input type="file">, переиспользуемый для всех строк таблицы --
+// avatarTargetUserId запоминает, для какого пользователя открыт выбор файла,
+// чтобы не создавать по отдельному input на каждую строку.
+const avatarFileInputEl = ref(null)
+const avatarTargetUserId = ref(null)
+const avatarUploadingId = ref(null)
+const avatarError = ref('')
+
+function triggerAvatarUpload(user) {
+  avatarError.value = ''
+  avatarTargetUserId.value = user.id
+  avatarFileInputEl.value?.click()
+}
+
+async function onAvatarFileSelected(event) {
+  const file = event.target.files?.[0]
+  const userId = avatarTargetUserId.value
+  event.target.value = ''
+  if (!file || !userId) return
+
+  const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+  if (!allowed.includes(file.type)) {
+    avatarError.value = 'Допустимые форматы: PNG, JPG, GIF, WEBP'
+    return
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    avatarError.value = 'Файл больше 5 МБ'
+    return
+  }
+
+  avatarUploadingId.value = userId
+  avatarError.value = ''
+  try {
+    await usersStore.uploadAvatar(userId, file)
+  } catch (err) {
+    avatarError.value = err?.message || 'Не удалось загрузить фото'
+  } finally {
+    avatarUploadingId.value = null
+  }
+}
+
+async function handleRemoveAvatar(user) {
+  avatarUploadingId.value = user.id
+  avatarError.value = ''
+  try {
+    await usersStore.deleteAvatar(user.id)
+  } catch (err) {
+    avatarError.value = err?.message || 'Не удалось удалить фото'
+  } finally {
+    avatarUploadingId.value = null
+  }
+}
 </script>
 
 <template>
@@ -218,10 +273,12 @@ function closePasswordModal() {
 
   <section v-if="isAdmin" class="card users-section">
     <p class="hint-text">
-      увление ролями, активностью, должностью и отделом пользователей. Роль "Руководитель" даёт
+      увление ролями, активностью, должностью, отделом и фото пользователей. Роль "Руководитель" даёт
       видимость списков/задач всего отдела (можно назначить сразу несколько отделов/служб).
       Изменение своей собственной роли или активности заблокировано.
     </p>
+    <p v-if="avatarError" class="error-text">{{ avatarError }}</p>
+    <input ref="avatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onAvatarFileSelected" />
 
     <div class="filters-bar">
       <input v-model="searchQuery" type="text" class="filter-input" placeholder="Поиск по имени, email, логину..." />
@@ -251,7 +308,14 @@ function closePasswordModal() {
       </div>
       <div v-for="u in filteredSortedUsers" :key="u.id" class="user-row" :class="{ inactive: !u.isActive }">
         <div class="user-cell">
-          <span class="user-avatar">{{ u.name.charAt(0) }}</span>
+          <div class="user-avatar-wrap">
+            <img v-if="u.avatarUrl" :src="u.avatarUrl" class="user-avatar user-avatar-img" alt="" />
+            <span v-else class="user-avatar" :style="{ background: getAvatarColor(u.name) }">{{ getInitials(u.name) }}</span>
+            <button
+              class="avatar-mini-edit" title="Загрузить фото" :disabled="avatarUploadingId === u.id"
+              @click="triggerAvatarUpload(u)"
+            >···</button>
+          </div>
           <div class="user-info">
             <span class="user-name">{{ u.name }}<span v-if="isSelf(u)" class="self-badge">Вы</span></span>
             <span class="user-email">{{ u.email }}</span>
@@ -285,6 +349,10 @@ function closePasswordModal() {
         </button>
 
         <div class="row-actions">
+          <button class="btn btn-sm btn-ghost" :disabled="avatarUploadingId === u.id" @click="triggerAvatarUpload(u)">
+            {{ avatarUploadingId === u.id ? 'Загрузка...' : 'Фото' }}
+          </button>
+          <button v-if="u.avatarUrl" class="btn btn-sm btn-ghost" :disabled="avatarUploadingId === u.id" @click="handleRemoveAvatar(u)">Сброс фото</button>
           <button class="btn btn-sm btn-ghost" @click="openEditForm(u)">Изменить</button>
           <button
             class="btn btn-sm btn-ghost"
@@ -445,6 +513,7 @@ function closePasswordModal() {
 .users-section { padding: 16px 18px; }
 .hint-text { font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 14px; }
 .empty-hint { margin: 16px 0 0; text-align: center; }
+.file-input-hidden { display: none; }
 
 .filters-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
 .filter-input {
@@ -456,23 +525,32 @@ function closePasswordModal() {
 
 .users-table { display: flex; flex-direction: column; }
 .users-table-head {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 220px; gap: 10px;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 280px; gap: 10px;
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);
   padding: 0 8px 8px; border-bottom: 1px solid var(--color-border);
 }
 .sortable { cursor: pointer; user-select: none; }
 .sortable:hover { color: var(--color-text); }
 .user-row {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 220px; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 280px; gap: 10px; align-items: center;
   padding: 10px 8px; border-bottom: 1px solid var(--color-border);
 }
 .user-row.inactive { opacity: 0.55; }
 .user-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .text-cell { font-size: 12.5px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
+.user-avatar-wrap { position: relative; flex-shrink: 0; }
 .user-avatar {
   width: 30px; height: 30px; border-radius: 50%; background: #b7bfd1; color: #fff;
   display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0;
 }
+.user-avatar-img { object-fit: cover; }
+.avatar-mini-edit {
+  position: absolute; bottom: -3px; right: -3px; width: 15px; height: 15px; border-radius: 50%;
+  background: #fff; border: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 8px;
+  line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+}
+.avatar-mini-edit:hover { color: var(--color-text); }
+.avatar-mini-edit:disabled { opacity: 0.6; cursor: not-allowed; }
 .user-info { display: flex; flex-direction: column; min-width: 0; }
 .user-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .self-badge {
