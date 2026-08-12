@@ -8,6 +8,7 @@ import { ListRole } from '../domain/entities/enums'
 import { useDragReorder } from '../composables/useDragReorder'
 import ListSettingsModal from '../components/common/ListSettingsModal.vue'
 import AppIcon from '../components/common/AppIcon.vue'
+import ConfirmModal from '../components/common/ConfirmModal.vue'
 
 const router = useRouter()
 const listsStore = useListsStore()
@@ -20,6 +21,11 @@ const memberPickerListId = ref(null)
 const memberPickerUserId = ref(null)
 const memberPickerRole = ref(ListRole.VIEWER)
 const showArchived = ref(false)
+
+// Раньше удаление списка подтверждалось нативным window.confirm() — единственное
+// оставшееся такое место в приложении. listPendingRemoval хранит сам список,
+// чтобы модалка могла показать его название и количество задач при подтверждении.
+const listPendingRemoval = ref(null)
 
 const ROLE_LABEL = { owner: 'Владелец', editor: 'Редактор', assignee: 'Исполнитель', viewer: 'Наблюдатель' }
 const ROLE_COLOR = { owner: '#e5484d', editor: '#4f7cff', assignee: '#1e9e4d', viewer: '#9aa3b2' }
@@ -45,6 +51,19 @@ const rows = computed(() => displayItems.value.map((list) => ({
   taskCount: tasksStore.tasks.filter((t) => t.listId === list.id).length,
 })))
 
+const listPendingRemovalTaskCount = computed(() => {
+  if (!listPendingRemoval.value) return 0
+  return tasksStore.tasks.filter((t) => t.listId === listPendingRemoval.value.id).length
+})
+
+const listPendingRemovalMessage = computed(() => {
+  if (!listPendingRemoval.value) return ''
+  const count = listPendingRemovalTaskCount.value
+  return count
+    ? `Удалить список «${listPendingRemoval.value.title}»? ${count} задач(и) останутся, но потеряют привязку к нему.`
+    : `Удалить список «${listPendingRemoval.value.title}»?`
+})
+
 async function handleCreate(payload) {
   await listsStore.createList(payload)
   showCreate.value = false
@@ -54,16 +73,22 @@ async function handleCreate(payload) {
 // но listsStore не имел соответствующего action и, главное, в UI вообще не было
 // кнопки удаления. Задачи удаляемого списка отвязываются (listId = null),
 // по аналогии с удалением встречи в MeetingDetailView.vue, а не удаляются вместе со списком.
-async function removeList(list) {
-  const taskCount = tasksStore.tasks.filter((t) => t.listId === list.id).length
-  const msg = taskCount
-    ? `Удалить список «${list.title}»? ${taskCount} задач(и) останутся, но потеряют привязку к нему.`
-    : `Удалить список «${list.title}»?`
-  if (!confirm(msg)) return
+function requestRemoveList(list) {
+  listPendingRemoval.value = list
+}
+
+function cancelRemoveList() {
+  listPendingRemoval.value = null
+}
+
+async function confirmRemoveList() {
+  const list = listPendingRemoval.value
+  if (!list) return
   for (const t of tasksStore.tasks.filter((x) => x.listId === list.id)) {
     await tasksStore.updateTaskField(t.id, 'listId', null)
   }
   await listsStore.removeList(list.id)
+  listPendingRemoval.value = null
 }
 
 function openList(listId) {
@@ -140,7 +165,7 @@ function availableUsers(listId) {
             class="btn btn-ghost btn-icon btn-sm" :title="row.list.archived ? 'Вернуть из архива' : 'Архивировать список'"
             @click="row.list.archived ? listsStore.unarchiveList(row.list.id) : listsStore.archiveList(row.list.id)"
           ><AppIcon :name="row.list.archived ? 'undo' : 'copy'" :size="14" /></button>
-          <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить список" @click="removeList(row.list)"><AppIcon name="trash" :size="14" /></button>
+          <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить список" @click="requestRemoveList(row.list)"><AppIcon name="trash" :size="14" /></button>
         </div>
       </div>
 
@@ -184,6 +209,15 @@ function availableUsers(listId) {
 
   <ListSettingsModal v-if="editingList" :list="editingList" @close="editingList = null" />
   <ListSettingsModal v-if="showCreate" :list="blankList" create-mode @close="showCreate = false" @create="handleCreate" />
+
+  <ConfirmModal
+    v-if="listPendingRemoval"
+    title="Удалить список?"
+    :message="listPendingRemovalMessage"
+    confirm-text="Удалить"
+    @confirm="confirmRemoveList"
+    @cancel="cancelRemoveList"
+  />
 </template>
 
 <style scoped>
