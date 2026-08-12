@@ -7,10 +7,11 @@ NoteRepository/CommentRepository (app.repositories) и HistoryService (app.servi
     TaskRepository.get_visible_for_user, а не "всё и фильтр на фронте").
   - POST /tasks -- если есть listId, требует can_create_task; без listId --
     "приватная" задача, доступна любому авторизованному.
-  - GET /tasks/:id -- доступен любому, кто видит задачу (is_task_visible),
+  - GET /tasks/:id -- достуен любому, кто видит задачу (_can_view_task, включая
+    is_task_visible и permission_service.can_view_task_via_department для роли manager),
     PATCH/DELETE -- @require_task_permission("can_edit_task"/"can_delete_task").
   - Сабресурсы (checklist-items/notes/comments) защищены правами
-    родительской задачи: чтение -- через is_task_visible (та же видимость,
+    родительской задачи: чтение -- через _can_view_task (та же видимость,
     что и для самой задачи), запись/удаление checklist/notes -- can_edit_task,
     комментарии доступны любому, кто видит задачу, если
     list.settings.allowComments != false (правило из tasksStore.addComment).
@@ -63,9 +64,15 @@ def _can_view_task(task, user_id):
     if permission_service.is_global_admin(user_id):
         return True
     if task.list_id is None:
-        return task.created_by == user_id or task.assignee_id == user_id
+        if task.created_by == user_id or task.assignee_id == user_id:
+            return True
+        return permission_service.can_view_task_via_department(task, user_id)
     role = permission_service.get_role(task.list_id, user_id)
-    return permission_service.is_task_visible(task, role=role, user_id=user_id, is_global_admin=False)
+    if permission_service.is_task_visible(task, role=role, user_id=user_id, is_global_admin=False):
+        return True
+    # руководитель отдела/службы видит задачу даже без membership в списке,
+    # если список/исполнитель/создатель относятся к его managed_department_ids.
+    return permission_service.can_view_task_via_department(task, user_id)
 
 
 def _list_allows_comments(list_id):
