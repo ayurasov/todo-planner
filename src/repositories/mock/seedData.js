@@ -1,4 +1,4 @@
-import { createUser, createList, createListMembership, createTask, createChecklistItem, createNote, createHistoryEntry, createRecurrenceTemplate, createMeeting } from '../../domain/entities/factories'
+import { createUser, createDepartment, createList, createListMembership, createTask, createChecklistItem, createNote, createHistoryEntry, createRecurrenceTemplate, createMeeting } from '../../domain/entities/factories'
 import { TaskStatus, TaskPriority, ListRole, HistoryEventType, RecurrenceType, RecurrenceFreq } from '../../domain/entities/enums'
 
 const now = new Date()
@@ -11,11 +11,27 @@ const iso = (offsetDays = 0, hours = 0) => {
 
 export const CURRENT_USER_ID = 'user_1'
 
+// Плоский справочник отделов/служб (без иерархии) -- аналог backend DepartmentORM.
+export const seedDepartments = [
+  createDepartment({ id: 'dept_1', name: 'Разработка' }),
+  createDepartment({ id: 'dept_2', name: 'Продажи' }),
+  createDepartment({ id: 'dept_3', name: 'Безопасность' }),
+]
+
+// user_1 -- admin и одновретменно руковит двумя отделами (dept_1, dept_2) --
+// иллюстрация того, что руководитель может отвечать за несколько
+// отделов/служб одновременно (many-to-many, аналог ManagerDepartmentORM).
 export const seedUsers = [
-  createUser({ id: 'user_1', name: 'Александр Юрасов', email: 'a.yurasov@example.com', globalRole: 'admin' }),
-  createUser({ id: 'user_2', name: 'Мария Соколова', email: 'm.sokolova@example.com', globalRole: 'user' }),
-  createUser({ id: 'user_3', name: 'Дмитрий Ким', email: 'd.kim@example.com', globalRole: 'user' }),
-  createUser({ id: 'user_4', name: 'Елена Волкова', email: 'e.volkova@example.com', globalRole: 'user' }),
+  createUser({
+    id: 'user_1', name: 'Александр Гюрасов', email: 'a.yurasov@example.com', globalRole: 'admin',
+    departmentId: 'dept_1', managerDepartmentIds: ['dept_1', 'dept_2'],
+  }),
+  createUser({
+    id: 'user_2', name: 'Мария Соколова', email: 'm.sokolova@example.com', globalRole: 'manager',
+    departmentId: 'dept_2', managerDepartmentIds: ['dept_2'],
+  }),
+  createUser({ id: 'user_3', name: 'Дмитрий Ким', email: 'd.kim@example.com', globalRole: 'user', departmentId: 'dept_1' }),
+  createUser({ id: 'user_4', name: 'Елена Волкова', email: 'e.volkova@example.com', globalRole: 'user', departmentId: 'dept_3' }),
 ]
 
 export const seedLists = [
@@ -69,8 +85,7 @@ const t6 = createTask({
   recurrenceTemplateId: 'rectpl_1',
 })
 const t7 = createTask({
-  id: 'task_7', listId: 'list_3', title: 'Обновить дорожную карту релиза',
-  priority: TaskPriority.HIGH, assigneeId: 'user_1', status: TaskStatus.DONE, dueDate: iso(-2),
+  id: 'task_7', listId: 'list_3', title: 'Обновить дорожную карту релиза', priority: TaskPriority.HIGH, assigneeId: 'user_1', status: TaskStatus.DONE, dueDate: iso(-2),
   createdAt: iso(-6), updatedAt: iso(-1), lastActivityAt: iso(-1), completedAt: iso(-1),
 })
 
