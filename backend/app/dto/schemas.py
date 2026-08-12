@@ -41,6 +41,7 @@ class UserResponseDTO(CamelModel):
     id: str
     name: str
     email: str
+    login: Optional[str] = None
     timezone: str = "Europe/Moscow"
     avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
     global_role: str = Field(default="user", alias="globalRole")

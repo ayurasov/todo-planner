@@ -21,20 +21,13 @@ UX-слоем предварительной блокировки кнопок/�
 признаку вместо list membership. Сам руководитель не может удалять список/управлять
 участниками (CAN_MANAGE_MEMBERS/CAN_DELETE_LIST остаются только для owner/admin) -- это чисто
 "расширенная видимость + редактирование задач", а не владелец списка.
-Граница действует независимо от текущего global_role пользователя (смотрится только
-наличие записей в ManagerDepartmentORM), чтобы админ мог назначать участки отделами и
-администраторам, если потребуется -- глобальный admin в таком случае всё равно видит всё
-через is_global_admin bypass.
 
-Встречи (meetings) по-прежнему видны любому авторизованному пользователю (без ACL --
-см. app.meetings.routes) -- meeting.department_id сейчас только справочная метка, в этот шаг не входит.
-
-Видимость задач, привязанных к встрече (task.meeting_id): обычный пользователь,
-добавленный участником встречи (MeetingAttendeeORM), должен видеть задачи этой встречи,
-даже если он не состоит в membership списка задачи и не является исполнителем/создателем
-(см. is_meeting_attendee / can_view_task_via_meeting -- инцидент "обычный пользователь
-должен видеть только свои задачи и задачи в рамках встречи или списка, куда он добавлен
-участником").
+Обычный пользователь по встречам видит только:
+- свои встречи (created_by == user_id),
+- встречи, где он явно добавлен участником (MeetingAttendeeORM),
+- задачи этих встреч (task.meeting_id), даже если не состоит в membership списка.
+Руководитель дополнительно видит все встречи отделов, которыми руководит
+(meeting.department_id in managed_department_ids).
 
 Область видимости аналитики (get_analytics_scope_user_ids, см. GET /api/analytics/scope
 и GET /api/history?userId=): раньше страница аналитики (AnalyticsView.vue) молча
@@ -64,6 +57,7 @@ from app.models import (
     ListORM,
     ManagerDepartmentORM,
     MeetingAttendeeORM,
+    MeetingORM,
     TaskORM,
     TaskTagORM,
     TaskWatcherORM,
@@ -113,6 +107,12 @@ class PermissionService:
         row = ListORM.query.get(list_id)
         return row.department_id if row else None
 
+    def _meeting_department_id(self, meeting_id):
+        if not meeting_id:
+            return None
+        row = MeetingORM.query.get(meeting_id)
+        return row.department_id if row else None
+
     def _user_department_id(self, user_id):
         if not user_id:
             return None
@@ -120,10 +120,6 @@ class PermissionService:
         return user.department_id if user else None
 
     def is_meeting_attendee(self, meeting_id: str, user_id: str) -> bool:
-        """Состоит ли user_id в участниках встречи meeting_id (MeetingAttendeeORM).
-        Используется для видимости задач, привязанных к встрече (task.meeting_id),
-        обычным пользователям без list membership -- см. can_view_task_via_meeting.
-        """
         if not meeting_id or not user_id:
             return False
         return (
@@ -132,12 +128,10 @@ class PermissionService:
         )
 
     def can_view_task_via_meeting(self, task: d.Task, user_id: str) -> bool:
-        """Видимость задачи по участию во встрече, к которой она привязана
-        (task.meeting_id) -- независимо от list membership/organisational
-        видимости руководителя. Любой участник встречи (MeetingAttendeeORM)
-        видит все задачи этой встречи.
-        """
         return self.is_meeting_attendee(task.meeting_id, user_id)
+
+    def can_view_meeting_via_department(self, meeting: d.Meeting, user_id: str) -> bool:
+        return self.manages_department(user_id, self._meeting_department_id(meeting.id))
 
     def get_role(self, list_id: str, user_id: str):
         if not list_id or not user_id:
@@ -211,8 +205,8 @@ class PermissionService:
 
     def get_accessible_list_ids(self, user_id: str):
         if self.is_global_admin(user_id):
-            rows = ListMembershipORM.query.all()
-            return sorted({row.list_id for row in rows})
+            rows = ListORM.query.all()
+            return sorted(row.id for row in rows)
         ids = {row.list_id for row in ListMembershipORM.query.filter_by(user_id=user_id).all()}
         managed_department_ids = self.get_managed_department_ids(user_id)
         if managed_department_ids:
@@ -223,6 +217,8 @@ class PermissionService:
     def is_task_visible(self, task: d.Task, role=None, user_id=None, is_global_admin=False) -> bool:
         if is_global_admin:
             return True
+        if task.created_by == user_id:
+            return True
         if not role:
             return False
         if role == LIST_ROLE_ASSIGNEE:
@@ -230,11 +226,6 @@ class PermissionService:
         return True
 
     def can_view_task_via_department(self, task: d.Task, user_id: str) -> bool:
-        """Видимость задачи "по организационной принадлежности", независимо
-        от list membership -- для руководителя отдела/службы (см. модуль-докстрайку).
-        Задача видна, если её список/исполнитель/создатель относится к одному
-        из отделов, которыми управляет user_id.
-        """
         managed_department_ids = self.get_managed_department_ids(user_id)
         if not managed_department_ids:
             return False
@@ -247,19 +238,6 @@ class PermissionService:
         return False
 
     def get_analytics_scope_user_ids(self, user_id: str):
-        """Множество user_id, чью аналитику/историю/данные разрешено видеть
-        user_id на странице AnalyticsView.vue (GET /api/analytics/scope,
-        GET /api/history?userId=). Возвращает None для global admin -- это
-        означает "без ограничений", frontend в таком случае не фильтрует
-        локально ни задачи, ни историю, ни список сотрудников в выборе.
-
-        Иначе -- сам user_id плюс все сотрудники отделов, которыми он
-        руководит (managed_department_ids, см. get_managed_department_ids).
-        Обычный пользователь без управляемых отделов видит только себя --
-        это устраняет утечку: раньше любой авторизованный пользователь видел
-        полную аналитику по всем сотрудникам компании, включая тех, чьи
-        задачи/списки ему не видны в остальном приложении.
-        """
         if self.is_global_admin(user_id):
             return None
 
@@ -289,13 +267,6 @@ def permission_denied_response(message: str):
 
 
 def require_list_permission(permission_method_name: str, list_kwarg: str = "list_id"):
-    """Guard для routes, которые оперируют конкретным списком.
-
-    Пример:
-        @require_list_permission("can_manage_members")
-        def add_member(list_id): ...
-    """
-
     def decorator(view):
         @wraps(view)
         def wrapper(*args, **kwargs):
@@ -312,13 +283,6 @@ def require_list_permission(permission_method_name: str, list_kwarg: str = "list
 
 
 def require_task_permission(permission_method_name: str, task_kwarg: str = "task_id"):
-    """Guard для routes, которые оперируют конкретной задачей.
-
-    Пример:
-        @require_task_permission("can_edit_task")
-        def update_task(task_id): ...
-    """
-
     def decorator(view):
         @wraps(view)
         def wrapper(*args, **kwargs):

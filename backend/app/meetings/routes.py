@@ -1,9 +1,11 @@
 """
 Реализация blueprint 'meetings' поверх MeetingRepository (app.repositories).
 
-Доступконтроль: встречи видны любому авторизованному пользователю
-(как и в mock-режиме -- нет ACL на уровне встреч в текущем domain-модели), также
-как уже было в src/services -- см. backend/README.md.
+Доступконтроль:
+- GET /meetings и GET /meetings/:id показывают только те встречи, которые доступны
+  текущему пользователю: свои, встречи где он attendee, либо все встречи отделов,
+  которыми он руководит.
+- PATCH/DELETE пока не меняют существующую модель прав и работают как раньше.
 
 unfinishedCount в MeetingResponseDTO -- агрегация "не выполнено в серии",
 посчитана backend'ом (MeetingRepository.unfinished_total_count) -- см. комментарий
@@ -16,6 +18,7 @@ from app.auth.security import current_user_id
 from app.mappers import domain_to_dto
 from app.meetings import meetings_bp
 from app.repositories import MeetingRepository
+from app.services.permission_service import permission_denied_response, permission_service
 
 meeting_repository = MeetingRepository()
 
@@ -28,9 +31,20 @@ def _validation_error(details):
     return jsonify({"error": "validation_error", "details": details}), 400
 
 
+def _can_view_meeting(meeting, user_id):
+    if permission_service.is_global_admin(user_id):
+        return True
+    if meeting.created_by == user_id:
+        return True
+    if user_id in (meeting.attendee_ids or []):
+        return True
+    return permission_service.can_view_meeting_via_department(meeting, user_id)
+
+
 @meetings_bp.route("", methods=["GET"])
 def list_meetings(**kwargs):
-    meetings = meeting_repository.get_all()
+    user_id = current_user_id()
+    meetings = [m for m in meeting_repository.get_all() if _can_view_meeting(m, user_id)]
     return jsonify([domain_to_dto.meeting(m).model_dump(by_alias=True) for m in meetings])
 
 
@@ -62,6 +76,8 @@ def get_meeting(meeting_id, **kwargs):
     meeting = meeting_repository.get_by_id(meeting_id)
     if meeting is None:
         return _not_found()
+    if not _can_view_meeting(meeting, current_user_id()):
+        return permission_denied_response("Недостаточно прав для доступа к встрече")
     return jsonify(domain_to_dto.meeting(meeting).model_dump(by_alias=True))
 
 
@@ -94,5 +110,7 @@ def list_meeting_occurrences(meeting_id, **kwargs):
     meeting = meeting_repository.get_by_id(meeting_id)
     if meeting is None:
         return _not_found()
+    if not _can_view_meeting(meeting, current_user_id()):
+        return permission_denied_response("Недостаточно прав для доступа к встрече")
     occurrences = meeting_repository.list_occurrences(meeting_id)
     return jsonify([domain_to_dto.meeting_occurrence(o).model_dump(by_alias=True) for o in occurrences])
