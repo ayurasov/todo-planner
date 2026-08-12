@@ -311,7 +311,7 @@ function isRecurringMeeting(meeting) {
     </div>
   </TransitionGroup>
 
-  <div v-if="showCreateForm" class="modal-overlay" @click.self="showCreateForm = false">
+  <div v-if="showCreateForm" class="modal-overlay">
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Новая встреча</h3>
@@ -329,7 +329,7 @@ function isRecurringMeeting(meeting) {
           </div>
           <div class="field-group">
             <label>{{ draft.recurrenceEnabled ? 'Время (для всех подвстреч серии по умолчанию)' : 'Время' }}</label>
-            <input v-model="draft.time" type="time" />
+            <input v-model="draft.time" type="time" step="300" />
           </div>
           <div class="field-group color-field">
             <label>Цвет</label>
@@ -387,7 +387,7 @@ function isRecurringMeeting(meeting) {
     </div>
   </div>
 
-  <div v-if="editingMeetingId" class="modal-overlay" @click.self="closeEdit">
+  <div v-if="editingMeetingId" class="modal-overlay">
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>Редактировать встречу</h3>
@@ -405,7 +405,7 @@ function isRecurringMeeting(meeting) {
           </div>
           <div class="field-group">
             <label>Время</label>
-            <input v-model="editDraft.time" type="time" />
+            <input v-model="editDraft.time" type="time" step="300" />
           </div>
           <div class="field-group color-field">
             <label>Цвет</label>
