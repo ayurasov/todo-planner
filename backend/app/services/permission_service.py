@@ -36,6 +36,17 @@ UX-слоем предварительной блокировки кнопок/�
 должен видеть только свои задачи и задачи в рамках встречи или списка, куда он добавлен
 участником").
 
+Область видимости аналитики (get_analytics_scope_user_ids, см. GET /api/analytics/scope
+и GET /api/history?userId=): раньше страница аналитики (AnalyticsView.vue) молча
+показывала статистику по всем сотрудникам компании любому авторизованному пользователю
+(единственное ограничение было на чтение "чужой" истории по userId -- не связанное
+с видимостью списка сотрудников/задач на самой странице). Это давало обычному
+пользователю и руководителю отдела возможность видеть аналитику по людям, задачи и
+списки которых им не видны в остальном приложении. get_analytics_scope_user_ids
+возвращает None для глобального admin (без ограничений) и множество user_id для всех
+остальных: сам пользователь + все сотрудники отделов, которыми он управляет (иначе --
+только сам пользователь, аналогично видимости "своих" задач).
+
 Формат ошибок для mutating-endpoints: JSON 403
     {"error": "permission_denied", "message": "..."}
 чтобы frontend мог стабильно превращать такой ответ в PermissionDeniedError.
@@ -234,6 +245,30 @@ class PermissionService:
         if self._user_department_id(task.created_by) in managed_department_ids:
             return True
         return False
+
+    def get_analytics_scope_user_ids(self, user_id: str):
+        """Множество user_id, чью аналитику/историю/данные разрешено видеть
+        user_id на странице AnalyticsView.vue (GET /api/analytics/scope,
+        GET /api/history?userId=). Возвращает None для global admin -- это
+        означает "без ограничений", frontend в таком случае не фильтрует
+        локально ни задачи, ни историю, ни список сотрудников в выборе.
+
+        Иначе -- сам user_id плюс все сотрудники отделов, которыми он
+        руководит (managed_department_ids, см. get_managed_department_ids).
+        Обычный пользователь без управляемых отделов видит только себя --
+        это устраняет утечку: раньше любой авторизованный пользователь видел
+        полную аналитику по всем сотрудникам компании, включая тех, чьи
+        задачи/списки ему не видны в остальном приложении.
+        """
+        if self.is_global_admin(user_id):
+            return None
+
+        scope = {user_id} if user_id else set()
+        managed_department_ids = self.get_managed_department_ids(user_id)
+        if managed_department_ids:
+            rows = UserORM.query.filter(UserORM.department_id.in_(managed_department_ids)).all()
+            scope.update(row.id for row in rows)
+        return scope
 
     def get_task_domain(self, task_id: str):
         row = TaskORM.query.get(task_id)

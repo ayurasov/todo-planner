@@ -5,7 +5,10 @@
 
 ?taskId= -- история конкретной задачи (видима тому, кто видит задачу);
 ?listId= -- история всех видимых задач списка;
-?userId= -- история задач, где актор == userId (только своя история или admin).
+?userId= -- история задач, где актор == userId, в рамках analytics-scope текущего
+пользователя (см. permission_service.get_analytics_scope_user_ids). Раньше было
+жёстко "только своя история или admin", что не пускало руководителя отдела
+смотреть историю своих подчинённых на странице аналитики (AnalyticsView.vue).
 """
 
 from flask import jsonify, request
@@ -57,8 +60,9 @@ def list_history_entries(**kwargs):
         return jsonify([domain_to_dto.history_entry(e).model_dump(by_alias=True) for e in entries])
 
     if filter_user_id:
-        if filter_user_id != user_id and not permission_service.is_global_admin(user_id):
-            return permission_denied_response("Доступна только своя история")
+        scope_ids = permission_service.get_analytics_scope_user_ids(user_id)
+        if scope_ids is not None and filter_user_id not in scope_ids:
+            return permission_denied_response("Недостаточно прав для доступа к истории этого пользователя")
         rows = TaskHistoryEntryORM.query.filter_by(actor_id=filter_user_id).order_by(TaskHistoryEntryORM.timestamp.asc()).all()
         from app.mappers import orm_to_domain
         entries = [orm_to_domain.history_entry(row) for row in rows]
