@@ -8,6 +8,7 @@ import { useDragReorder } from '../composables/useDragReorder'
 import { formatDateTime, formatTime, formatMeetingRecurrence } from '../utils/formatters'
 import AppIcon from '../components/common/AppIcon.vue'
 import RichTextEditor from '../components/common/RichTextEditor.vue'
+import ConfirmModal from '../components/common/ConfirmModal.vue'
 
 const router = useRouter()
 const meetingsStore = useMeetingsStore()
@@ -29,6 +30,11 @@ const editDraft = ref({
   title: '', date: '', time: '', description: '', link: '', attendeeIds: [], color: '#4f7cff',
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
 })
+
+// Удаление встречи из списка — раньше через window.confirm(), теперь через
+// единый ConfirmModal (см. TaskContextMenu.vue), meetingPendingRemoval хранит
+// саму встречу, чтобы модалка могла показать её название и выполнить удаление.
+const meetingPendingRemoval = ref(null)
 
 function withTimeOfDay(date, timeStr) {
   const [h, m] = (timeStr || '00:00').split(':').map(Number)
@@ -209,12 +215,22 @@ async function saveEdit() {
   editingMeetingId.value = null
 }
 
-async function removeMeeting(meeting) {
-  if (!confirm(`Удалить встречу «${meeting.title}»? Задачи останутся, но потеряют привязку к ней.`)) return
+function requestRemoveMeeting(meeting) {
+  meetingPendingRemoval.value = meeting
+}
+
+function cancelRemoveMeeting() {
+  meetingPendingRemoval.value = null
+}
+
+async function confirmRemoveMeeting() {
+  const meeting = meetingPendingRemoval.value
+  if (!meeting) return
   for (const t of tasksStore.tasks.filter((x) => x.meetingId === meeting.id)) {
     await tasksStore.updateTaskField(t.id, 'meetingId', null)
   }
   await meetingsStore.removeMeeting(meeting.id)
+  meetingPendingRemoval.value = null
 }
 
 function stripHtml(html) {
@@ -290,7 +306,7 @@ function isRecurringMeeting(meeting) {
           class="btn btn-ghost btn-icon btn-sm" :title="m.archived ? 'Вернуть из архива' : 'Архивировать'"
           @click.stop="m.archived ? meetingsStore.unarchiveMeeting(m.id) : meetingsStore.archiveMeeting(m.id)"
         ><AppIcon :name="m.archived ? 'undo' : 'copy'" :size="12" /></button>
-        <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click.stop="removeMeeting(m)"><AppIcon name="trash" :size="12" /></button>
+        <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click.stop="requestRemoveMeeting(m)"><AppIcon name="trash" :size="12" /></button>
       </div>
     </div>
   </TransitionGroup>
@@ -442,6 +458,15 @@ function isRecurringMeeting(meeting) {
       </div>
     </div>
   </div>
+
+  <ConfirmModal
+    v-if="meetingPendingRemoval"
+    title="Удалить встречу?"
+    :message="`«${meetingPendingRemoval.title}» будет удалена. Задачи останутся, но потеряют привязку к встрече.`"
+    confirm-text="Удалить"
+    @confirm="confirmRemoveMeeting"
+    @cancel="cancelRemoveMeeting"
+  />
 </template>
 
 <style scoped>
