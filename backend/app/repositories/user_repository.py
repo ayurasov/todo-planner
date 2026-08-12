@@ -46,7 +46,7 @@ class UserRepository:
     def update(self, user_id: str, *, global_role=None, is_active=None,
                name=None, email=None, position=None, department=None,
                department_id=None, clear_department_id=False,
-               managed_department_ids=None):
+               managed_department_ids=None, avatar_url=None, clear_avatar_url=False):
         """Точечное обновление только тех полей, что переданы (не None).
 
         position/department -- старые свободные текстовые справочные поля (должность/отдел),
@@ -54,6 +54,9 @@ class UserRepository:
         явно сбрасывает в NULL, т.к. None от department_id не отличить от "не менять").
         managed_department_ids -- полная замена списка отделов, которыми руководит
         данный руководитель (может быть несколько отделов/служб одновременно).
+        avatar_url -- относительный URL загруженного аватара (см. POST /users/:id/avatar),
+        clear_avatar_url=True явно сбрасывает на NULL (стандартный буквенный аватар),
+        т.к. None от avatar_url не отличить от "не менять" -- аналогично department_id.
 
         Перед изменением email заранее проверяем уникальность (см. DuplicateEmailError) --
         иначе IntegrityError от UNIQUE-констрейнта users.email долетал бы до route как
@@ -86,6 +89,10 @@ class UserRepository:
             row.department_id = None
         elif department_id is not None:
             row.department_id = department_id
+        if clear_avatar_url:
+            row.avatar_url = None
+        elif avatar_url is not None:
+            row.avatar_url = avatar_url
         row.updated_at = now_iso()
 
         if managed_department_ids is not None:
@@ -129,7 +136,7 @@ class UserRepository:
         DuplicateEmailError) -- иначе IntegrityError от UNIQUE-констрейнта долетал бы
         до route как необработанное исключение (500) вместо 400 validation_error.
         Проверка login уже была в routes.create_user, но email не проверялся вовсе --
-        именно это приводило к 500 при создании пользователя с ролью 'manager', если
+        иименно это приводило к 500 при создании пользователя с ролью 'manager', если
         email случайно совпадал с уже существующим (в т.ч. seed-пользователями).
         """
         if UserORM.query.filter_by(login=login).first() is not None:
@@ -165,3 +172,11 @@ class UserRepository:
         row.updated_at = now_iso()
         db.session.commit()
         return self._to_domain(row)
+
+    def set_avatar_url(self, user_id: str, avatar_url: str):
+        """Установка URL загруженного аватара (POST /api/users/:id/avatar)."""
+        return self.update(user_id, avatar_url=avatar_url)
+
+    def reset_avatar_url(self, user_id: str):
+        """Сброс аватара на стандартный буквенный (DELETE /api/users/:id/avatar)."""
+        return self.update(user_id, clear_avatar_url=True)
