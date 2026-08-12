@@ -7,30 +7,41 @@ UserRepository -- слой доступа к данным для ресурса 
 
 from app.extensions import db
 from app.mappers import orm_to_domain
-from app.models import UserORM
+from app.models import ManagerDepartmentORM, UserORM
 from app.repositories.common import new_id, now_iso
 
 
 class UserRepository:
+    def _managed_department_ids(self, user_id: str):
+        rows = ManagerDepartmentORM.query.filter_by(user_id=user_id).all()
+        return [row.department_id for row in rows]
+
+    def _to_domain(self, row: UserORM):
+        return orm_to_domain.user(row, managed_department_ids=self._managed_department_ids(row.id))
+
     def get_all_active(self):
         rows = UserORM.query.filter_by(is_active=True).order_by(UserORM.name.asc()).all()
-        return [orm_to_domain.user(row) for row in rows]
+        return [self._to_domain(row) for row in rows]
 
     def get_all(self):
         rows = UserORM.query.order_by(UserORM.name.asc()).all()
-        return [orm_to_domain.user(row) for row in rows]
+        return [self._to_domain(row) for row in rows]
 
     def get_by_id(self, user_id: str):
         row = UserORM.query.get(user_id)
-        return orm_to_domain.user(row) if row else None
+        return self._to_domain(row) if row else None
 
     def update(self, user_id: str, *, global_role=None, is_active=None,
-               name=None, email=None, position=None, department=None):
-        """Точечное обновление только тех полей, что переданы (не None).
+               name=None, email=None, position=None, department=None,
+               department_id=None, clear_department_id=False,
+               managed_department_ids=None):
+        """Точецное обновление только тех полей, что переданы (не None).
 
-        position/department -- новые справочные поля (должность/отдел),
-        name/email -- редактирование профиля администратором, помимо
-        globalRole/isActive, которые уже менялись из UsersView.vue.
+        position/department -- старые свободные текстовые справочные поля (должность/отдел),
+        department_id -- ссылка на новый плоский справочник Department (clear_department_id=True
+        явно сбрасывает в NULL, т.к. None от department_id не отличить от "не менять").
+        managed_department_ids -- полная замена списка отделов, которыми руководит
+        данный руководитель (может быть несколько отделов/служб одновременно).
         """
         row = UserORM.query.get(user_id)
         if row is None:
@@ -47,16 +58,26 @@ class UserRepository:
             row.position = position
         if department is not None:
             row.department = department
+        if clear_department_id:
+            row.department_id = None
+        elif department_id is not None:
+            row.department_id = department_id
         row.updated_at = now_iso()
+
+        if managed_department_ids is not None:
+            ManagerDepartmentORM.query.filter_by(user_id=user_id).delete()
+            for department_id_value in managed_department_ids:
+                db.session.add(ManagerDepartmentORM(user_id=user_id, department_id=department_id_value))
+
         db.session.commit()
-        return orm_to_domain.user(row)
+        return self._to_domain(row)
 
     def delete(self, user_id: str) -> bool:
         """Полное удаление пользователя (hard delete).
 
         FK на users.id в остальных таблицах уже настроены с ondelete=CASCADE
-        (участия в списках/watcher/reactions и т.п.) или ondelete=SET NULL
-        (created_by/assignee_id/updated_by/actor_id/author_id) на уровне
+        (участия в списках/watcher/reactions и т.п., включая manager_departments) или
+        ondelete=SET NULL (created_by/assignee_id/updated_by/actor_id/author_id) на уровне
         схемы БД (см. backend/app/models/models.py) -- поэтому удаление строки
         users безопасно и не оставляет висячих ссылок.
         """
@@ -69,10 +90,10 @@ class UserRepository:
 
     def get_by_login(self, login: str):
         row = UserORM.query.filter_by(login=login).first()
-        return orm_to_domain.user(row) if row else None
+        return self._to_domain(row) if row else None
 
     def create(self, *, login, name, email, password_hash, global_role="user",
-               position=None, department=None):
+               position=None, department=None, department_id=None):
         """Создание пользователя администратором через POST /api/users.
 
         Зеркалирует поля, которые уже заполняет app.auth.seed.seed_initial_users --
@@ -91,12 +112,13 @@ class UserRepository:
             is_active=True,
             position=position,
             department=department,
+            department_id=department_id,
             created_at=now_iso(),
             updated_at=now_iso(),
         )
         db.session.add(row)
         db.session.commit()
-        return orm_to_domain.user(row)
+        return self._to_domain(row)
 
     def set_password_hash(self, user_id: str, password_hash: str):
         """Сброс пароля администратором (POST /api/users/:id/reset-password)."""
@@ -106,4 +128,4 @@ class UserRepository:
         row.password_hash = password_hash
         row.updated_at = now_iso()
         db.session.commit()
-        return orm_to_domain.user(row)
+        return self._to_domain(row)

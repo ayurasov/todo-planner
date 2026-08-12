@@ -15,6 +15,16 @@ from typing import Optional
 
 
 @dataclass
+class Department:
+    """Отдел/служба -- плоский справочник (без иерархии)."""
+
+    id: str
+    name: str
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+@dataclass
 class User:
     id: str
     name: str
@@ -27,6 +37,11 @@ class User:
     password_hash: Optional[str] = None
     position: Optional[str] = None
     department: Optional[str] = None
+    department_id: Optional[str] = None
+    # список отделов, которыми руководит данный пользователь (если он
+    # manager) -- может содержать несколько элементов (один руководитель --
+    # несколько отделов/служб одновременно), см. ManagerDepartmentORM.
+    managed_department_ids: list = field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -101,7 +116,7 @@ class Meeting:
     recurrence: Optional[dict] = None
     occurrences: list = field(default_factory=list)
     # Агрегат "не выполнено в серии" -- считается backend'ом в
-    # MeetingRepository.unfinished_total_count, перенесён с фронта (см. backend/README.md).
+    # MeetingRepository.unfinished_total_count, перенесен с фронта (см. backend/README.md).
     unfinished_count: int = 0
 
 

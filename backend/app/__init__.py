@@ -17,6 +17,7 @@ from app.extensions import db, sess, cors, csrf, migrate, limiter
 from app.health import health_bp
 from app.auth import auth_bp
 from app.users import users_bp
+from app.departments import departments_bp
 from app.lists import lists_bp
 from app.tasks import tasks_bp
 from app.meetings import meetings_bp
@@ -34,8 +35,8 @@ from app.auth.seed import seed_initial_users
 
 class _RequestContextFilter(logging.Filter):
     """Добавляет метод/путь запроса и id текущего пользователя к каждой
-    log-записи, если она сделана внутри request-контекста (вне контекста --
-    пустые значения, без исключений).
+    log-записи, если она сделана внутри request-контекста (вне
+    контекста -- пустые значения, без исключений).
     """
 
     def filter(self, record):  # noqa: A003
@@ -82,7 +83,7 @@ class _JsonLogFormatter(logging.Formatter):
 
 
 def _configure_logging(app):
-    """Заменяет дефолтный Flask/Werkzeug-логирование (и возможные print())
+    """Заменяет дефолтное Flask/Werkzeug-логирование (и возможные print())
     на структурированный JSON-вывод в stdout -- тоесть, как ожидается от
     container-приложений (docker/nginx logs -> journald/агрегатор), без зависимости
     от файловой системы внутри контейнера.
@@ -121,8 +122,8 @@ def create_app(config_name=None):
 
     if app.config.get("ENV") == "production":
         # nginx reverse-proxy передаёт X-Forwarded-For/-Proto -- ProxyFix восстанавливает
-        # реальный remote_addr/scheme, иначе rate limiting (Flask-Limiter) и аудит-логи
-        # стали бы видеть только IP nginx-контейнера.
+        # реальный remote_addr/scheme, иначе rate limiting (Flask-Limiter) и аудит-логи стали
+        # бы видеть только IP nginx-контейнера.
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     _register_extensions(app)
@@ -150,6 +151,7 @@ def _register_blueprints(app):
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(departments_bp)
     app.register_blueprint(lists_bp)
     app.register_blueprint(tasks_bp)
     app.register_blueprint(meetings_bp)

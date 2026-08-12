@@ -6,8 +6,24 @@ export function nextId(prefix = 'id') {
   return `${prefix}_${idCounter}_${Date.now().toString(36)}`
 }
 
-export function createUser({ id, name, email, timezone = 'Europe/Moscow', avatarUrl = null, globalRole = 'user', isActive = true }) {
-  return { id: id || nextId('user'), name, email, timezone, avatarUrl, globalRole, isActive }
+// departmentId -- отдел, в котором работает сам сотрудник (ссылка на справочник
+// Department, один отдел на человека). managerDepartmentIds -- отделы/службы,
+// которыми этот человек руководит как globalRole='manager' (могут быть несколько
+// одновременно -- аналог ManagerDepartmentORM на backend). Оба поля -- независимые другот
+// от друга.
+export function createUser({
+  id, name, email, timezone = 'Europe/Moscow', avatarUrl = null, globalRole = 'user', isActive = true,
+  position = null, department = null, departmentId = null, managerDepartmentIds = [],
+}) {
+  return {
+    id: id || nextId('user'), name, email, timezone, avatarUrl, globalRole, isActive,
+    position, department, departmentId, managerDepartmentIds,
+  }
+}
+
+// Плоский справочник отделов/служб (без иерархии) -- см. app.models.DepartmentORM.
+export function createDepartment({ id, name, createdAt = new Date().toISOString(), updatedAt = new Date().toISOString() }) {
+  return { id: id || nextId('dept'), name, createdAt, updatedAt }
 }
 
 export function createList({

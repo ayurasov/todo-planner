@@ -186,6 +186,9 @@ const meetingsDrag = useDragReorder(
       <router-link v-if="isAdmin" to="/settings/users" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Пользователи' : ''">
         <AppIcon name="shield" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Пользователи</span>
       </router-link>
+      <router-link v-if="isAdmin" to="/settings/departments" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Отделы' : ''">
+        <AppIcon name="folder" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Отделы</span>
+      </router-link>
       <router-link to="/settings" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Настройки' : ''">
         <AppIcon name="settings" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Настройки</span>
       </router-link>

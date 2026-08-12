@@ -18,6 +18,23 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+# --- Departments ---
+
+class DepartmentResponseDTO(CamelModel):
+    id: str
+    name: str
+    created_at: Optional[str] = Field(default=None, alias="createdAt")
+    updated_at: Optional[str] = Field(default=None, alias="updatedAt")
+
+
+class DepartmentCreateDTO(CamelModel):
+    name: str
+
+
+class DepartmentUpdateDTO(CamelModel):
+    name: Optional[str] = None
+
+
 # --- Users / Auth ---
 
 class UserResponseDTO(CamelModel):
@@ -30,6 +47,11 @@ class UserResponseDTO(CamelModel):
     is_active: bool = Field(default=True, alias="isActive")
     position: Optional[str] = None
     department: Optional[str] = None
+    # ссылка на справочник Department (плоский список) -- отдел, в котором работает сотрудник.
+    department_id: Optional[str] = Field(default=None, alias="departmentId")
+    # отделы, которыми руководит данный руководитель (global_role == 'manager');
+    # могут быть несколько -- руководитель может ответственно за несколькие отделы/службы.
+    managed_department_ids: List[str] = Field(default_factory=list, alias="managedDepartmentIds")
 
 
 class LoginRequestDTO(CamelModel):

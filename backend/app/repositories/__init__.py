@@ -8,6 +8,7 @@ DTO слои").
 """
 
 from app.repositories.common import new_id, now_iso
+from app.repositories.department_repository import DepartmentRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.list_repository import ListRepository
 from app.repositories.task_repository import TaskRepository
@@ -22,7 +23,7 @@ from app.repositories.notification_repository import NotificationRepository
 from app.repositories.saved_view_repository import SavedViewRepository
 
 __all__ = [
-    "new_id", "now_iso", "UserRepository", "ListRepository", "TaskRepository",
+    "new_id", "now_iso", "DepartmentRepository", "UserRepository", "ListRepository", "TaskRepository",
     "ChecklistItemRepository", "NoteRepository", "CommentRepository",
     "MeetingRepository", "RecurrenceRepository", "NotificationRepository", "SavedViewRepository",
 ]

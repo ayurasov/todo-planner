@@ -50,7 +50,16 @@ class orm_to_domain:
     """ORM-модель (app.models) -> domain dataclass (app.domain.entities)."""
 
     @staticmethod
-    def user(row: orm.UserORM) -> d.User:
+    def department(row: orm.DepartmentORM) -> d.Department:
+        return d.Department(
+            id=row.id,
+            name=row.name,
+            created_at=_iso(row.created_at),
+            updated_at=_iso(row.updated_at),
+        )
+
+    @staticmethod
+    def user(row: orm.UserORM, managed_department_ids: Optional[list] = None) -> d.User:
         return d.User(
             id=row.id,
             name=row.name,
@@ -63,6 +72,8 @@ class orm_to_domain:
             password_hash=row.password_hash,
             position=row.position,
             department=row.department,
+            department_id=row.department_id,
+            managed_department_ids=managed_department_ids or [],
             created_at=_iso(row.created_at),
             updated_at=_iso(row.updated_at),
         )
@@ -283,11 +294,18 @@ class domain_to_dto:
     """Domain dataclass (app.domain.entities) -> response DTO (app.dto)."""
 
     @staticmethod
+    def department(dep: d.Department) -> api_dto.DepartmentResponseDTO:
+        return api_dto.DepartmentResponseDTO(
+            id=dep.id, name=dep.name, created_at=dep.created_at, updated_at=dep.updated_at,
+        )
+
+    @staticmethod
     def user(u: d.User) -> api_dto.UserResponseDTO:
         return api_dto.UserResponseDTO(
             id=u.id, name=u.name, email=u.email, timezone=u.timezone,
             avatar_url=u.avatar_url, global_role=u.global_role, is_active=u.is_active,
-            position=u.position, department=u.department,
+            position=u.position, department=u.department, department_id=u.department_id,
+            managed_department_ids=u.managed_department_ids,
         )
 
     @staticmethod
@@ -490,7 +508,7 @@ class dto_to_domain:
     def notification_from_create(dto_obj: api_dto.NotificationCreateDTO) -> d.Notification:
         """Создание через POST /notifications -- временное решение: due_soon/overdue
         уведомления в http-режиме всё ещё создаются на фронте (см. backend/README.md,
-        раздел про client/server split и Промпт 19 про background jobs)."""
+        раздел про client/server split и Промт 19 про background jobs)."""
         return d.Notification(
             id=None,
             user_id=dto_obj.user_id,
