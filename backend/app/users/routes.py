@@ -5,8 +5,16 @@ PATCH /users/:id доступен только global admin (PermissionService.i
 зеркало frontend-правила UsersView.vue (редактировать роль/активность
 других пользователей может только админ).
 
+Роли пользователя (globalRole): 'admin' | 'manager' | 'user'.
+'manager' -- руководитель одного или нескольких отделов/служб сразу (связь
+годами -- managerDepartmentIds, через ManagerDepartmentORM). Сам себе руководитель назначать
+не может -- назначать globalRole='manager' и managerDepartmentIds также может только admin.
+
+Поле department_id (ссылка на справочник Department) -- отдел, в котором работает
+сам сотрудник; не путать с managerDepartmentIds (отделы, которыми он руководит).
+
 POST /users (создание) и POST /users/:id/reset-password -- тоже только global admin.
-Пароль (при создании -- заданный явно, при сбросе -- сгенерированный временный)
+Пароль (при создании -- заданный явно, при сбросе -- сгенерированный вревоменный)
 возвращается в JSON-ответе ОДИН РАЗ, как открытый текст -- аналог поведения
 app.auth.seed.seed_initial_users (пароль печатается один раз и не хранится в
 открытом виде). Ответственность фронтенда -- показать его администратору сразу
@@ -20,15 +28,22 @@ from werkzeug.security import generate_password_hash
 
 from app.auth.security import current_user_id
 from app.mappers import domain_to_dto
-from app.repositories import UserRepository
+from app.repositories import DepartmentRepository, UserRepository
 from app.services.permission_service import permission_denied_response, permission_service
 from app.users import users_bp
 
 user_repository = UserRepository()
+department_repository = DepartmentRepository()
 
-ALLOWED_UPDATE_FIELDS = {"globalRole", "isActive", "name", "email", "position", "department"}
-ALLOWED_GLOBAL_ROLES = {"admin", "user"}
-ALLOWED_CREATE_FIELDS = {"login", "name", "email", "password", "globalRole", "position", "department"}
+ALLOWED_UPDATE_FIELDS = {
+    "globalRole", "isActive", "name", "email", "position", "department",
+    "departmentId", "managerDepartmentIds",
+}
+ALLOWED_GLOBAL_ROLES = {"admin", "manager", "user"}
+ALLOWED_CREATE_FIELDS = {
+    "login", "name", "email", "password", "globalRole", "position", "department",
+    "departmentId", "managerDepartmentIds",
+}
 
 
 def _not_found(name="user"):
@@ -37,6 +52,25 @@ def _not_found(name="user"):
 
 def _validation_error(details):
     return jsonify({"error": "validation_error", "details": details}), 400
+
+
+def _validate_department_id(department_id):
+    if department_id is None:
+        return None
+    if department_repository.get_by_id(department_id) is None:
+        return _validation_error([{"loc": ["departmentId"], "msg": "отдел не найден"}])
+    return None
+
+
+def _validate_manager_department_ids(manager_department_ids):
+    if manager_department_ids is None:
+        return None
+    if not isinstance(manager_department_ids, list) or not all(isinstance(x, str) for x in manager_department_ids):
+        return _validation_error([{"loc": ["managerDepartmentIds"], "msg": "ожидается список строк"}])
+    for department_id in manager_department_ids:
+        if department_repository.get_by_id(department_id) is None:
+            return _validation_error([{"loc": ["managerDepartmentIds"], "msg": f"отдел {department_id} не найден"}])
+    return None
 
 
 @users_bp.route("", methods=["GET"])
@@ -72,7 +106,7 @@ def update_user(user_id, **kwargs):
 
     global_role = payload.get("globalRole")
     if global_role is not None and global_role not in ALLOWED_GLOBAL_ROLES:
-        return _validation_error([{"loc": ["globalRole"], "msg": "must be 'admin' or 'user'"}])
+        return _validation_error([{"loc": ["globalRole"], "msg": "must be 'admin', 'manager' or 'user'"}])
 
     is_active = payload.get("isActive")
     if is_active is not None and not isinstance(is_active, bool):
@@ -89,6 +123,17 @@ def update_user(user_id, **kwargs):
     position = payload.get("position")
     department = payload.get("department")
 
+    department_id = payload.get("departmentId")
+    clear_department_id = "departmentId" in payload and department_id is None
+    error = _validate_department_id(department_id)
+    if error is not None:
+        return error
+
+    manager_department_ids = payload.get("managerDepartmentIds")
+    error = _validate_manager_department_ids(manager_department_ids)
+    if error is not None:
+        return error
+
     updated = user_repository.update(
         user_id,
         global_role=global_role,
@@ -97,6 +142,9 @@ def update_user(user_id, **kwargs):
         email=email.strip() if email is not None else None,
         position=position,
         department=department,
+        department_id=department_id,
+        clear_department_id=clear_department_id,
+        managed_department_ids=manager_department_ids,
     )
     if updated is None:
         return _not_found()
@@ -134,6 +182,8 @@ def create_user(**kwargs):
     global_role = payload.get("globalRole", "user")
     position = payload.get("position")
     department = payload.get("department")
+    department_id = payload.get("departmentId")
+    manager_department_ids = payload.get("managerDepartmentIds")
 
     errors = []
     if not login:
@@ -143,12 +193,20 @@ def create_user(**kwargs):
     if not email:
         errors.append({"loc": ["email"], "msg": "required"})
     if global_role not in ALLOWED_GLOBAL_ROLES:
-        errors.append({"loc": ["globalRole"], "msg": "must be 'admin' or 'user'"})
+        errors.append({"loc": ["globalRole"], "msg": "must be 'admin', 'manager' or 'user'"})
     if errors:
         return _validation_error(errors)
 
     if user_repository.get_by_login(login) is not None:
         return _validation_error([{"loc": ["login"], "msg": "login уже занят"}])
+
+    error = _validate_department_id(department_id)
+    if error is not None:
+        return error
+
+    error = _validate_manager_department_ids(manager_department_ids)
+    if error is not None:
+        return error
 
     # Пароль можно передать явно (payload.password) или сгенерировать временный --
     # так же, как это делает seed_initial_users для встроенных admin/user.
@@ -164,7 +222,12 @@ def create_user(**kwargs):
         global_role=global_role,
         position=position,
         department=department,
+        department_id=department_id,
     )
+
+    if manager_department_ids is not None:
+        created = user_repository.update(created.id, managed_department_ids=manager_department_ids)
+
     dto = domain_to_dto.user(created).model_dump(by_alias=True)
     dto["temporaryPassword"] = plain_password
     return jsonify(dto), 201
