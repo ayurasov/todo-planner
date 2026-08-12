@@ -3,8 +3,12 @@ TaskRepository -- слой доступа к данным для ресурса 
 только SQLAlchemy-запросы, возвращает domain-объекты через
 `app.mappers.orm_to_domain`. Фильтрация видимых задач делается на сервере
 (см. get_visible_for_user), а не на фронте -- через
-`permission_service.get_role`/`is_task_visible`, так же как уже описано в
- backend/README.md, раздел "фильтрация GET-ответов".
+`permission_service.get_role`/`is_task_visible`/`can_view_task_via_department`, так же
+как уже описано в backend/README.md, раздел "фильтрация GET-ответов".
+
+Роль manager (руководитель отдела/службы) видит дополнительно все задачи, где
+список/исполнитель/создатель относится к одному из его managed_department_ids --
+даже если он сам не состоит в membership списка (см. permission_service.can_view_task_via_department).
 """
 
 from app.extensions import db
@@ -37,6 +41,8 @@ class TaskRepository:
         - задачи в списках, где есть membership (owner/editor/viewer видят все задачи
           списка, assignee -- только свои/watch через permission_service.is_task_visible);
         - global admin видит всё;
+        - manager видит также задачи, связанные с его managed_department_ids (по списку/
+          исполнителю/создателю), даже без membership -- permission_service.can_view_task_via_department;
         - свои задачи без списка (list_id is None): создатель или assignee.
         """
         is_admin = permission_service.is_global_admin(user_id)
@@ -64,9 +70,13 @@ class TaskRepository:
             if task.list_id is None:
                 if task.created_by == user_id or task.assignee_id == user_id:
                     result.append(task)
+                elif permission_service.can_view_task_via_department(task, user_id):
+                    result.append(task)
                 continue
             role = permission_service.get_role(task.list_id, user_id)
             if permission_service.is_task_visible(task, role=role, user_id=user_id, is_global_admin=is_admin):
+                result.append(task)
+            elif permission_service.can_view_task_via_department(task, user_id):
                 result.append(task)
         return result
 
