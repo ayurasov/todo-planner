@@ -13,6 +13,7 @@ import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 import RichTextEditor from '../components/common/RichTextEditor.vue'
+import ConfirmModal from '../components/common/ConfirmModal.vue'
 import { formatDateTime, formatTime, formatMeetingRecurrence } from '../utils/formatters'
 import { meetingSummaryParser, MATCHED_PATTERN_LABEL } from '../services/MeetingSummaryParser'
 import { meetingOccurrenceService } from '../services/MeetingOccurrenceService'
@@ -45,6 +46,10 @@ const occurrenceEditing = ref(false)
 
 const addingOccurrence = ref(false)
 const newOccurrenceDraft = ref({ date: '', time: '', description: '', link: '' })
+
+// Все подтверждения удаления на странице встречи теперь через единый ConfirmModal.
+const occurrencePendingRemoval = ref(null)
+const meetingPendingRemoval = ref(false)
 
 const WEEKDAY_OPTIONS = [
   { value: 1, label: 'Пн' },
@@ -83,6 +88,11 @@ const occurrences = computed(() => meetingsStore.occurrencesOf(props.id))
 function occurrenceTitle(occ) {
   return `${meeting.value?.title || ''} · ${formatDateTime(occ.date)}`
 }
+
+const seriesTasksWithoutOccurrence = computed(() => {
+  if (!isRecurring.value) return []
+  return recurringVisibleTasks.value.filter((t) => !t.occurrenceId)
+})
 
 const unfinishedGroupsByOccurrence = computed(() => {
   if (!isRecurring.value) return []
@@ -179,10 +189,20 @@ async function submitAddOccurrence() {
   addingOccurrence.value = false
 }
 
-async function removeOccurrenceConfirm(occ) {
-  if (!confirm('Удалить эту подвстречу? Задачи, привязанные к ней, останутся, но потеряют привязку к подвстрече.')) return
+function requestRemoveOccurrence(occ) {
+  occurrencePendingRemoval.value = occ
+}
+
+function cancelRemoveOccurrence() {
+  occurrencePendingRemoval.value = null
+}
+
+async function confirmRemoveOccurrence() {
+  const occ = occurrencePendingRemoval.value
+  if (!occ) return
   await meetingsStore.removeOccurrence(props.id, occ.id, { tasksStore })
   if (activeOccurrence.value?.id === occ.id) closeOccurrence()
+  occurrencePendingRemoval.value = null
 }
 
 async function saveOccurrence() {
@@ -295,12 +315,20 @@ async function saveEdit() {
   editing.value = false
 }
 
-async function removeMeeting() {
-  if (!confirm('Удалить встречу? Задачи останутся, но потеряют привязку к ней.')) return
+function requestRemoveMeeting() {
+  meetingPendingRemoval.value = true
+}
+
+function cancelRemoveMeeting() {
+  meetingPendingRemoval.value = false
+}
+
+async function confirmRemoveMeeting() {
   for (const t of tasksStore.tasks.filter((x) => x.meetingId === props.id)) {
     await tasksStore.updateTaskField(t.id, 'meetingId', null)
   }
   await meetingsStore.removeMeeting(props.id)
+  meetingPendingRemoval.value = false
   router.push('/meetings')
 }
 
@@ -326,7 +354,7 @@ function toggleArchived() {
           class="btn btn-ghost btn-icon btn-sm" :title="meeting.archived ? 'Вернуть из архива' : 'Архивировать'"
           @click="toggleArchived"
         ><AppIcon :name="meeting.archived ? 'undo' : 'copy'" :size="14" /></button>
-        <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click="removeMeeting"><AppIcon name="trash" :size="14" /></button>
+        <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click="requestRemoveMeeting"><AppIcon name="trash" :size="14" /></button>
       </div>
     </div>
 
@@ -377,7 +405,22 @@ function toggleArchived() {
         </button>
       </div>
       <QuickFiltersBar :task-count="recurringVisibleTasks.length" :meeting-mode="false" />
-      <div v-if="!occurrenceGroups.length" class="empty-state-inline">
+
+      <div v-if="seriesTasksWithoutOccurrence.length" class="occurrence-card card standalone-series-card">
+        <div class="occurrence-header-wrap occurrence-header-wrap--static">
+          <div class="occurrence-header occurrence-header--static">
+            <span class="occurrence-date"><AppIcon name="layers" :size="13" /> Общие задачи серии (без привязки к подвстрече)</span>
+            <span class="occurrence-has-desc">{{ seriesTasksWithoutOccurrence.length }} задач</span>
+          </div>
+        </div>
+        <TaskListPanel :tasks="seriesTasksWithoutOccurrence" :show-toolbar="false" :meeting-mode="true" />
+        <QuickAddTaskRow
+          :meeting-id="props.id"
+          placeholder="Добавить общую задачу серии..."
+        />
+      </div>
+
+      <div v-if="!occurrenceGroups.length && !seriesTasksWithoutOccurrence.length" class="empty-state-inline">
         Подвстреч пока нет — добавьте первую кнопкой «Добавить подвстречу серии».
       </div>
       <div class="occurrence-list">
@@ -391,7 +434,7 @@ function toggleArchived() {
             <button v-if="canManageMeeting" class="btn btn-ghost btn-sm" @click="openSummaryParser(group.occurrence)">
               <AppIcon name="layers" :size="13" /> Разбор резюме встречи в задачи
             </button>
-            <button v-if="canManageMeeting" class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить подвстречу" @click="removeOccurrenceConfirm(group.occurrence)">
+            <button v-if="canManageMeeting" class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить подвстречу" @click="requestRemoveOccurrence(group.occurrence)">
               <AppIcon name="trash" :size="13" />
             </button>
           </div>
@@ -624,6 +667,24 @@ function toggleArchived() {
         </div>
       </div>
     </div>
+
+    <ConfirmModal
+      v-if="occurrencePendingRemoval"
+      title="Удалить подвстречу?"
+      message="Задачи, привязанные к ней, останутся, но потеряют привязку к подвстрече."
+      confirm-text="Удалить"
+      @confirm="confirmRemoveOccurrence"
+      @cancel="cancelRemoveOccurrence"
+    />
+
+    <ConfirmModal
+      v-if="meetingPendingRemoval"
+      title="Удалить встречу?"
+      message="Задачи останутся, но потеряют привязку к встрече."
+      confirm-text="Удалить"
+      @confirm="confirmRemoveMeeting"
+      @cancel="cancelRemoveMeeting"
+    />
   </template>
 </template>
 
@@ -676,11 +737,14 @@ function toggleArchived() {
 
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
 .occurrence-card { padding: 12px 14px; }
+.standalone-series-card { margin-bottom: 12px; }
 .occurrence-header-wrap { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-bottom: 8px; }
+.occurrence-header-wrap--static { margin-bottom: 10px; }
 .occurrence-header {
   display: flex; align-items: center; gap: 10px; flex: 1; border: none; background: none; cursor: pointer;
   padding: 4px 2px 2px; text-align: left;
 }
+.occurrence-header--static { cursor: default; padding: 0; }
 .occurrence-date { font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .occurrence-has-desc { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
 .occurrence-open-hint { margin-left: auto; font-size: 12px; color: var(--color-primary); font-weight: 600; }
