@@ -43,6 +43,7 @@ const selectedSummaryOccurrenceId = ref('all')
 const activeOccurrence = ref(null)
 const occurrenceDraft = ref({ description: '', link: '' })
 const occurrenceEditing = ref(false)
+const expandedOccurrenceIds = ref([])
 
 const addingOccurrence = ref(false)
 const newOccurrenceDraft = ref({ date: '', time: '', description: '', link: '' })
@@ -87,6 +88,18 @@ const occurrences = computed(() => meetingsStore.occurrencesOf(props.id))
 
 function occurrenceTitle(occ) {
   return `${meeting.value?.title || ''} · ${formatDateTime(occ.date)}`
+}
+
+function isOccurrenceExpanded(occId) {
+  return expandedOccurrenceIds.value.includes(occId)
+}
+
+function toggleOccurrenceExpanded(occId) {
+  if (isOccurrenceExpanded(occId)) {
+    expandedOccurrenceIds.value = expandedOccurrenceIds.value.filter((id) => id !== occId)
+  } else {
+    expandedOccurrenceIds.value = [...expandedOccurrenceIds.value, occId]
+  }
 }
 
 const seriesTasksWithoutOccurrence = computed(() => {
@@ -224,6 +237,7 @@ async function confirmRemoveOccurrence() {
   if (!occ) return
   await meetingsStore.removeOccurrence(props.id, occ.id, { tasksStore })
   if (activeOccurrence.value?.id === occ.id) closeOccurrence()
+  expandedOccurrenceIds.value = expandedOccurrenceIds.value.filter((id) => id !== occ.id)
   occurrencePendingRemoval.value = null
 }
 
@@ -244,14 +258,14 @@ function stripHtml(html) {
 
 function openSummaryParser(occurrence = null) {
   selectedSummaryOccurrenceId.value = occurrence?.id || 'all'
-  summaryText.value = occurrence ? stripHtml(occurrence.description || '') : stripHtml(meeting.value?.description || '')
+  summaryText.value = occurrence ? (occurrence.description || '') : (meeting.value?.description || '')
   parsedCandidates.value = []
   parseAttempted.value = false
   showSummaryParser.value = true
 }
 
 function runParse() {
-  parsedCandidates.value = meetingSummaryParser.parse(summaryText.value, { knownUsers: usersStore.users })
+  parsedCandidates.value = meetingSummaryParser.parse(stripHtml(summaryText.value), { knownUsers: usersStore.users })
   parseAttempted.value = true
 }
 
@@ -462,7 +476,15 @@ function toggleArchived() {
             <button class="occurrence-header" @click="openOccurrence(group.occurrence)">
               <span class="occurrence-date"><AppIcon name="calendar" :size="13" /> {{ occurrenceTitle(group.occurrence) }}</span>
               <span v-if="group.occurrence.description" class="occurrence-has-desc"><AppIcon name="edit" :size="11" /> описание заполнено</span>
-              <span class="occurrence-open-hint">{{ group.occurrence.description ? 'Открыть описание' : 'Заполнить описание' }} →</span>
+              <span class="occurrence-open-hint">{{ group.occurrence.description ? 'Открыть подробно' : 'Заполнить описание' }} →</span>
+            </button>
+            <button
+              v-if="group.occurrence.description"
+              class="btn btn-ghost btn-sm occurrence-inline-toggle"
+              @click="toggleOccurrenceExpanded(group.occurrence.id)"
+            >
+              <AppIcon :name="isOccurrenceExpanded(group.occurrence.id) ? 'chevronUp' : 'chevronDown'" :size="13" />
+              {{ isOccurrenceExpanded(group.occurrence.id) ? 'Свернуть описание' : 'Развернуть описание' }}
             </button>
             <button v-if="canManageMeeting" class="btn btn-ghost btn-sm" @click="openSummaryParser(group.occurrence)">
               <AppIcon name="layers" :size="13" /> Разбор резюме встречи в задачи
@@ -471,6 +493,13 @@ function toggleArchived() {
               <AppIcon name="trash" :size="13" />
             </button>
           </div>
+
+          <Transition name="fade-tab">
+            <div v-if="isOccurrenceExpanded(group.occurrence.id) && group.occurrence.description" class="occurrence-inline-description rte-render">
+              <div v-html="group.occurrence.description" />
+              <a v-if="group.occurrence.link" :href="group.occurrence.link" target="_blank" rel="noopener" class="meta-item meeting-link occurrence-inline-link"><AppIcon name="link" :size="12" /> Дополнительные материалы</a>
+            </div>
+          </Transition>
 
           <div v-if="!group.tasks.length" class="empty-state-inline">Задач на встрече нет</div>
           <TaskListPanel v-else :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
@@ -494,7 +523,7 @@ function toggleArchived() {
       <TaskListPanel :tasks="meetingTasks" :meeting-mode="true" empty-text="К этой встрече пока не привязано ни одной задачи" />
     </template>
 
-    <div v-if="addingOccurrence" class="modal-overlay" @click.self="closeAddOccurrenceForm">
+    <div v-if="addingOccurrence" class="modal-overlay">
       <div class="modal card scroll-thin">
         <div class="modal-header">
           <h3>Добавить подвстречу серии</h3>
@@ -512,7 +541,7 @@ function toggleArchived() {
             </div>
             <div class="field-group">
               <label>Время</label>
-              <input v-model="newOccurrenceDraft.time" type="time" />
+              <input v-model="newOccurrenceDraft.time" type="time" step="300" />
             </div>
           </div>
           <div class="field-group">
@@ -531,7 +560,7 @@ function toggleArchived() {
       </div>
     </div>
 
-    <div v-if="activeOccurrence" class="modal-overlay" @click.self="closeOccurrence">
+    <div v-if="activeOccurrence" class="modal-overlay">
       <div class="modal modal-occurrence card scroll-thin">
         <div class="modal-header">
           <h3>{{ occurrenceTitle(activeOccurrence) }}</h3>
@@ -588,7 +617,7 @@ function toggleArchived() {
           </div>
           <div class="field-group">
             <label>Текст резюме</label>
-            <textarea v-model="summaryText" rows="8" placeholder="- Согласовать бюджет до пятницы&#10;Иван: подготовить презентацию&#10;1. Отправить письмо клиенту" />
+            <RichTextEditor v-model="summaryText" placeholder="Вставьте резюме встречи сюда..." />
           </div>
           <button class="btn btn-primary btn-sm" @click="runParse">Разобрать на задачи</button>
 
@@ -645,7 +674,7 @@ function toggleArchived() {
             </div>
             <div class="field-group">
               <label>{{ isRecurring ? 'Время серии' : 'Время' }}</label>
-              <input v-model="editDraft.time" type="time" />
+              <input v-model="editDraft.time" type="time" step="300" />
             </div>
             <div class="field-group color-field">
               <label>Цвет</label>
@@ -771,7 +800,7 @@ function toggleArchived() {
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
 .occurrence-card { padding: 12px 14px; }
 .standalone-series-card { margin-bottom: 12px; }
-.occurrence-header-wrap { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-bottom: 8px; }
+.occurrence-header-wrap { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; }
 .occurrence-header-wrap--static { margin-bottom: 10px; }
 .occurrence-header {
   display: flex; align-items: center; gap: 10px; flex: 1; border: none; background: none; cursor: pointer;
@@ -781,6 +810,17 @@ function toggleArchived() {
 .occurrence-date { font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .occurrence-has-desc { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
 .occurrence-open-hint { margin-left: auto; font-size: 12px; color: var(--color-primary); font-weight: 600; }
+.occurrence-inline-toggle { display: inline-flex; align-items: center; gap: 6px; }
+.occurrence-inline-description {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: #fafbfe;
+  font-size: 13px;
+  line-height: 1.55;
+}
+.occurrence-inline-link { margin-top: 10px; }
 .occurrence-description-text { font-size: 13px; line-height: 1.55; margin: 0 0 10px; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
@@ -823,4 +863,6 @@ function toggleArchived() {
 .candidate-main { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .candidate-title-input { border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 13px; width: 100%; }
 .candidate-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; }
+.fade-tab-enter-active, .fade-tab-leave-active { transition: opacity 0.12s ease; }
+.fade-tab-enter-from, .fade-tab-leave-to { opacity: 0; }
 </style>
