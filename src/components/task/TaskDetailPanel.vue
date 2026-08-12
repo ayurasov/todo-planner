@@ -23,7 +23,11 @@ const listsStore = useListsStore()
 const meetingsStore = useMeetingsStore()
 const prefs = usePreferencesStore()
 
-const tab = ref('overview')
+// Промпт: открытие задачи — не выезжающая сбоку панель, а отдельное модальное
+// окно с консистентным дизайном (близко к подходу Jira): описание и чек-лист —
+// каждый в своём отдельном блоке (а не под общими вкладками), заметки/
+// комментарии/история — общей активностью внизу карточки.
+const activityTab = ref('comments')
 const newChecklistTitle = ref('')
 const newCommentTab = ref('')
 const noteContent = ref('')
@@ -31,8 +35,6 @@ const editingTitle = ref(false)
 const titleDraft = ref(props.task.title)
 const titleInputEl = ref(null)
 const assigneeMenuOpen = ref(false)
-// См. TaskContextMenu.vue — единое модальное подтверждение вместо window.confirm(),
-// чтобы удаление задачи выглядело одинаково независимо от того, откуда оно вызвано.
 const confirmDeleteOpen = ref(false)
 
 const liveTask = computed(() => tasksStore.byId(props.task.id) || props.task)
@@ -46,10 +48,6 @@ const commentsAllowed = computed(() => parentList.value?.settings?.allowComments
 const isSubtask = computed(() => !!liveTask.value.parentTaskId)
 const parentTask = computed(() => isSubtask.value ? tasksStore.byId(liveTask.value.parentTaskId) : null)
 const linkedMeeting = computed(() => liveTask.value.meetingId ? meetingsStore.meetingById(liveTask.value.meetingId) : null)
-// Задача, привязанная к регулярной серии, может быть перенесена на другую
-// подвстречу той же серии (или отвязана от подвстречи вовсе, оставаясь при
-// этом привязанной к серии в целом) прямо из карточки — без необходимости
-// пересоздавать её через "Добавить задачу для этой подвстречи".
 const linkedMeetingOccurrences = computed(() => (
   linkedMeeting.value?.recurrence ? meetingsStore.occurrencesOf(linkedMeeting.value.id) : []
 ))
@@ -83,6 +81,7 @@ onMounted(async () => {
   await tasksStore.loadComments(props.task.id)
   await historyStore.loadTaskTimeline(props.task.id)
   if (notes.value[0]) noteContent.value = notes.value[0].contentJSON?.content?.[0]?.text || ''
+  if (!commentsAllowed.value && activityTab.value === 'comments') activityTab.value = 'notes'
 })
 
 function updateField(field, value) {
@@ -161,31 +160,31 @@ const HISTORY_ICON = {
 </script>
 
 <template>
-  <div class="panel-overlay" @click.self="emit('close')">
-    <Transition name="slide-panel" appear>
-      <div class="detail-panel card scroll-thin">
+  <div class="modal-overlay task-modal-overlay" @click.self="emit('close')">
+    <Transition name="pop-modal" appear>
+      <div class="task-modal card scroll-thin">
         <div class="panel-header">
           <div class="header-top">
-            <span v-if="isSubtask && parentTask" class="parent-crumb">↓ {{ parentTask.title }}</span>
+            <div class="header-crumbs">
+              <span v-if="isSubtask && parentTask" class="parent-crumb">↓ {{ parentTask.title }}</span>
+              <div v-if="parentList" class="list-crumb">
+                <AppIcon name="folder" :size="12" /> <span class="list-crumb-title">{{ parentList.title }}</span>
+              </div>
+              <div v-if="linkedMeeting" class="meeting-crumb">
+                <AppIcon name="calendar" :size="12" /> <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
+                <span class="meeting-crumb-date">{{ formatDateTime(linkedMeeting.date) }}</span>
+                <select
+                  v-if="linkedMeetingOccurrences.length" class="occurrence-picker" :value="liveTask.occurrenceId || ''"
+                  :disabled="!canEditThisTask" title="Подвстреча серии" @change="changeTaskOccurrence"
+                >
+                  <option value="">Без привязки к подвстрече</option>
+                  <option v-for="occ in linkedMeetingOccurrences" :key="occ.id" :value="occ.id">{{ formatDateTime(occ.date) }}</option>
+                </select>
+              </div>
+            </div>
             <div class="header-actions">
               <button v-if="canDeleteThisTask" class="btn btn-ghost close-btn btn-danger" title="Удалить задачу" @click="requestDelete"><AppIcon name="trash" :size="15" /></button>
-              <button class="btn btn-ghost close-btn" @click="emit('close')"><AppIcon name="close" :size="15" /></button>
-            </div>
-          </div>
-          <div class="meta-crumbs">
-            <div v-if="parentList" class="list-crumb">
-              <AppIcon name="folder" :size="13" /> <span class="list-crumb-title">{{ parentList.title }}</span>
-            </div>
-            <div v-if="linkedMeeting" class="meeting-crumb">
-              <AppIcon name="calendar" :size="13" /> <span class="meeting-crumb-title">{{ linkedMeeting.title }}</span>
-              <span class="meeting-crumb-date">{{ formatDateTime(linkedMeeting.date) }}</span>
-              <select
-                v-if="linkedMeetingOccurrences.length" class="occurrence-picker" :value="liveTask.occurrenceId || ''"
-                :disabled="!canEditThisTask" title="Подвстреча серии" @change="changeTaskOccurrence"
-              >
-                <option value="">Без привязки к подвстрече</option>
-                <option v-for="occ in linkedMeetingOccurrences" :key="occ.id" :value="occ.id">{{ formatDateTime(occ.date) }}</option>
-              </select>
+              <button class="btn btn-ghost close-btn" title="Закрыть" @click="emit('close')"><AppIcon name="close" :size="15" /></button>
             </div>
           </div>
           <input
@@ -266,30 +265,22 @@ const HISTORY_ICON = {
           </div>
         </div>
 
-        <div class="tabs">
-          <button :class="{ active: tab === 'overview' }" @click="tab = 'overview'">Обзор</button>
-          <button :class="{ active: tab === 'checklist' }" @click="tab = 'checklist'">
-            Чек-лист <span v-if="checklistProgress" class="tab-badge">{{ checklistProgress }}</span>
-          </button>
-          <button :class="{ active: tab === 'notes' }" @click="tab = 'notes'">Заметки</button>
-          <button v-if="commentsAllowed" :class="{ active: tab === 'comments' }" @click="tab = 'comments'">
-            Комментарии <span v-if="comments.length" class="tab-badge">{{ comments.length }}</span>
-          </button>
-          <button :class="{ active: tab === 'history' }" @click="tab = 'history'">История</button>
-        </div>
-
-        <div class="tab-content scroll-thin">
-          <Transition name="fade-tab" mode="out-in">
-          <div v-if="tab === 'overview'" key="overview">
+        <div class="body-scroll scroll-thin">
+          <section class="content-section">
+            <h4 class="section-heading"><AppIcon name="edit" :size="13" /> Описание</h4>
             <RichTextEditor
               :model-value="liveTask.description"
               :editable="canEditThisTask"
               placeholder="Добавьте описание задачи..."
               @update:model-value="updateDescription"
             />
-          </div>
+          </section>
 
-          <div v-else-if="tab === 'checklist'" key="checklist" class="checklist-tab">
+          <section class="content-section">
+            <div class="section-heading-row">
+              <h4 class="section-heading"><AppIcon name="checklist" :size="13" /> Чек-лист</h4>
+              <span v-if="checklistProgress" class="tab-badge">{{ checklistProgress }}</span>
+            </div>
             <div v-if="checklist.length" class="progress-bar-track">
               <div class="progress-bar-fill" :style="{ width: checklistPercent + '%' }" />
             </div>
@@ -298,47 +289,61 @@ const HISTORY_ICON = {
               <span :class="{ done: item.done }">{{ item.title }}</span>
               <button v-if="canEditThisTask" class="btn btn-ghost btn-sm remove-btn" @click="tasksStore.removeChecklistItem(liveTask.id, item.id)"><AppIcon name="close" :size="11" /></button>
             </div>
+            <div v-if="!checklist.length" class="hint-text">В чек-листе пока нет пунктов</div>
             <div v-if="canEditThisTask" class="checklist-add">
               <input v-model="newChecklistTitle" placeholder="Новый пункт чек-листа" @keyup.enter="addChecklistItem" />
               <button class="btn btn-primary btn-sm" @click="addChecklistItem">Добавить</button>
             </div>
-          </div>
+          </section>
 
-          <div v-else-if="tab === 'notes'" key="notes" class="notes-tab">
-            <p class="hint-text">Визуальный редактор заметок абстрагирован через EditorAdapter (в MVP — текстовый ввод, в v2 — rich-text с изображениями/таблицами/вложениями).</p>
-            <textarea v-model="noteContent" rows="6" placeholder="Текст заметки..." @change="saveNote" />
-          </div>
+          <section class="content-section activity-section">
+            <h4 class="section-heading"><AppIcon name="message" :size="13" /> Активность</h4>
+            <div class="activity-tabs">
+              <button :class="{ active: activityTab === 'notes' }" @click="activityTab = 'notes'">Заметки</button>
+              <button v-if="commentsAllowed" :class="{ active: activityTab === 'comments' }" @click="activityTab = 'comments'">
+                Комментарии <span v-if="comments.length" class="tab-badge">{{ comments.length }}</span>
+              </button>
+              <button :class="{ active: activityTab === 'history' }" @click="activityTab = 'history'">История</button>
+            </div>
 
-          <div v-else-if="tab === 'comments'" key="comments" class="comments-tab">
-            <div v-for="c in comments" :key="c.id" class="comment-row">
-              <span class="comment-avatar">{{ (usersStore.byId(c.authorId)?.name || '?').charAt(0) }}</span>
-              <div class="comment-body">
-                <div class="comment-header">
-                  <strong>{{ usersStore.byId(c.authorId)?.name || c.authorId }}</strong>
-                  <span class="comment-time">{{ formatDateTime(c.createdAt) }}<span v-if="c.editedAt"> (ред.)</span></span>
+            <Transition name="fade-tab" mode="out-in">
+              <div v-if="activityTab === 'notes'" key="notes" class="notes-tab">
+                <p class="hint-text">Визуальный редактор заметок абстрагирован через EditorAdapter (в MVP — текстовый ввод, в v2 — rich-text с изображениями/таблицами/вложениями).</p>
+                <textarea v-model="noteContent" rows="5" placeholder="Текст заметки..." @change="saveNote" />
+              </div>
+
+              <div v-else-if="activityTab === 'comments'" key="comments" class="comments-tab">
+                <div v-for="c in comments" :key="c.id" class="comment-row">
+                  <span class="comment-avatar">{{ (usersStore.byId(c.authorId)?.name || '?').charAt(0) }}</span>
+                  <div class="comment-body">
+                    <div class="comment-header">
+                      <strong>{{ usersStore.byId(c.authorId)?.name || c.authorId }}</strong>
+                      <span class="comment-time">{{ formatDateTime(c.createdAt) }}<span v-if="c.editedAt"> (ред.)</span></span>
+                    </div>
+                    <p class="comment-text">{{ c.text }}</p>
+                  </div>
                 </div>
-                <p class="comment-text">{{ c.text }}</p>
+                <div v-if="!comments.length" class="hint-text">Пока нет комментариев</div>
+                <div class="comment-box">
+                  <textarea v-model="newCommentTab" placeholder="Написать комментарий..." rows="2" />
+                  <button class="btn btn-primary btn-sm" @click="submitComment">Отправить</button>
+                </div>
               </div>
-            </div>
-            <div v-if="!comments.length" class="hint-text">Пока нет комментариев</div>
-            <div class="comment-box">
-              <textarea v-model="newCommentTab" placeholder="Написать комментарий..." rows="2" />
-              <button class="btn btn-primary btn-sm" @click="submitComment">Отправить</button>
-            </div>
-          </div>
 
-          <div v-else-if="tab === 'history'" key="history" class="history-tab">
-            <div v-for="entry in timeline" :key="entry.id" class="history-entry">
-              <span class="history-icon"><AppIcon :name="HISTORY_ICON[entry.type] || 'more'" :size="12" /></span>
-              <div class="history-body">
-                <span class="history-type">{{ HISTORY_LABEL[entry.type] || entry.type }}</span>
-                <span class="history-detail" v-if="entry.field">{{ entry.field }}: {{ entry.oldValue }} → {{ entry.newValue }}</span>
-                <span class="history-detail" v-if="entry.comment">"{{ entry.comment }}"</span>
-                <span class="history-meta">{{ historyStore.actorName(entry.actorId) }} · {{ formatDateTime(entry.timestamp) }}</span>
+              <div v-else-if="activityTab === 'history'" key="history" class="history-tab">
+                <div v-for="entry in timeline" :key="entry.id" class="history-entry">
+                  <span class="history-icon"><AppIcon :name="HISTORY_ICON[entry.type] || 'more'" :size="12" /></span>
+                  <div class="history-body">
+                    <span class="history-type">{{ HISTORY_LABEL[entry.type] || entry.type }}</span>
+                    <span class="history-detail" v-if="entry.field">{{ entry.field }}: {{ entry.oldValue }} → {{ entry.newValue }}</span>
+                    <span class="history-detail" v-if="entry.comment">"{{ entry.comment }}"</span>
+                    <span class="history-meta">{{ historyStore.actorName(entry.actorId) }} · {{ formatDateTime(entry.timestamp) }}</span>
+                  </div>
+                </div>
+                <div v-if="!timeline.length" class="hint-text">История изменений пока пуста</div>
               </div>
-            </div>
-          </div>
-          </Transition>
+            </Transition>
+          </section>
         </div>
       </div>
     </Transition>
@@ -355,29 +360,32 @@ const HISTORY_ICON = {
 </template>
 
 <style scoped>
-.panel-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.28); display: flex; justify-content: flex-end; z-index: 90; backdrop-filter: blur(1px); }
-.detail-panel { width: 500px; height: 100%; border-radius: 0; display: flex; flex-direction: column; overflow-y: auto; box-shadow: -8px 0 32px rgba(20,24,38,0.14); }
+.task-modal-overlay { align-items: center; justify-content: center; padding: 24px; }
+.task-modal {
+  width: min(760px, 100%); max-height: calc(100vh - 48px); border-radius: 14px;
+  display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 24px 60px rgba(20,24,38,0.24);
+}
 
-.slide-panel-enter-active, .slide-panel-leave-active { transition: transform 0.22s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.22s ease; }
-.slide-panel-enter-from, .slide-panel-leave-to { transform: translateX(24px); opacity: 0; }
+.pop-modal-enter-active, .pop-modal-leave-active { transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.18s ease; }
+.pop-modal-enter-from, .pop-modal-leave-to { transform: scale(0.97) translateY(6px); opacity: 0; }
 
-.panel-header { padding: 16px 20px 4px; }
-.header-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.panel-header { padding: 18px 24px 4px; flex-shrink: 0; }
+.header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.header-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .parent-crumb { font-size: 12px; color: var(--color-text-muted); }
-.header-actions { display: flex; align-items: center; gap: 4px; }
+.header-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .close-btn { border-radius: 8px; width: 30px; height: 30px; padding: 0; display: flex; align-items: center; justify-content: center; }
 .close-btn.btn-danger { color: var(--color-danger); }
 .close-btn.btn-danger:hover { background: #fdeeee; }
-.meta-crumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
-.title-display { margin: 4px 0 12px; font-size: 18px; font-weight: 650; cursor: text; padding: 4px 6px; border-radius: 8px; display: flex; align-items: center; gap: 6px; }
+.title-display { margin: 4px 0 12px; font-size: 19px; font-weight: 650; cursor: text; padding: 4px 6px; border-radius: 8px; display: flex; align-items: center; gap: 6px; }
 .title-display:hover { background: #f6f7fb; }
 .title-readonly { cursor: default; }
 .title-readonly:hover { background: none; }
 .readonly-banner { font-size: 12px; color: var(--color-text-muted); background: #f1f3f9; border-radius: 8px; padding: 6px 10px; margin: 0 0 12px; display: flex; align-items: center; gap: 6px; }
-.title-edit-input { width: 100%; font-size: 18px; font-weight: 650; border: 1.5px solid var(--color-primary); border-radius: 8px; padding: 6px 8px; margin: 4px 0 12px; outline: none; }
+.title-edit-input { width: 100%; font-size: 19px; font-weight: 650; border: 1.5px solid var(--color-primary); border-radius: 8px; padding: 6px 8px; margin: 4px 0 12px; outline: none; }
 
-.field-row { display: flex; flex-direction: column; gap: 12px; padding: 4px 20px 16px; border-bottom: 1px solid var(--color-border); }
-.dates-meta-row { display: flex; gap: 14px; padding: 0 20px 14px; font-size: 11.5px; color: var(--color-text-muted); border-bottom: 1px solid var(--color-border); }
+.field-row { display: flex; flex-direction: column; gap: 12px; padding: 4px 24px 16px; border-bottom: 1px solid var(--color-border); flex-shrink: 0; }
+.dates-meta-row { display: flex; gap: 14px; font-size: 11.5px; color: var(--color-text-muted); }
 .dates-meta-item { opacity: 0.8; display: inline-flex; align-items: center; gap: 4px; }
 .dates-meta-done { color: #1e9e4d; }
 .field-block { display: flex; flex-direction: column; gap: 6px; }
@@ -419,19 +427,15 @@ const HISTORY_ICON = {
 
 .date-input { border: 1px solid var(--color-border); border-radius: 20px; padding: 5px 12px; font-size: 12.5px; }
 
-.tabs { display: flex; gap: 2px; padding: 10px 16px 0; border-bottom: 1px solid var(--color-border); }
-.tabs button {
-  border: none; background: none; padding: 9px 12px; font-size: 13px; color: var(--color-text-muted);
-  cursor: pointer; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 5px; transition: color 0.12s;
-}
-.tabs button:hover { color: var(--color-text); }
-.tabs button.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
-.tab-badge { background: #eef1f7; border-radius: 10px; padding: 1px 6px; font-size: 10.5px; font-weight: 700; color: var(--color-text-muted); }
-.tabs button.active .tab-badge { background: #e6ecff; color: var(--color-primary-dark); }
+.body-scroll { flex: 1; overflow-y: auto; padding: 4px 24px 24px; }
 
-.tab-content { padding: 16px 20px; flex: 1; overflow-y: auto; }
-.fade-tab-enter-active, .fade-tab-leave-active { transition: opacity 0.12s ease; }
-.fade-tab-enter-from, .fade-tab-leave-to { opacity: 0; }
+.content-section { padding: 18px 0; border-bottom: 1px solid var(--color-border); }
+.content-section:last-of-type { border-bottom: none; }
+.section-heading { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted); }
+.section-heading-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.section-heading-row .section-heading { margin: 0; }
+
+.tab-badge { background: #eef1f7; border-radius: 10px; padding: 1px 6px; font-size: 10.5px; font-weight: 700; color: var(--color-text-muted); }
 
 .progress-bar-track { height: 6px; background: #eef1f7; border-radius: 4px; margin-bottom: 12px; overflow: hidden; }
 .progress-bar-fill { height: 100%; background: var(--color-primary); border-radius: 4px; transition: width 0.2s ease; }
@@ -449,7 +453,20 @@ const HISTORY_ICON = {
 .notes-tab textarea { width: 100%; border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; font-size: 13.5px; outline: none; }
 .notes-tab textarea:focus { border-color: var(--color-primary); }
 
+.activity-section { padding-bottom: 4px; }
+.activity-tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--color-border); }
+.activity-tabs button {
+  border: none; background: none; padding: 8px 10px; font-size: 12.5px; color: var(--color-text-muted);
+  cursor: pointer; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 5px; transition: color 0.12s;
+}
+.activity-tabs button:hover { color: var(--color-text); }
+.activity-tabs button.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
+
+.fade-tab-enter-active, .fade-tab-leave-active { transition: opacity 0.12s ease; }
+.fade-tab-enter-from, .fade-tab-leave-to { opacity: 0; }
+
 .history-entry { display: flex; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--color-border); }
+.history-entry:last-child { border-bottom: none; }
 .history-icon { width: 24px; height: 24px; border-radius: 7px; background: #eef1f7; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--color-text-muted); }
 .history-body { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; }
 .history-type { font-weight: 600; }
@@ -468,8 +485,8 @@ const HISTORY_ICON = {
 .pin-icon { display: flex; color: #c67d16; }
 .meeting-crumb,
 .list-crumb {
-  display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--color-text-muted);
-  background: #eef1f7; border-radius: 8px; padding: 6px 10px; width: fit-content;
+  display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--color-text-muted);
+  background: #eef1f7; border-radius: 8px; padding: 5px 9px; width: fit-content;
 }
 .meeting-crumb-title,
 .list-crumb-title { font-weight: 600; color: var(--color-text); }
