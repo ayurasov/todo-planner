@@ -13,6 +13,22 @@ UX-слоем предварительной блокировки кнопок/�
   редактировать может только создатель или текущий исполнитель;
 - Assignee-участник списка видит только свои задачи или задачи, где он watcher.
 
+Роль manager (руководитель отдела/службы, ManagerDepartmentORM.user_id -> множество
+участкованных department_id, т.к. один руководитель может вести несколько
+отделов/служб одновременно): видит/редактирует все списки с list.department_id
+в своих участках (даже без membership) и любые задачи, где список/исполнитель/
+создатель относятся к такому отделу -- аналогично роли owner/editor, но по 'organisational'
+признаку вместо list membership. Сам руководитель не может удалять список/управлять
+участниками (CAN_MANAGE_MEMBERS/CAN_DELETE_LIST остаются только для owner/admin) -- это чисто
+"расширенная видимость + редактирование задач", а не владелец списка.
+Граница действует независимо от текущего global_role пользователя (смотрится только
+наличие записей в ManagerDepartmentORM), чтобы админ мог назначать участки отделами и
+администраторам, если потребуется -- глобальный admin в таком случае всё равно видит всё
+через is_global_admin bypass.
+
+Встречи (meetings) по-прежнему видны любому авторизованному пользователю (без ACL --
+см. app.meetings.routes) -- meeting.department_id сейчас только справочная метка, в этот шаг не входит.
+
 Формат ошибок для mutating-endpoints: JSON 403
     {"error": "permission_denied", "message": "..."}
 чтобы frontend мог стабильно превращать такой ответ в PermissionDeniedError.
@@ -25,7 +41,15 @@ from flask import jsonify
 from app.auth.security import current_user_id
 from app.domain import entities as d
 from app.mappers import orm_to_domain
-from app.models import ListMembershipORM, TaskORM, TaskTagORM, TaskWatcherORM, UserORM
+from app.models import (
+    ListMembershipORM,
+    ListORM,
+    ManagerDepartmentORM,
+    TaskORM,
+    TaskTagORM,
+    TaskWatcherORM,
+    UserORM,
+)
 
 LIST_ROLE_OWNER = "owner"
 LIST_ROLE_EDITOR = "editor"
@@ -49,6 +73,33 @@ class PermissionService:
         user = self._get_user(user_id)
         return bool(user and user.global_role == "admin")
 
+    def get_managed_department_ids(self, user_id: str):
+        """Отделы/службы, которыми управляет данный пользователь (может быть
+        несколько -- см. ManagerDepartmentORM). Не завязано на global_role,
+        достаточно самих записей в manager_departments.
+        """
+        if not user_id:
+            return []
+        rows = ManagerDepartmentORM.query.filter_by(user_id=user_id).all()
+        return [row.department_id for row in rows]
+
+    def manages_department(self, user_id: str, department_id) -> bool:
+        if not department_id:
+            return False
+        return department_id in self.get_managed_department_ids(user_id)
+
+    def _list_department_id(self, list_id):
+        if not list_id:
+            return None
+        row = ListORM.query.get(list_id)
+        return row.department_id if row else None
+
+    def _user_department_id(self, user_id):
+        if not user_id:
+            return None
+        user = self._get_user(user_id)
+        return user.department_id if user else None
+
     def get_role(self, list_id: str, user_id: str):
         if not list_id or not user_id:
             return None
@@ -59,31 +110,41 @@ class PermissionService:
         if self.is_global_admin(user_id):
             return True
         role = self.get_role(list_id, user_id)
-        return role is not None
+        if role is not None:
+            return True
+        return self.manages_department(user_id, self._list_department_id(list_id))
 
     def can_create_task(self, list_id: str, user_id: str) -> bool:
         if self.is_global_admin(user_id):
             return True
         role = self.get_role(list_id, user_id)
-        return role in CAN_EDIT_ANY_TASK
+        if role in CAN_EDIT_ANY_TASK:
+            return True
+        return self.manages_department(user_id, self._list_department_id(list_id))
 
     def can_edit_task(self, task: d.Task, user_id: str) -> bool:
         if self.is_global_admin(user_id):
             return True
         if not task.list_id:
-            return task.created_by == user_id or task.assignee_id == user_id
+            if task.created_by == user_id or task.assignee_id == user_id:
+                return True
+            return self.manages_department(user_id, self._user_department_id(task.assignee_id))
         role = self.get_role(task.list_id, user_id)
         if role in CAN_EDIT_ANY_TASK:
             return True
         if role == LIST_ROLE_ASSIGNEE and task.assignee_id == user_id:
             return True
-        return False
+        if self.manages_department(user_id, self._list_department_id(task.list_id)):
+            return True
+        return self.manages_department(user_id, self._user_department_id(task.assignee_id))
 
     def can_assign(self, list_id: str, user_id: str) -> bool:
         if self.is_global_admin(user_id):
             return True
         role = self.get_role(list_id, user_id)
-        return role in CAN_EDIT_ANY_TASK
+        if role in CAN_EDIT_ANY_TASK:
+            return True
+        return self.manages_department(user_id, self._list_department_id(list_id))
 
     def can_manage_members(self, list_id: str, user_id: str) -> bool:
         if self.is_global_admin(user_id):
@@ -103,16 +164,22 @@ class PermissionService:
         if task.created_by == user_id:
             return True
         if not task.list_id:
-            return False
+            return self.manages_department(user_id, self._user_department_id(task.assignee_id))
         role = self.get_role(task.list_id, user_id)
-        return role in CAN_EDIT_ANY_TASK
+        if role in CAN_EDIT_ANY_TASK:
+            return True
+        return self.manages_department(user_id, self._list_department_id(task.list_id))
 
     def get_accessible_list_ids(self, user_id: str):
         if self.is_global_admin(user_id):
             rows = ListMembershipORM.query.all()
             return sorted({row.list_id for row in rows})
-        rows = ListMembershipORM.query.filter_by(user_id=user_id).all()
-        return [row.list_id for row in rows]
+        ids = {row.list_id for row in ListMembershipORM.query.filter_by(user_id=user_id).all()}
+        managed_department_ids = self.get_managed_department_ids(user_id)
+        if managed_department_ids:
+            department_rows = ListORM.query.filter(ListORM.department_id.in_(managed_department_ids)).all()
+            ids.update(row.id for row in department_rows)
+        return list(ids)
 
     def is_task_visible(self, task: d.Task, role=None, user_id=None, is_global_admin=False) -> bool:
         if is_global_admin:
@@ -122,6 +189,23 @@ class PermissionService:
         if role == LIST_ROLE_ASSIGNEE:
             return task.assignee_id == user_id or user_id in (task.watcher_ids or [])
         return True
+
+    def can_view_task_via_department(self, task: d.Task, user_id: str) -> bool:
+        """Видимость задачи "по организационной принадлежности", независимо
+        от list membership -- для руководителя отдела/службы (см. модуль-докстрайку).
+        Задача видна, если её список/исполнитель/создатель относится к одному
+        из отделов, которыми управляет user_id.
+        """
+        managed_department_ids = self.get_managed_department_ids(user_id)
+        if not managed_department_ids:
+            return False
+        if task.list_id and self._list_department_id(task.list_id) in managed_department_ids:
+            return True
+        if self._user_department_id(task.assignee_id) in managed_department_ids:
+            return True
+        if self._user_department_id(task.created_by) in managed_department_ids:
+            return True
+        return False
 
     def get_task_domain(self, task_id: str):
         row = TaskORM.query.get(task_id)
