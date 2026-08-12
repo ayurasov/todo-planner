@@ -3,6 +3,15 @@
 Revision ID: 0003_create_departments
 Revises: 0002_user_position_department
 Create Date: 2026-08-12 06:40:00.000000
+
+Прим.: добавление FK-колонок (department_id) в уже существующие таблицы
+(users/lists/meetings) выполняется через batch_alter_table -- обычный
+op.add_column(..., sa.ForeignKey(...)) не работает на SQLite, так как SQLite
+не поддерживает ALTER TABLE ADD CONSTRAINT (см. NotImplementedError:
+"No support for ALTER of constraints in SQLite dialect"). Batch mode
+использует стратегию copy-and-move и одинаково корректно работает как на
+SQLite (dev/test), так и на PostgreSQL (production) -- на Postgres batch
+mode прозрачно выполняет обычный ALTER, без пересборки таблицы.
 """
 
 from alembic import op
@@ -27,14 +36,38 @@ def upgrade():
         sa.Column('user_id', sa.String(length=36), sa.ForeignKey('users.id', ondelete='CASCADE'), primary_key=True),
         sa.Column('department_id', sa.String(length=36), sa.ForeignKey('departments.id', ondelete='CASCADE'), primary_key=True),
     )
-    op.add_column('users', sa.Column('department_id', sa.String(length=36), sa.ForeignKey('departments.id', ondelete='SET NULL'), nullable=True))
-    op.add_column('lists', sa.Column('department_id', sa.String(length=36), sa.ForeignKey('departments.id', ondelete='SET NULL'), nullable=True))
-    op.add_column('meetings', sa.Column('department_id', sa.String(length=36), sa.ForeignKey('departments.id', ondelete='SET NULL'), nullable=True))
+
+    with op.batch_alter_table('users') as batch_op:
+        batch_op.add_column(sa.Column('department_id', sa.String(length=36), nullable=True))
+        batch_op.create_foreign_key(
+            'fk_users_department_id_departments', 'departments', ['department_id'], ['id'], ondelete='SET NULL',
+        )
+
+    with op.batch_alter_table('lists') as batch_op:
+        batch_op.add_column(sa.Column('department_id', sa.String(length=36), nullable=True))
+        batch_op.create_foreign_key(
+            'fk_lists_department_id_departments', 'departments', ['department_id'], ['id'], ondelete='SET NULL',
+        )
+
+    with op.batch_alter_table('meetings') as batch_op:
+        batch_op.add_column(sa.Column('department_id', sa.String(length=36), nullable=True))
+        batch_op.create_foreign_key(
+            'fk_meetings_department_id_departments', 'departments', ['department_id'], ['id'], ondelete='SET NULL',
+        )
 
 
 def downgrade():
-    op.drop_column('meetings', 'department_id')
-    op.drop_column('lists', 'department_id')
-    op.drop_column('users', 'department_id')
+    with op.batch_alter_table('meetings') as batch_op:
+        batch_op.drop_constraint('fk_meetings_department_id_departments', type_='foreignkey')
+        batch_op.drop_column('department_id')
+
+    with op.batch_alter_table('lists') as batch_op:
+        batch_op.drop_constraint('fk_lists_department_id_departments', type_='foreignkey')
+        batch_op.drop_column('department_id')
+
+    with op.batch_alter_table('users') as batch_op:
+        batch_op.drop_constraint('fk_users_department_id_departments', type_='foreignkey')
+        batch_op.drop_column('department_id')
+
     op.drop_table('manager_departments')
     op.drop_table('departments')
