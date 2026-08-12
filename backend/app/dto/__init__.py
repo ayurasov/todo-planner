@@ -5,6 +5,9 @@
 
 from app.dto.schemas import (
     CamelModel,
+    DepartmentResponseDTO,
+    DepartmentCreateDTO,
+    DepartmentUpdateDTO,
     UserResponseDTO,
     LoginRequestDTO,
     LoginResponseDTO,
@@ -40,7 +43,8 @@ from app.dto.schemas import (
 )
 
 __all__ = [
-    "CamelModel", "UserResponseDTO", "LoginRequestDTO", "LoginResponseDTO",
+    "CamelModel", "DepartmentResponseDTO", "DepartmentCreateDTO", "DepartmentUpdateDTO",
+    "UserResponseDTO", "LoginRequestDTO", "LoginResponseDTO",
     "ChangePasswordRequestDTO",
     "ListResponseDTO", "ListCreateDTO", "ListUpdateDTO", "ListMembershipResponseDTO",
     "ChecklistItemResponseDTO", "ChecklistItemCreateDTO", "CommentResponseDTO",
