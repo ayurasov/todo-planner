@@ -29,6 +29,13 @@ UX-слоем предварительной блокировки кнопок/�
 Встречи (meetings) по-прежнему видны любому авторизованному пользователю (без ACL --
 см. app.meetings.routes) -- meeting.department_id сейчас только справочная метка, в этот шаг не входит.
 
+Видимость задач, привязанных к встрече (task.meeting_id): обычный пользователь,
+добавленный участником встречи (MeetingAttendeeORM), должен видеть задачи этой встречи,
+даже если он не состоит в membership списка задачи и не является исполнителем/создателем
+(см. is_meeting_attendee / can_view_task_via_meeting -- инцидент "обычный пользователь
+должен видеть только свои задачи и задачи в рамках встречи или списка, куда он добавлен
+участником").
+
 Формат ошибок для mutating-endpoints: JSON 403
     {"error": "permission_denied", "message": "..."}
 чтобы frontend мог стабильно превращать такой ответ в PermissionDeniedError.
@@ -45,6 +52,7 @@ from app.models import (
     ListMembershipORM,
     ListORM,
     ManagerDepartmentORM,
+    MeetingAttendeeORM,
     TaskORM,
     TaskTagORM,
     TaskWatcherORM,
@@ -99,6 +107,26 @@ class PermissionService:
             return None
         user = self._get_user(user_id)
         return user.department_id if user else None
+
+    def is_meeting_attendee(self, meeting_id: str, user_id: str) -> bool:
+        """Состоит ли user_id в участниках встречи meeting_id (MeetingAttendeeORM).
+        Используется для видимости задач, привязанных к встрече (task.meeting_id),
+        обычным пользователям без list membership -- см. can_view_task_via_meeting.
+        """
+        if not meeting_id or not user_id:
+            return False
+        return (
+            MeetingAttendeeORM.query.filter_by(meeting_id=meeting_id, user_id=user_id).first()
+            is not None
+        )
+
+    def can_view_task_via_meeting(self, task: d.Task, user_id: str) -> bool:
+        """Видимость задачи по участию во встрече, к которой она привязана
+        (task.meeting_id) -- независимо от list membership/organisational
+        видимости руководителя. Любой участник встречи (MeetingAttendeeORM)
+        видит все задачи этой встречи.
+        """
+        return self.is_meeting_attendee(task.meeting_id, user_id)
 
     def get_role(self, list_id: str, user_id: str):
         if not list_id or not user_id:
