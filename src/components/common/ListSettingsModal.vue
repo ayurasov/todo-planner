@@ -116,7 +116,10 @@ function toggleView(view) {
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('close')">
+  <!-- Клик по overlay (вне окна) не должен закрывать модалку создания/редактирования
+       списка — чтобы случайный клик рядом с окном не стирал введённые данные.
+       Закрытие — только кнопками "Отмена"/крестик в шагалке. -->
+  <div class="modal-overlay">
     <div class="modal card scroll-thin">
       <div class="modal-header">
         <h3>{{ createMode ? 'Новый список' : 'Настройки списка' }}</h3>
