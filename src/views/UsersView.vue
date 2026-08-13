@@ -27,6 +27,7 @@ const searchQuery = ref('')
 const roleFilter = ref('all') // all | admin | manager | user
 const statusFilter = ref('all') // all | active | inactive
 const departmentFilter = ref('all') // all | departmentId
+const showSystem = ref(true) // показывать системных в таблице (вкл. по умолчанию)
 const sortBy = ref('name') // name | department | position | role | status
 const sortDir = ref('asc') // asc | desc
 
@@ -37,6 +38,7 @@ function isSelf(user) {
 const filteredSortedUsers = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   let list = usersStore.users.filter((u) => {
+    if (!showSystem.value && u.isSystem) return false
     if (q) {
       const hay = `${u.name} ${u.email} ${u.login || ''} ${u.position || ''} ${departmentName(u.departmentId)}`.toLowerCase()
       if (!hay.includes(q)) return false
@@ -81,11 +83,12 @@ async function toggleActive(user) {
   await usersStore.updateUser(user.id, { isActive: !user.isActive })
 }
 
+async function toggleSystem(user) {
+  if (isSelf(user)) return
+  await usersStore.updateUser(user.id, { isSystem: !user.isSystem })
+}
+
 // --- Создание пользователя ---
-// Фото при создании выбирается в самой модалке (см. createAvatarFileInputEl /
-// createAvatarPreviewUrl) и загружается сразу после успешного createUser --
-// отдельных кнопок "Фото"/"Сброс фото" в таблице больше нет, вся работа
-// с аватаром администратора теперь идёт только через модалки создания/изменения.
 const showCreateForm = ref(false)
 const createError = ref('')
 const creating = ref(false)
@@ -167,9 +170,6 @@ async function submitCreateUser() {
       try {
         await usersStore.uploadAvatar(created.id, createAvatarFile.value)
       } catch (avatarErr) {
-        // Пользователь уже создан -- ошибку загрузки фото не блокируем закрытием формы,
-        // просто сообщаем о ней через тот же временный пароль-диалог не подходит,
-        // поэтому показываем как обычную ошибку в консоли пользователю через alert-хинт.
         createAvatarError.value = avatarErr?.message || 'Пользователь создан, но фото загрузить не удалось'
       }
     }
@@ -323,7 +323,7 @@ function closePasswordModal() {
     <p class="hint-text">
       Управление ролями, активностью, должностью, отделом и фото пользователей. Роль "Руководитель" даёт
       видимость списков/задач всего отдела (можно назначить сразу несколько отделов/служб).
-      Фото загружается или меняется прямо в окне создания/изменения пользователя.
+      <strong>Системные</strong> пользователи (например admin) не отображаются в списках исполнителей и участников.
       Изменение своей собственной роли или активности заблокировано.
     </p>
 
@@ -342,6 +342,10 @@ function closePasswordModal() {
         <option value="all">Все отделы</option>
         <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
       </select>
+      <label class="filter-checkbox">
+        <input v-model="showSystem" type="checkbox" />
+        <span>Системные</span>
+      </label>
     </div>
 
     <div class="users-table">
@@ -353,14 +357,18 @@ function closePasswordModal() {
         <span class="sortable" @click="toggleSort('status')">Статус <span v-if="sortBy === 'status'">{{ sortDir === 'asc' ? '↑' : '↓' }}</span></span>
         <span>Действия</span>
       </div>
-      <div v-for="u in filteredSortedUsers" :key="u.id" class="user-row" :class="{ inactive: !u.isActive }">
+      <div v-for="u in filteredSortedUsers" :key="u.id" class="user-row" :class="{ inactive: !u.isActive, 'is-system': u.isSystem }">
         <div class="user-cell">
           <div class="user-avatar-wrap">
             <img v-if="u.avatarUrl" :src="u.avatarUrl" class="user-avatar user-avatar-img" alt="" />
             <span v-else class="user-avatar" :style="{ background: getAvatarColor(u.name) }">{{ getInitials(u.name) }}</span>
           </div>
           <div class="user-info">
-            <span class="user-name">{{ u.name }}<span v-if="isSelf(u)" class="self-badge">Вы</span></span>
+            <span class="user-name">
+              {{ u.name }}
+              <span v-if="isSelf(u)" class="self-badge">Вы</span>
+              <span v-if="u.isSystem" class="system-badge" title="Системный пользователь — не виден в списках исполнителей">⚙️ системный</span>
+            </span>
             <span class="user-email">{{ u.email }}</span>
             <span v-if="u.globalRole === 'manager' && u.managerDepartmentIds?.length" class="managed-badge">
               руковит: {{ u.managerDepartmentIds.map(departmentName).join(', ') }}
@@ -392,6 +400,15 @@ function closePasswordModal() {
         </button>
 
         <div class="row-actions">
+          <button
+            class="btn btn-sm"
+            :class="u.isSystem ? 'btn-warning' : 'btn-ghost'"
+            :disabled="isSelf(u)"
+            :title="isSelf(u) ? 'Нельзя изменить себя' : (u.isSystem ? 'Снять системный флаг' : 'Отметить как системный')"
+            @click="toggleSystem(u)"
+          >
+            {{ u.isSystem ? '⚙️ системный' : '• системный?' }}
+          </button>
           <button class="btn btn-sm btn-ghost" @click="openEditForm(u)">Изменить</button>
           <button
             class="btn btn-sm btn-ghost"
@@ -418,9 +435,7 @@ function closePasswordModal() {
     <p class="hint-text">Доступ только для администраторов.</p>
   </section>
 
-  <!-- Модалка создания пользователя. Клик за пределами окна больше не закрывает
-       его -- закрытие только по кнопке "Отмена" или крестику, чтобы случайный
-       клик мимо не стирал введённые данные и выбранное фото. -->
+  <!-- Модалка создания пользователя -->
   <div v-if="showCreateForm" class="modal-backdrop">
     <div class="modal-card">
       <h3>Новый пользователь</h3>
@@ -487,8 +502,7 @@ function closePasswordModal() {
     </div>
   </div>
 
-  <!-- Модалка редактирования пользователя. Клик за пределами окна не закрывает
-       его -- аналогично созданию, чтобы не терять несохранённые изменения. -->
+  <!-- Модалка редактирования пользователя -->
   <div v-if="editingUser" class="modal-backdrop">
     <div class="modal-card">
       <h3>Изменить пользователя</h3>
@@ -587,27 +601,30 @@ function closePasswordModal() {
 .empty-hint { margin: 16px 0 0; text-align: center; }
 .file-input-hidden { display: none; }
 
-.filters-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filters-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
 .filter-input {
   flex: 1 1 220px; border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 10px; font-size: 12.5px;
 }
 .filter-select {
   border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 9px; font-size: 12.5px;
 }
+.filter-checkbox { display: flex; align-items: center; gap: 5px; font-size: 12.5px; cursor: pointer; user-select: none; }
+.filter-checkbox input { cursor: pointer; }
 
 .users-table { display: flex; flex-direction: column; }
 .users-table-head {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 220px; gap: 10px;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 260px; gap: 10px;
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);
   padding: 0 8px 8px; border-bottom: 1px solid var(--color-border);
 }
 .sortable { cursor: pointer; user-select: none; }
 .sortable:hover { color: var(--color-text); }
 .user-row {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 220px; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 260px; gap: 10px; align-items: center;
   padding: 10px 8px; border-bottom: 1px solid var(--color-border);
 }
 .user-row.inactive { opacity: 0.55; }
+.user-row.is-system { background: #f8f6ff; }
 .user-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .text-cell { font-size: 12.5px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
 .user-avatar-wrap { position: relative; flex-shrink: 0; }
@@ -618,10 +635,14 @@ function closePasswordModal() {
 .user-avatar-img { object-fit: cover; }
 .avatar-lg { width: 56px; height: 56px; font-size: 18px; }
 .user-info { display: flex; flex-direction: column; min-width: 0; }
-.user-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.user-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .self-badge {
   font-size: 10px; font-weight: 700; background: #eef1f7; color: var(--color-text-muted);
   padding: 1px 6px; border-radius: 10px;
+}
+.system-badge {
+  font-size: 10px; font-weight: 600; background: #ede9fe; color: #6d28d9;
+  padding: 1px 6px; border-radius: 10px; cursor: default;
 }
 .user-email { font-size: 12px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
 .managed-badge { font-size: 11px; color: #4f7cff; overflow: hidden; text-overflow: ellipsis; }
@@ -629,6 +650,8 @@ function closePasswordModal() {
 .role-select:disabled { opacity: 0.6; cursor: not-allowed; }
 .status-btn:disabled { opacity: 0.6; cursor: not-allowed; }
 .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-warning { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.btn-warning:hover:not(:disabled) { background: #fde68a; }
 
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(20, 24, 34, 0.45);
