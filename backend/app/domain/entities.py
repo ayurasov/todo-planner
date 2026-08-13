@@ -33,6 +33,12 @@ class User:
     avatar_url: Optional[str] = None
     global_role: str = "user"
     is_active: bool = True
+    # is_system -- служебная учётная запись (например, дефолтный admin или
+    # тестовый аккаунт), помеченная администратором. Скрывается из всех
+    # списков выбора исполнителя/участника встречи/доступных пользователей
+    # списка (см. usersStore.assignable / useAssignableUsers на фронте), но
+    # остаётся видимым и управляемым в UsersView.vue для администратора.
+    is_system: bool = False
     login: Optional[str] = None
     password_hash: Optional[str] = None
     position: Optional[str] = None
