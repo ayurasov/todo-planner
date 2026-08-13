@@ -14,7 +14,7 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-app = create_app(os.environ.get("FLASK_ENV", "development"))
+app = create_app(os.environ.get("FLASK_ENV", "development"), skip_bootstrap=True)
 target_metadata = db.metadata
 
 
