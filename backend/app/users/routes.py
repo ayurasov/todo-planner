@@ -1,6 +1,6 @@
 """
 Реализация blueprint 'users' поверх UserRepository (app.repositories).
-Автентификация — глобальным guard в app.auth.security (401 для всего
+Автентификация -- глобальным guard в app.auth.security (401 для всего
 blueprint). PATCH /users/:id доступен только global admin (PermissionService.is_global_admin) --
 зеркало frontend-правила UsersView.vue (редактировать роль/активность
 другого пользователя может только админ).
@@ -12,6 +12,11 @@ blueprint). PATCH /users/:id доступен только global admin (Permiss
 
 Поле department_id (ссылка на справочник Department) -- отдел, в котором работает
 сам сотрудник; не путать с managerDepartmentIds (отделы, которыми он руководит).
+
+Поле is_system -- служебные учётные записи, не отображаемые в списках
+назначения исполнителей. GET /api/users отдаёт только реальных
+пользователей (is_system=False). Администратор может управлять
+флагом isSystem через PATCH /api/users/:id.
 
 POST /users (создание) и POST /users/:id/reset-password -- тоже только global admin.
 Пароль (при создании -- заданный явно, при сбросе -- сгенерированный временный)
@@ -46,7 +51,7 @@ user_repository = UserRepository()
 department_repository = DepartmentRepository()
 
 ALLOWED_UPDATE_FIELDS = {
-    "globalRole", "isActive", "name", "email", "position", "department",
+    "globalRole", "isActive", "isSystem", "name", "email", "position", "department",
     "departmentId", "managerDepartmentIds",
 }
 ALLOWED_GLOBAL_ROLES = {"admin", "manager", "user"}
@@ -88,9 +93,23 @@ def _validate_manager_department_ids(manager_department_ids):
 @users_bp.route("", methods=["GET"])
 def list_users(**kwargs):
     if permission_service.is_global_admin(current_user_id()):
-        users = user_repository.get_all()
+        # Админ видит всех пользователей (включая служебных), но системных --
+        # отфильтрованных (им не нужно назначать задачи).
+        users = [u for u in user_repository.get_all() if not u.is_system]
     else:
         users = user_repository.get_all_active()
+    return jsonify([domain_to_dto.user(u).model_dump(by_alias=True) for u in users])
+
+
+@users_bp.route("/admin/all", methods=["GET"])
+def list_all_users_admin(**kwargs):
+    """Только для admin: полный список включая служебных пользователей.
+    Используется модалькой администрирования пользователей — для просмотра и
+    управления служебными учётными записями.
+    """
+    if not permission_service.is_global_admin(current_user_id()):
+        return permission_denied_response("Доступ только для администратора")
+    users = user_repository.get_all()
     return jsonify([domain_to_dto.user(u).model_dump(by_alias=True) for u in users])
 
 
@@ -121,6 +140,10 @@ def update_user(user_id, **kwargs):
     if is_active is not None and not isinstance(is_active, bool):
         return _validation_error([{"loc": ["isActive"], "msg": "must be boolean"}])
 
+    is_system = payload.get("isSystem")
+    if is_system is not None and not isinstance(is_system, bool):
+        return _validation_error([{"loc": ["isSystem"], "msg": "must be boolean"}])
+
     name = payload.get("name")
     if name is not None and not str(name).strip():
         return _validation_error([{"loc": ["name"], "msg": "не может быть пустым"}])
@@ -148,6 +171,7 @@ def update_user(user_id, **kwargs):
             user_id,
             global_role=global_role,
             is_active=is_active,
+            is_system=is_system,
             name=name.strip() if name is not None else None,
             email=email.strip() if email is not None else None,
             position=position,
@@ -170,7 +194,7 @@ def delete_user(user_id, **kwargs):
         return permission_denied_response("Удалять пользователей может только администратор")
 
     if user_id == current_user_id():
-        return permission_denied_response("Нельзя удалить собственную учётную заись")
+        return permission_denied_response("Нельзя удалить собственную учётную запись")
 
     deleted = user_repository.delete(user_id)
     if not deleted:
