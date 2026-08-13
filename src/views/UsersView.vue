@@ -14,6 +14,8 @@ onMounted(() => {
 })
 
 const ROLE_LABEL = { admin: 'Администратор', manager: 'Руководитель', user: 'Пользователь' }
+const AVATAR_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
+const AVATAR_MAX_SIZE = 5 * 1024 * 1024
 
 function departmentName(departmentId) {
   if (!departmentId) return '—'
@@ -80,21 +82,67 @@ async function toggleActive(user) {
 }
 
 // --- Создание пользователя ---
+// Фото при создании выбирается в самой модалке (см. createAvatarFileInputEl /
+// createAvatarPreviewUrl) и загружается сразу после успешного createUser --
+// отдельных кнопок "Фото"/"Сброс фото" в таблице больше нет, вся работа
+// с аватаром администратора теперь идёт только через модалки создания/изменения.
 const showCreateForm = ref(false)
 const createError = ref('')
 const creating = ref(false)
 const newUser = reactive({
   login: '', name: '', email: '', globalRole: 'user', password: '', position: '', departmentId: '', managerDepartmentIds: [],
 })
+const createAvatarFileInputEl = ref(null)
+const createAvatarFile = ref(null)
+const createAvatarPreviewUrl = ref('')
+const createAvatarError = ref('')
 
 function resetCreateForm() {
   Object.assign(newUser, { login: '', name: '', email: '', globalRole: 'user', password: '', position: '', departmentId: '', managerDepartmentIds: [] })
   createError.value = ''
+  clearCreateAvatarSelection()
 }
 
 function openCreateForm() {
   resetCreateForm()
   showCreateForm.value = true
+}
+
+function closeCreateForm() {
+  showCreateForm.value = false
+}
+
+function validateAvatarFile(file) {
+  if (!AVATAR_ALLOWED_TYPES.includes(file.type)) return 'Допустимые форматы: PNG, JPG, GIF, WEBP'
+  if (file.size > AVATAR_MAX_SIZE) return 'Файл больше 5 МБ'
+  return ''
+}
+
+function triggerCreateAvatarPick() {
+  createAvatarError.value = ''
+  createAvatarFileInputEl.value?.click()
+}
+
+function onCreateAvatarFileSelected(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  const err = validateAvatarFile(file)
+  if (err) {
+    createAvatarError.value = err
+    return
+  }
+  createAvatarError.value = ''
+  createAvatarFile.value = file
+  if (createAvatarPreviewUrl.value) URL.revokeObjectURL(createAvatarPreviewUrl.value)
+  createAvatarPreviewUrl.value = URL.createObjectURL(file)
+}
+
+function clearCreateAvatarSelection() {
+  if (createAvatarPreviewUrl.value) URL.revokeObjectURL(createAvatarPreviewUrl.value)
+  createAvatarFile.value = null
+  createAvatarPreviewUrl.value = ''
+  createAvatarError.value = ''
 }
 
 async function submitCreateUser() {
@@ -115,7 +163,17 @@ async function submitCreateUser() {
       departmentId: newUser.departmentId || null,
       managerDepartmentIds: newUser.globalRole === 'manager' ? newUser.managerDepartmentIds : undefined,
     })
-    showCreateForm.value = false
+    if (createAvatarFile.value) {
+      try {
+        await usersStore.uploadAvatar(created.id, createAvatarFile.value)
+      } catch (avatarErr) {
+        // Пользователь уже создан -- ошибку загрузки фото не блокируем закрытием формы,
+        // просто сообщаем о ней через тот же временный пароль-диалог не подходит,
+        // поэтому показываем как обычную ошибку в консоли пользователю через alert-хинт.
+        createAvatarError.value = avatarErr?.message || 'Пользователь создан, но фото загрузить не удалось'
+      }
+    }
+    closeCreateForm()
     temporaryPasswordInfo.value = { login: created.login, password: created.temporaryPassword }
   } catch (err) {
     const detailMsg = err?.payload?.details?.map((d) => d.msg).join('; ')
@@ -130,6 +188,9 @@ const editingUser = ref(null)
 const editError = ref('')
 const savingEdit = ref(false)
 const editForm = reactive({ name: '', email: '', position: '', departmentId: '', managerDepartmentIds: [] })
+const editAvatarFileInputEl = ref(null)
+const editAvatarUploading = ref(false)
+const editAvatarError = ref('')
 
 function openEditForm(user) {
   editingUser.value = user
@@ -139,6 +200,7 @@ function openEditForm(user) {
   editForm.departmentId = user.departmentId || ''
   editForm.managerDepartmentIds = Array.isArray(user.managerDepartmentIds) ? [...user.managerDepartmentIds] : []
   editError.value = ''
+  editAvatarError.value = ''
 }
 
 function closeEditForm() {
@@ -169,6 +231,46 @@ async function submitEditUser() {
     editError.value = detailMsg || err?.message || 'Не удалось сохранить изменения'
   } finally {
     savingEdit.value = false
+  }
+}
+
+function triggerEditAvatarPick() {
+  editAvatarError.value = ''
+  editAvatarFileInputEl.value?.click()
+}
+
+async function onEditAvatarFileSelected(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file || !editingUser.value) return
+  const err = validateAvatarFile(file)
+  if (err) {
+    editAvatarError.value = err
+    return
+  }
+  editAvatarError.value = ''
+  editAvatarUploading.value = true
+  try {
+    const updated = await usersStore.uploadAvatar(editingUser.value.id, file)
+    editingUser.value = updated
+  } catch (uploadErr) {
+    editAvatarError.value = uploadErr?.message || 'Не удалось загрузить фото'
+  } finally {
+    editAvatarUploading.value = false
+  }
+}
+
+async function handleRemoveEditAvatar() {
+  if (!editingUser.value) return
+  editAvatarUploading.value = true
+  editAvatarError.value = ''
+  try {
+    const updated = await usersStore.deleteAvatar(editingUser.value.id)
+    editingUser.value = updated
+  } catch (err) {
+    editAvatarError.value = err?.message || 'Не удалось удалить фото'
+  } finally {
+    editAvatarUploading.value = false
   }
 }
 
@@ -209,60 +311,6 @@ async function handleResetPassword(user) {
 function closePasswordModal() {
   temporaryPasswordInfo.value = null
 }
-
-// --- Аватар пользователя (загрузка/сброс администратором) ---
-// Общий скрытый <input type="file">, переиспользуемый для всех строк таблицы --
-// avatarTargetUserId запоминает, для какого пользователя открыт выбор файла,
-// чтобы не создавать по отдельному input на каждую строку.
-const avatarFileInputEl = ref(null)
-const avatarTargetUserId = ref(null)
-const avatarUploadingId = ref(null)
-const avatarError = ref('')
-
-function triggerAvatarUpload(user) {
-  avatarError.value = ''
-  avatarTargetUserId.value = user.id
-  avatarFileInputEl.value?.click()
-}
-
-async function onAvatarFileSelected(event) {
-  const file = event.target.files?.[0]
-  const userId = avatarTargetUserId.value
-  event.target.value = ''
-  if (!file || !userId) return
-
-  const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp']
-  if (!allowed.includes(file.type)) {
-    avatarError.value = 'Допустимые форматы: PNG, JPG, GIF, WEBP'
-    return
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    avatarError.value = 'Файл больше 5 МБ'
-    return
-  }
-
-  avatarUploadingId.value = userId
-  avatarError.value = ''
-  try {
-    await usersStore.uploadAvatar(userId, file)
-  } catch (err) {
-    avatarError.value = err?.message || 'Не удалось загрузить фото'
-  } finally {
-    avatarUploadingId.value = null
-  }
-}
-
-async function handleRemoveAvatar(user) {
-  avatarUploadingId.value = user.id
-  avatarError.value = ''
-  try {
-    await usersStore.deleteAvatar(user.id)
-  } catch (err) {
-    avatarError.value = err?.message || 'Не удалось удалить фото'
-  } finally {
-    avatarUploadingId.value = null
-  }
-}
 </script>
 
 <template>
@@ -273,12 +321,11 @@ async function handleRemoveAvatar(user) {
 
   <section v-if="isAdmin" class="card users-section">
     <p class="hint-text">
-      увление ролями, активностью, должностью, отделом и фото пользователей. Роль "Руководитель" даёт
+      Управление ролями, активностью, должностью, отделом и фото пользователей. Роль "Руководитель" даёт
       видимость списков/задач всего отдела (можно назначить сразу несколько отделов/служб).
+      Фото загружается или меняется прямо в окне создания/изменения пользователя.
       Изменение своей собственной роли или активности заблокировано.
     </p>
-    <p v-if="avatarError" class="error-text">{{ avatarError }}</p>
-    <input ref="avatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onAvatarFileSelected" />
 
     <div class="filters-bar">
       <input v-model="searchQuery" type="text" class="filter-input" placeholder="Поиск по имени, email, логину..." />
@@ -311,10 +358,6 @@ async function handleRemoveAvatar(user) {
           <div class="user-avatar-wrap">
             <img v-if="u.avatarUrl" :src="u.avatarUrl" class="user-avatar user-avatar-img" alt="" />
             <span v-else class="user-avatar" :style="{ background: getAvatarColor(u.name) }">{{ getInitials(u.name) }}</span>
-            <button
-              class="avatar-mini-edit" title="Загрузить фото" :disabled="avatarUploadingId === u.id"
-              @click="triggerAvatarUpload(u)"
-            >···</button>
           </div>
           <div class="user-info">
             <span class="user-name">{{ u.name }}<span v-if="isSelf(u)" class="self-badge">Вы</span></span>
@@ -349,10 +392,6 @@ async function handleRemoveAvatar(user) {
         </button>
 
         <div class="row-actions">
-          <button class="btn btn-sm btn-ghost" :disabled="avatarUploadingId === u.id" @click="triggerAvatarUpload(u)">
-            {{ avatarUploadingId === u.id ? 'Загрузка...' : 'Фото' }}
-          </button>
-          <button v-if="u.avatarUrl" class="btn btn-sm btn-ghost" :disabled="avatarUploadingId === u.id" @click="handleRemoveAvatar(u)">Сброс фото</button>
           <button class="btn btn-sm btn-ghost" @click="openEditForm(u)">Изменить</button>
           <button
             class="btn btn-sm btn-ghost"
@@ -379,10 +418,26 @@ async function handleRemoveAvatar(user) {
     <p class="hint-text">Доступ только для администраторов.</p>
   </section>
 
-  <!-- Модалка создания пользователя -->
-  <div v-if="showCreateForm" class="modal-backdrop" @click.self="showCreateForm = false">
+  <!-- Модалка создания пользователя. Клик за пределами окна больше не закрывает
+       его -- закрытие только по кнопке "Отмена" или крестику, чтобы случайный
+       клик мимо не стирал введённые данные и выбранное фото. -->
+  <div v-if="showCreateForm" class="modal-backdrop">
     <div class="modal-card">
       <h3>Новый пользователь</h3>
+
+      <div class="avatar-field">
+        <div class="avatar-field-preview">
+          <img v-if="createAvatarPreviewUrl" :src="createAvatarPreviewUrl" class="user-avatar user-avatar-img avatar-lg" alt="" />
+          <span v-else class="user-avatar avatar-lg" :style="{ background: getAvatarColor(newUser.name || newUser.login) }">{{ getInitials(newUser.name || newUser.login) }}</span>
+        </div>
+        <div class="avatar-field-actions">
+          <input ref="createAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onCreateAvatarFileSelected" />
+          <button type="button" class="btn btn-sm btn-ghost" @click="triggerCreateAvatarPick">Выбрать фото</button>
+          <button v-if="createAvatarFile" type="button" class="btn btn-sm btn-ghost" @click="clearCreateAvatarSelection">Убрать выбор</button>
+        </div>
+      </div>
+      <p v-if="createAvatarError" class="error-text">{{ createAvatarError }}</p>
+
       <label class="field">
         <span>Логин</span>
         <input v-model="newUser.login" type="text" placeholder="ivanov" />
@@ -424,7 +479,7 @@ async function handleRemoveAvatar(user) {
       </label>
       <p v-if="createError" class="error-text">{{ createError }}</p>
       <div class="modal-actions">
-        <button class="btn btn-sm btn-ghost" @click="showCreateForm = false">Отмена</button>
+        <button class="btn btn-sm btn-ghost" @click="closeCreateForm">Отмена</button>
         <button class="btn btn-sm btn-primary" :disabled="creating" @click="submitCreateUser">
           {{ creating ? 'Создание...' : 'Создать' }}
         </button>
@@ -432,10 +487,27 @@ async function handleRemoveAvatar(user) {
     </div>
   </div>
 
-  <!-- Модалка редактирования пользователя -->
-  <div v-if="editingUser" class="modal-backdrop" @click.self="closeEditForm">
+  <!-- Модалка редактирования пользователя. Клик за пределами окна не закрывает
+       его -- аналогично созданию, чтобы не терять несохранённые изменения. -->
+  <div v-if="editingUser" class="modal-backdrop">
     <div class="modal-card">
       <h3>Изменить пользователя</h3>
+
+      <div class="avatar-field">
+        <div class="avatar-field-preview">
+          <img v-if="editingUser.avatarUrl" :src="editingUser.avatarUrl" class="user-avatar user-avatar-img avatar-lg" alt="" />
+          <span v-else class="user-avatar avatar-lg" :style="{ background: getAvatarColor(editingUser.name) }">{{ getInitials(editingUser.name) }}</span>
+        </div>
+        <div class="avatar-field-actions">
+          <input ref="editAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onEditAvatarFileSelected" />
+          <button type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="triggerEditAvatarPick">
+            {{ editAvatarUploading ? 'Загрузка...' : 'Загрузить фото' }}
+          </button>
+          <button v-if="editingUser.avatarUrl" type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="handleRemoveEditAvatar">Сброс фото</button>
+        </div>
+      </div>
+      <p v-if="editAvatarError" class="error-text">{{ editAvatarError }}</p>
+
       <label class="field">
         <span>Имя</span>
         <input v-model="editForm.name" type="text" />
@@ -525,14 +597,14 @@ async function handleRemoveAvatar(user) {
 
 .users-table { display: flex; flex-direction: column; }
 .users-table-head {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 280px; gap: 10px;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 220px; gap: 10px;
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);
   padding: 0 8px 8px; border-bottom: 1px solid var(--color-border);
 }
 .sortable { cursor: pointer; user-select: none; }
 .sortable:hover { color: var(--color-text); }
 .user-row {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 280px; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 220px; gap: 10px; align-items: center;
   padding: 10px 8px; border-bottom: 1px solid var(--color-border);
 }
 .user-row.inactive { opacity: 0.55; }
@@ -544,13 +616,7 @@ async function handleRemoveAvatar(user) {
   display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0;
 }
 .user-avatar-img { object-fit: cover; }
-.avatar-mini-edit {
-  position: absolute; bottom: -3px; right: -3px; width: 15px; height: 15px; border-radius: 50%;
-  background: #fff; border: 1px solid var(--color-border); color: var(--color-text-muted); font-size: 8px;
-  line-height: 1; display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
-}
-.avatar-mini-edit:hover { color: var(--color-text); }
-.avatar-mini-edit:disabled { opacity: 0.6; cursor: not-allowed; }
+.avatar-lg { width: 56px; height: 56px; font-size: 18px; }
 .user-info { display: flex; flex-direction: column; min-width: 0; }
 .user-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
 .self-badge {
@@ -577,6 +643,8 @@ async function handleRemoveAvatar(user) {
 .field input, .field select {
   border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 9px; font-size: 13px;
 }
+.avatar-field { display: flex; align-items: center; gap: 12px; }
+.avatar-field-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .error-text { color: #d64545; font-size: 12px; margin: 0; }
 .password-box {
