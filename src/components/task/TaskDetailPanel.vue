@@ -329,9 +329,9 @@ const HISTORY_ICON = {
                         />
                       </div>
 
-                      <!-- Suggestions: участники встречи -->
+                      <!-- Участники встречи -->
                       <template v-if="suggestedUsers.length">
-                        <div class="assignee-section-label">Suggestions</div>
+                        <div class="assignee-section-label">Участники встречи</div>
                         <button
                           v-for="u in suggestedUsers" :key="u.id"
                           class="assignee-option" :class="{ active: liveTask.assigneeId === u.id }"
@@ -342,8 +342,8 @@ const HISTORY_ICON = {
                         <div class="assignee-section-divider" />
                       </template>
 
-                      <!-- All Users -->
-                      <div class="assignee-section-label">All Users</div>
+                      <!-- Все пользователи -->
+                      <div class="assignee-section-label">Все пользователи</div>
                       <template v-if="allUsersFiltered.length">
                         <button
                           v-for="u in allUsersFiltered" :key="u.id"
