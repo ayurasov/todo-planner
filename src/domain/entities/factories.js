@@ -11,12 +11,16 @@ export function nextId(prefix = 'id') {
 // которыми этот человек руководит как globalRole='manager' (могут быть несколько
 // одновременно -- аналог ManagerDepartmentORM на backend). Оба поля -- независимые другот
 // от друга.
+// isSystem -- служебная учётная запись (admin, тест и т.п.): не отображается
+// в списках выбора исполнителей. Управляется только администратором.
 export function createUser({
   id, name, email, timezone = 'Europe/Moscow', avatarUrl = null, globalRole = 'user', isActive = true,
+  isSystem = false,
   position = null, department = null, departmentId = null, managerDepartmentIds = [],
 }) {
   return {
     id: id || nextId('user'), name, email, timezone, avatarUrl, globalRole, isActive,
+    isSystem,
     position, department, departmentId, managerDepartmentIds,
   }
 }
