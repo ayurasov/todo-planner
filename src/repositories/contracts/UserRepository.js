@@ -1,9 +1,14 @@
 export class UserRepository {
   async getAll() { throw new Error('Not implemented') }
+  /**
+   * Только для admin: полный список включая системных пользователей.
+   * Соответствует GET /api/users/admin/all на backend.
+   */
+  async getAllAdmin() { throw new Error('Not implemented') }
   async getById(_id) { throw new Error('Not implemented') }
   async getCurrentUser() { throw new Error('Not implemented') }
   /**
-   * Частичное обновление пользователя (globalRole, isActive и т.д.).
+   * Частичное обновление пользователя (globalRole, isActive, isSystem и т.д.).
    * В v2 станет PATCH /api/users/:id — сигнатура не меняется, поэтому
    * store и UI переживут переход на backend без переписывания.
    */
