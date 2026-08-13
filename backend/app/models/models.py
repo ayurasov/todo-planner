@@ -94,6 +94,12 @@ class UserORM(db.Model):
     avatar_url = db.Column(db.Text)
     global_role = db.Column(db.Text, nullable=False, default="user")
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    # is_system -- пользователь-служебная учётная запись (например, дефолтный
+    # admin или тестовый аккаунт), помеченная администратором. Скрывается из
+    # всех списков выбора исполнителя/участника встречи/доступного пользователя
+    # списка (см. usersStore.assignable / useAssignableUsers на фронте), но
+    # остаётся видимым и управляемым в самом UsersView.vue для администратора.
+    is_system = db.Column(db.Boolean, nullable=False, default=False)
     position = db.Column(db.Text)
     department = db.Column(db.Text)
     # department_id -- ссылка на настраиваемый справочник Department (плоский
