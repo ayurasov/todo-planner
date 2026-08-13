@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { useHistoryStore } from '../../stores/historyStore'
@@ -31,6 +31,8 @@ const editingTitle = ref(false)
 const titleDraft = ref(props.task.title)
 const titleInputEl = ref(null)
 const assigneeMenuOpen = ref(false)
+const assigneeSearch = ref('')
+const assigneeSearchInput = ref(null)
 const confirmDeleteOpen = ref(false)
 
 const liveTask = computed(() => tasksStore.byId(props.task.id) || props.task)
@@ -60,6 +62,44 @@ const checklistProgress = computed(() => {
 const checklistPercent = computed(() => {
   if (!checklist.value.length) return 0
   return Math.round((checklist.value.filter((i) => i.done).length / checklist.value.length) * 100)
+})
+
+// Исполнители: участники встречи (suggestions) и все остальные
+const meetingAttendeeIds = computed(() => new Set(linkedMeeting.value?.attendeeIds || []))
+
+const searchQuery = computed(() => assigneeSearch.value.trim().toLowerCase())
+
+const suggestedUsers = computed(() => {
+  if (!meetingAttendeeIds.value.size) return []
+  return usersStore.users.filter((u) => {
+    if (!meetingAttendeeIds.value.has(u.id)) return false
+    if (!searchQuery.value) return true
+    return u.name.toLowerCase().includes(searchQuery.value)
+  })
+})
+
+const allOtherUsers = computed(() => {
+  return usersStore.users.filter((u) => {
+    if (meetingAttendeeIds.value.has(u.id)) return false
+    if (!searchQuery.value) return true
+    return u.name.toLowerCase().includes(searchQuery.value)
+  })
+})
+
+// Если нет встречи — показываем всех пользователей в секции allOtherUsers
+const allUsersFiltered = computed(() => {
+  if (meetingAttendeeIds.value.size) return allOtherUsers.value
+  return usersStore.users.filter((u) => {
+    if (!searchQuery.value) return true
+    return u.name.toLowerCase().includes(searchQuery.value)
+  })
+})
+
+watch(assigneeMenuOpen, (val) => {
+  if (val) {
+    assigneeSearch.value = ''
+    nextTick(() => assigneeSearchInput.value?.focus())
+  }
 })
 
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
@@ -276,11 +316,49 @@ const HISTORY_ICON = {
                       <span>{{ currentAssignee ? currentAssignee.name : 'Не назначен' }}</span>
                       <span class="chevron"><AppIcon name="chevronDown" :size="10" /></span>
                     </button>
+
                     <div v-if="assigneeMenuOpen" class="assignee-dropdown card scroll-thin">
-                      <button v-for="u in usersStore.users" :key="u.id" class="assignee-option" :class="{ active: liveTask.assigneeId === u.id }" @click="assign(u.id)">
-                        <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
+                      <!-- Поиск -->
+                      <div class="assignee-search-wrap">
+                        <input
+                          ref="assigneeSearchInput"
+                          v-model="assigneeSearch"
+                          class="assignee-search-input"
+                          placeholder="Поиск пользователя..."
+                          @keyup.escape="assigneeMenuOpen = false"
+                        />
+                      </div>
+
+                      <!-- Suggestions: участники встречи -->
+                      <template v-if="suggestedUsers.length">
+                        <div class="assignee-section-label">Suggestions</div>
+                        <button
+                          v-for="u in suggestedUsers" :key="u.id"
+                          class="assignee-option" :class="{ active: liveTask.assigneeId === u.id }"
+                          @click="assign(u.id)"
+                        >
+                          <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
+                        </button>
+                        <div class="assignee-section-divider" />
+                      </template>
+
+                      <!-- All Users -->
+                      <div class="assignee-section-label">All Users</div>
+                      <template v-if="allUsersFiltered.length">
+                        <button
+                          v-for="u in allUsersFiltered" :key="u.id"
+                          class="assignee-option" :class="{ active: liveTask.assigneeId === u.id }"
+                          @click="assign(u.id)"
+                        >
+                          <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
+                        </button>
+                      </template>
+                      <div v-else class="assignee-no-results">Пользователи не найдены</div>
+
+                      <div class="assignee-section-divider" />
+                      <button class="assignee-option" @click="assign(null)">
+                        <span class="assignee-avatar empty">—</span>Без исполнителя
                       </button>
-                      <button class="assignee-option" @click="assign(null)"><span class="assignee-avatar empty">—</span>Без исполнителя</button>
                     </div>
                   </div>
                 </div>
@@ -426,15 +504,35 @@ const HISTORY_ICON = {
 .assignee-avatar.empty { background: #d9dde8; color: var(--color-text-muted); }
 .chevron { color: var(--color-text-muted); display: flex; margin-left: auto; }
 .assignee-dropdown {
-  position: absolute; top: 100%; left: 0; margin-top: 4px; width: 100%; min-width: 200px; z-index: 20;
-  padding: 5px; max-height: 220px; overflow-y: auto; box-shadow: var(--shadow-2);
+  position: absolute; top: 100%; left: 0; margin-top: 4px; width: 220px; z-index: 20;
+  padding: 6px 0 4px; max-height: 320px; overflow-y: auto; box-shadow: var(--shadow-2);
 }
+
+/* Поиск внутри dropdown */
+.assignee-search-wrap { padding: 4px 8px 6px; }
+.assignee-search-input {
+  width: 100%; border: 1px solid var(--color-border); border-radius: 7px;
+  padding: 5px 9px; font-size: 12.5px; outline: none; background: #f6f7fb;
+}
+.assignee-search-input:focus { border-color: var(--color-primary); background: #fff; }
+
+/* Заголовки секций */
+.assignee-section-label {
+  padding: 4px 12px 2px; font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--color-text-muted); user-select: none;
+}
+
+/* Разделитель */
+.assignee-section-divider { height: 1px; background: var(--color-border); margin: 4px 8px; }
+
 .assignee-option {
   display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: none;
-  padding: 6px 8px; border-radius: 8px; font-size: 12.5px; cursor: pointer;
+  padding: 6px 12px; font-size: 12.5px; cursor: pointer;
 }
 .assignee-option:hover { background: #f1f3f9; }
 .assignee-option.active { background: #eef2ff; font-weight: 600; }
+
+.assignee-no-results { padding: 6px 12px; font-size: 12px; color: var(--color-text-muted); }
 
 .date-input { border: 1px solid var(--color-border); border-radius: 8px; padding: 6px 10px; font-size: 12.5px; width: 100%; }
 
