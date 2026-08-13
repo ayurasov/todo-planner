@@ -68,6 +68,7 @@ class orm_to_domain:
             avatar_url=row.avatar_url,
             global_role=row.global_role,
             is_active=bool(row.is_active),
+            is_system=bool(row.is_system),
             login=row.login,
             password_hash=row.password_hash,
             position=row.position,
@@ -304,6 +305,7 @@ class domain_to_dto:
         return api_dto.UserResponseDTO(
             id=u.id, name=u.name, email=u.email, login=u.login, timezone=u.timezone,
             avatar_url=u.avatar_url, global_role=u.global_role, is_active=u.is_active,
+            is_system=u.is_system,
             position=u.position, department=u.department, department_id=u.department_id,
             managed_department_ids=u.managed_department_ids,
         )
