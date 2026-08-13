@@ -13,8 +13,8 @@ export class HttpUserRepository extends UserRepository {
   }
 
   /**
-   * Полный список включая системных пользователей -- только для администратора.
-   * Соответствует GET /api/users/admin/all.
+   * Только для admin: полный список включая системных пользователей.
+   * Соответствует GET /api/users/admin/all на backend.
    */
   async getAllAdmin() {
     return apiClient.get('/users/admin/all')

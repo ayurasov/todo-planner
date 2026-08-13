@@ -8,10 +8,14 @@ export class MockUserRepository extends UserRepository {
   }
 
   async getAll() {
+    // Обычный список — без системных пользователей (аналог backend GET /api/users)
     return this._users.filter((u) => !u.isSystem)
   }
 
-  /** Админский список: все пользователи включая системных. */
+  /**
+   * Полный список включая системных — только для admin.
+   * Аналог backend GET /api/users/admin/all.
+   */
   async getAllAdmin() {
     return [...this._users]
   }
@@ -39,11 +43,13 @@ export class MockUserRepository extends UserRepository {
       login: payload.login,
       globalRole: payload.globalRole || 'user',
       isActive: true,
-      isSystem: false,
+      isSystem: payload.isSystem ?? false,
       timezone: 'Europe/Moscow',
       avatarUrl: null,
       position: payload.position || null,
       department: payload.department || null,
+      departmentId: payload.departmentId || null,
+      managerDepartmentIds: payload.managerDepartmentIds || [],
     }
     this._users.push(user)
     return { ...user, temporaryPassword: payload.password || 'mock-password' }
