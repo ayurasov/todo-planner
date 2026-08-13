@@ -18,7 +18,7 @@ export const seedDepartments = [
   createDepartment({ id: 'dept_3', name: 'Безопасность' }),
 ]
 
-// user_1 -- admin и одновретменно руковит двумя отделами (dept_1, dept_2) --
+// user_1 -- admin и одновретеменно руковит двумя отделами (dept_1, dept_2) --
 // иллюстрация того, что руководитель может отвечать за несколько
 // отделов/служб одновременно (many-to-many, аналог ManagerDepartmentORM).
 export const seedUsers = [
@@ -32,6 +32,13 @@ export const seedUsers = [
   }),
   createUser({ id: 'user_3', name: 'Дмитрий Ким', email: 'd.kim@example.com', globalRole: 'user', departmentId: 'dept_1' }),
   createUser({ id: 'user_4', name: 'Елена Волкова', email: 'e.volkova@example.com', globalRole: 'user', departmentId: 'dept_3' }),
+  // Системный пользователь -- не отображается в списках исполнителей (isSystem: true).
+  // Виден админу через страницу Управление пользователями, админ может
+  // снять/выставить флаг кнопкой «системный».
+  createUser({
+    id: 'user_system', name: 'System Admin', email: 'system@example.com', globalRole: 'admin',
+    isSystem: true,
+  }),
 ]
 
 export const seedLists = [
@@ -79,7 +86,7 @@ const t5 = createTask({
   createdAt: iso(-1), updatedAt: iso(-1), lastActivityAt: iso(-1),
 })
 const t6 = createTask({
-  id: 'task_6', listId: 'list_3', title: 'Еженедельный ревью статусов проекта',
+  id: 'task_6', listId: 'list_3', title: 'Еженедельный ревю статусов проекта',
   priority: TaskPriority.MEDIUM, assigneeId: 'user_2', dueDate: iso(3),
   createdAt: iso(-1), updatedAt: iso(-1), lastActivityAt: iso(-1),
   recurrenceTemplateId: 'rectpl_1',
@@ -111,7 +118,7 @@ export const seedHistory = [
 
 export const seedRecurrenceTemplates = [
   createRecurrenceTemplate({
-    id: 'rectpl_1', listId: 'list_3', titleTemplate: 'Еженедельный ревью статусов проекта',
+    id: 'rectpl_1', listId: 'list_3', titleTemplate: 'Еженедельный ревю статусов проекта',
     type: RecurrenceType.FIXED_SCHEDULE,
     rule: { freq: RecurrenceFreq.WEEKLY, interval: 1, byWeekday: ['MO'], endCondition: null },
     generateAheadCount: 2,
