@@ -8,20 +8,30 @@ export const useUsersStore = defineStore('users', {
   state: () => ({ users: [], currentUser: null, loaded: false }),
   getters: {
     byId: (state) => (id) => state.users.find((u) => u.id === id) || null,
+    /**
+     * Пользователи, доступные в качестве исполнителя/участника:
+     * исключаются системные (админ, тестовый и т.п.) и неактивные пользователи.
+     * Используйте везде, где есть список выбора исполнителя.
+     */
+    assignableUsers: (state) => state.users.filter((u) => !u.isSystem && u.isActive !== false),
   },
   actions: {
     async load() {
       if (this.loaded) return
-      this.users = await userRepository.getAll()
       // getCurrentUser() в http-режиме всегда идёт через GET /api/auth/me
-      // (HttpUserRepository), а не из seed/mock-данных — см. src/repositories/http/HttpUserRepository.js.
+      // (HttpUserRepository), а не из seed/mock-данных -- см. src/repositories/http/HttpUserRepository.js.
       this.currentUser = await userRepository.getCurrentUser()
+      const isAdmin = this.currentUser?.globalRole === 'admin'
+      // Admin загружает всех включая системных, остальные -- только обычных.
+      this.users = isAdmin
+        ? await userRepository.getAllAdmin()
+        : await userRepository.getAll()
       this.loaded = true
     },
 
     /**
-     * Обновление пользователя администратором (роль, активность).
-     * Синхронизирует локальный список и currentUser, если админ меняет себя.
+     * Обновление пользователя администратором (роль, активность, isSystem).
+     * Синхронизует локальный список и currentUser, если админ меняет себя.
      */
     async updateUser(id, patch) {
       return withPermissionHandling(async () => {
@@ -69,7 +79,7 @@ export const useUsersStore = defineStore('users', {
      * ProfileModal.vue) и администратору для любого пользователя (см.
      * UsersView.vue) -- backend сам решает, разрешено ли конкретному
      * user_id менять аватар данного id (см. backend/app/users/routes.py).
-     * Синхронизирует локальный список и currentUser, если меняется свой аватар.
+     * Синхронизует локальный список и currentUser, если меняется свой аватар.
      */
     async uploadAvatar(id, file) {
       return withPermissionHandling(async () => {
