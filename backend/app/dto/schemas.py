@@ -46,12 +46,15 @@ class UserResponseDTO(CamelModel):
     avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
     global_role: str = Field(default="user", alias="globalRole")
     is_active: bool = Field(default=True, alias="isActive")
+    # Служебная учётная запись (системные уведомления, автоматические назначения и т.п.).
+    # Такие пользователи не появляются в выпадающих списках назначения исполнителей.
+    is_system: bool = Field(default=False, alias="isSystem")
     position: Optional[str] = None
     department: Optional[str] = None
     # ссылка на справочник Department (плоский список) -- отдел, в котором работает сотрудник.
     department_id: Optional[str] = Field(default=None, alias="departmentId")
     # отделы, которыми руководит данный руководитель (global_role == 'manager');
-    # могут быть несколько -- руководитель может ответственно за несколькие отделы/службы.
+    # могут быть несколько -- руководитель может ответственно за несколькие отделов/служб.
     managed_department_ids: List[str] = Field(default_factory=list, alias="managedDepartmentIds")
 
 
