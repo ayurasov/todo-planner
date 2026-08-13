@@ -106,7 +106,7 @@ def _configure_logging(app):
     @app.errorhandler(Exception)
     def _log_unhandled_exception(exc):  # noqa: WPS430
         app.logger.exception("Unhandled exception during request")
-        # Без rollback() сессия SQLAlchemy остаётся "грязной" после любой ошибки
+        # Без rollback() сессия SQLAlchemy остаётся «грязной» после любой ошибки
         # (IntegrityError, CSRFError и т.п.): невыполненные insert/update продолжают
         # висеть в Session на этом gunicorn-воркере и портят транзакцию следующего,
         # ни в чём не повинного запроса на том же воркере (например, INSERT списка
@@ -116,7 +116,7 @@ def _configure_logging(app):
         raise exc
 
 
-def create_app(config_name=None):
+def create_app(config_name=None, skip_bootstrap=False):
     app = Flask(__name__)
     app.config.from_object(get_config(config_name))
 
@@ -131,7 +131,9 @@ def create_app(config_name=None):
     _register_extensions(app)
     _register_blueprints(app)
     install_login_guard(app)
-    _bootstrap_database(app)
+
+    if not skip_bootstrap:
+        _bootstrap_database(app)
 
     return app
 
