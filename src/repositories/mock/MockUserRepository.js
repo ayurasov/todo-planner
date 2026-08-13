@@ -8,6 +8,11 @@ export class MockUserRepository extends UserRepository {
   }
 
   async getAll() {
+    return this._users.filter((u) => !u.isSystem)
+  }
+
+  /** Админский список: все пользователи включая системных. */
+  async getAllAdmin() {
     return [...this._users]
   }
 
@@ -34,6 +39,7 @@ export class MockUserRepository extends UserRepository {
       login: payload.login,
       globalRole: payload.globalRole || 'user',
       isActive: true,
+      isSystem: false,
       timezone: 'Europe/Moscow',
       avatarUrl: null,
       position: payload.position || null,
