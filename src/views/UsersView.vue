@@ -83,8 +83,9 @@ async function toggleActive(user) {
   await usersStore.updateUser(user.id, { isActive: !user.isActive })
 }
 
+// Системный флаг: разрешено менять для ЛЮБОГО пользователя включая себя.
+// Это позволяет администратору самому стать системным (скрыться из списков исполнителей).
 async function toggleSystem(user) {
-  if (isSelf(user)) return
   await usersStore.updateUser(user.id, { isSystem: !user.isSystem })
 }
 
@@ -325,6 +326,7 @@ function closePasswordModal() {
       видимость списков/задач всего отдела (можно назначить сразу несколько отделов/служб).
       <strong>Системные</strong> пользователи (например admin) не отображаются в списках исполнителей и участников.
       Изменение своей собственной роли или активности заблокировано.
+      Флаг «системный» администратор может выставить в том числе для себя.
     </p>
 
     <div class="filters-bar">
@@ -403,8 +405,7 @@ function closePasswordModal() {
           <button
             class="btn btn-sm"
             :class="u.isSystem ? 'btn-warning' : 'btn-ghost'"
-            :disabled="isSelf(u)"
-            :title="isSelf(u) ? 'Нельзя изменить себя' : (u.isSystem ? 'Снять системный флаг' : 'Отметить как системный')"
+            :title="u.isSystem ? 'Снять системный флаг' : 'Отметить как системный'"
             @click="toggleSystem(u)"
           >
             {{ u.isSystem ? '⚙️ системный' : '• системный?' }}
