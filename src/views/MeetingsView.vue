@@ -33,13 +33,15 @@ const editDraft = ref({
 
 const meetingPendingRemoval = ref(null)
 
-// --- tag-пикер состояние для черновика создания ---
 const draftAttendeePickerOpen = ref(false)
 const draftEditorPickerOpen = ref(false)
+const draftAttendeeSearch = ref('')
+const draftEditorSearch = ref('')
 
-// --- tag-пикер состояние для черновика редактирования ---
 const editAttendeePickerOpen = ref(false)
 const editEditorPickerOpen = ref(false)
+const editAttendeeSearch = ref('')
+const editEditorSearch = ref('')
 
 function withTimeOfDay(date, timeStr) {
   const [h, m] = (timeStr || '00:00').split(':').map(Number)
@@ -63,6 +65,8 @@ onMounted(async () => {
   if (!tasksStore.loaded) await tasksStore.load()
   if (!usersStore.loaded) await usersStore.load()
 })
+
+const assignableUsers = computed(() => usersStore.assignableUsers || [])
 
 const taskCountByMeeting = computed(() => {
   const map = {}
@@ -119,6 +123,8 @@ function openCreateForm() {
   }
   draftAttendeePickerOpen.value = false
   draftEditorPickerOpen.value = false
+  draftAttendeeSearch.value = ''
+  draftEditorSearch.value = ''
   showCreateForm.value = true
 }
 
@@ -128,34 +134,43 @@ function toggleDraftWeekday(day) {
   else draft.value.recurrenceWeekdays.splice(idx, 1)
 }
 
-// --- helpers для tag-пикеров ---
+function filterUsers(users, search) {
+  const q = search.trim().toLowerCase()
+  if (!q) return users
+  return users.filter((u) => u.name.toLowerCase().includes(q))
+}
+
 function availableAttendeesForDraft() {
   const ids = new Set(draft.value.attendeeIds)
-  return usersStore.users.filter((u) => !ids.has(u.id))
+  return filterUsers(assignableUsers.value.filter((u) => !ids.has(u.id)), draftAttendeeSearch.value)
 }
 function availableEditorsForDraft() {
-  const ids = new Set(draft.value.editorIds)
-  return usersStore.users.filter((u) => !ids.has(u.id))
+  const ids = new Set(editableUserIds(draft.value.editorIds))
+  return filterUsers(assignableUsers.value.filter((u) => !ids.has(u.id)), draftEditorSearch.value)
 }
 function availableAttendeesForEdit() {
   const ids = new Set(editDraft.value.attendeeIds)
-  return usersStore.users.filter((u) => !ids.has(u.id))
+  return filterUsers(assignableUsers.value.filter((u) => !ids.has(u.id)), editAttendeeSearch.value)
 }
 function availableEditorsForEdit() {
-  const ids = new Set(editDraft.value.editorIds)
-  return usersStore.users.filter((u) => !ids.has(u.id))
+  const ids = new Set(editableUserIds(editDraft.value.editorIds))
+  return filterUsers(assignableUsers.value.filter((u) => !ids.has(u.id)), editEditorSearch.value)
+}
+
+function editableUserIds(ids) {
+  return Array.isArray(ids) ? ids : []
 }
 
 function addDraftAttendee(userId) {
   if (!draft.value.attendeeIds.includes(userId)) draft.value.attendeeIds.push(userId)
-  draftAttendeePickerOpen.value = false
+  draftAttendeeSearch.value = ''
 }
 function removeDraftAttendee(userId) {
   draft.value.attendeeIds = draft.value.attendeeIds.filter((id) => id !== userId)
 }
 function addDraftEditor(userId) {
   if (!draft.value.editorIds.includes(userId)) draft.value.editorIds.push(userId)
-  draftEditorPickerOpen.value = false
+  draftEditorSearch.value = ''
 }
 function removeDraftEditor(userId) {
   draft.value.editorIds = draft.value.editorIds.filter((id) => id !== userId)
@@ -163,14 +178,14 @@ function removeDraftEditor(userId) {
 
 function addEditAttendee(userId) {
   if (!editDraft.value.attendeeIds.includes(userId)) editDraft.value.attendeeIds.push(userId)
-  editAttendeePickerOpen.value = false
+  editAttendeeSearch.value = ''
 }
 function removeEditAttendee(userId) {
   editDraft.value.attendeeIds = editDraft.value.attendeeIds.filter((id) => id !== userId)
 }
 function addEditEditor(userId) {
   if (!editDraft.value.editorIds.includes(userId)) editDraft.value.editorIds.push(userId)
-  editEditorPickerOpen.value = false
+  editEditorSearch.value = ''
 }
 function removeEditEditor(userId) {
   editDraft.value.editorIds = editDraft.value.editorIds.filter((id) => id !== userId)
@@ -225,6 +240,8 @@ function startEdit(meeting) {
   }
   editAttendeePickerOpen.value = false
   editEditorPickerOpen.value = false
+  editAttendeeSearch.value = ''
+  editEditorSearch.value = ''
   editingMeetingId.value = meeting.id
 }
 
@@ -358,7 +375,6 @@ function isRecurringMeeting(meeting) {
     </div>
   </TransitionGroup>
 
-  <!-- Создание встречи -->
   <div v-if="showCreateForm" class="modal-overlay">
     <div class="modal card scroll-thin">
       <div class="modal-header">
@@ -419,47 +435,61 @@ function isRecurringMeeting(meeting) {
           <RichTextEditor v-model="draft.description" placeholder="Тема, контекст..." />
         </div>
 
-        <!-- Участники — tag-пикер -->
         <div class="field-group">
-          <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
-          <div class="tag-picker-area">
-            <span v-for="uid in draft.attendeeIds" :key="uid" class="member-chip attendee-chip">
-              <span class="mini-avatar">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
-              {{ usersStore.byId(uid)?.name || uid }}
-              <button class="chip-remove" @click="removeDraftAttendee(uid)"><AppIcon name="close" :size="10" /></button>
-            </span>
-            <button class="btn btn-ghost btn-sm add-member-btn" @click="draftAttendeePickerOpen = !draftAttendeePickerOpen">
-              <AppIcon name="plus" :size="12" /> Участник
+          <label>Участники</label>
+          <div class="assignee-picker tag-assignee-picker">
+            <button type="button" class="assignee-trigger" @click="draftAttendeePickerOpen = !draftAttendeePickerOpen">
+              <span class="assignee-avatar empty"><AppIcon name="plus" :size="10" /></span>
+              <span>Добавить участника</span>
+              <span class="chevron"><AppIcon name="chevronDown" :size="10" /></span>
             </button>
-          </div>
-          <div v-if="draftAttendeePickerOpen" class="inline-picker">
-            <button
-              v-for="u in availableAttendeesForDraft()" :key="u.id"
-              class="picker-option" @click="addDraftAttendee(u.id)"
-            >{{ u.name }}</button>
-            <span v-if="!availableAttendeesForDraft().length" class="picker-empty">Все пользователи добавлены</span>
+            <div v-if="draftAttendeeIds?.length || draft.attendeeIds.length" class="selected-tags">
+              <span v-for="uid in draft.attendeeIds" :key="uid" class="member-chip attendee-chip">
+                <span class="mini-avatar">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
+                {{ usersStore.byId(uid)?.name || uid }}
+                <button type="button" class="chip-remove" @click="removeDraftAttendee(uid)"><AppIcon name="close" :size="10" /></button>
+              </span>
+            </div>
+            <div v-if="draftAttendeePickerOpen" class="assignee-dropdown card scroll-thin">
+              <div class="assignee-search-wrap">
+                <input v-model="draftAttendeeSearch" class="assignee-search-input" placeholder="Поиск пользователя..." />
+              </div>
+              <template v-if="availableAttendeesForDraft().length">
+                <button v-for="u in availableAttendeesForDraft()" :key="u.id" type="button" class="assignee-option" @click="addDraftAttendee(u.id)">
+                  <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
+                </button>
+              </template>
+              <div v-else class="assignee-no-results">Пользователи не найдены</div>
+            </div>
           </div>
         </div>
 
-        <!-- Редакторы — tag-пикер -->
         <div class="field-group">
-          <label>Редакторы (могут управлять этой встречей)</label>
-          <div class="tag-picker-area">
-            <span v-for="uid in draft.editorIds" :key="uid" class="member-chip editor-chip">
-              <span class="mini-avatar mini-avatar-editor">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
-              {{ usersStore.byId(uid)?.name || uid }}
-              <button class="chip-remove" @click="removeDraftEditor(uid)"><AppIcon name="close" :size="10" /></button>
-            </span>
-            <button class="btn btn-ghost btn-sm add-member-btn" @click="draftEditorPickerOpen = !draftEditorPickerOpen">
-              <AppIcon name="plus" :size="12" /> Редактор
+          <label>Редакторы</label>
+          <div class="assignee-picker tag-assignee-picker">
+            <button type="button" class="assignee-trigger" @click="draftEditorPickerOpen = !draftEditorPickerOpen">
+              <span class="assignee-avatar empty"><AppIcon name="plus" :size="10" /></span>
+              <span>Добавить редактора</span>
+              <span class="chevron"><AppIcon name="chevronDown" :size="10" /></span>
             </button>
-          </div>
-          <div v-if="draftEditorPickerOpen" class="inline-picker">
-            <button
-              v-for="u in availableEditorsForDraft()" :key="u.id"
-              class="picker-option" @click="addDraftEditor(u.id)"
-            >{{ u.name }}</button>
-            <span v-if="!availableEditorsForDraft().length" class="picker-empty">Все пользователи добавлены</span>
+            <div v-if="draft.editorIds.length" class="selected-tags">
+              <span v-for="uid in draft.editorIds" :key="uid" class="member-chip editor-chip">
+                <span class="mini-avatar mini-avatar-editor">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
+                {{ usersStore.byId(uid)?.name || uid }}
+                <button type="button" class="chip-remove" @click="removeDraftEditor(uid)"><AppIcon name="close" :size="10" /></button>
+              </span>
+            </div>
+            <div v-if="draftEditorPickerOpen" class="assignee-dropdown card scroll-thin">
+              <div class="assignee-search-wrap">
+                <input v-model="draftEditorSearch" class="assignee-search-input" placeholder="Поиск пользователя..." />
+              </div>
+              <template v-if="availableEditorsForDraft().length">
+                <button v-for="u in availableEditorsForDraft()" :key="u.id" type="button" class="assignee-option" @click="addDraftEditor(u.id)">
+                  <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
+                </button>
+              </template>
+              <div v-else class="assignee-no-results">Пользователи не найдены</div>
+            </div>
           </div>
         </div>
       </div>
@@ -470,7 +500,6 @@ function isRecurringMeeting(meeting) {
     </div>
   </div>
 
-  <!-- Редактирование встречи -->
   <div v-if="editingMeetingId" class="modal-overlay">
     <div class="modal card scroll-thin">
       <div class="modal-header">
@@ -527,47 +556,61 @@ function isRecurringMeeting(meeting) {
           <RichTextEditor v-model="editDraft.description" placeholder="Тема, контекст..." />
         </div>
 
-        <!-- Участники — tag-пикер -->
         <div class="field-group">
-          <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
-          <div class="tag-picker-area">
-            <span v-for="uid in editDraft.attendeeIds" :key="uid" class="member-chip attendee-chip">
-              <span class="mini-avatar">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
-              {{ usersStore.byId(uid)?.name || uid }}
-              <button class="chip-remove" @click="removeEditAttendee(uid)"><AppIcon name="close" :size="10" /></button>
-            </span>
-            <button class="btn btn-ghost btn-sm add-member-btn" @click="editAttendeePickerOpen = !editAttendeePickerOpen">
-              <AppIcon name="plus" :size="12" /> Участник
+          <label>Участники</label>
+          <div class="assignee-picker tag-assignee-picker">
+            <button type="button" class="assignee-trigger" @click="editAttendeePickerOpen = !editAttendeePickerOpen">
+              <span class="assignee-avatar empty"><AppIcon name="plus" :size="10" /></span>
+              <span>Добавить участника</span>
+              <span class="chevron"><AppIcon name="chevronDown" :size="10" /></span>
             </button>
-          </div>
-          <div v-if="editAttendeePickerOpen" class="inline-picker">
-            <button
-              v-for="u in availableAttendeesForEdit()" :key="u.id"
-              class="picker-option" @click="addEditAttendee(u.id)"
-            >{{ u.name }}</button>
-            <span v-if="!availableAttendeesForEdit().length" class="picker-empty">Все пользователи добавлены</span>
+            <div v-if="editDraft.attendeeIds.length" class="selected-tags">
+              <span v-for="uid in editDraft.attendeeIds" :key="uid" class="member-chip attendee-chip">
+                <span class="mini-avatar">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
+                {{ usersStore.byId(uid)?.name || uid }}
+                <button type="button" class="chip-remove" @click="removeEditAttendee(uid)"><AppIcon name="close" :size="10" /></button>
+              </span>
+            </div>
+            <div v-if="editAttendeePickerOpen" class="assignee-dropdown card scroll-thin">
+              <div class="assignee-search-wrap">
+                <input v-model="editAttendeeSearch" class="assignee-search-input" placeholder="Поиск пользователя..." />
+              </div>
+              <template v-if="availableAttendeesForEdit().length">
+                <button v-for="u in availableAttendeesForEdit()" :key="u.id" type="button" class="assignee-option" @click="addEditAttendee(u.id)">
+                  <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
+                </button>
+              </template>
+              <div v-else class="assignee-no-results">Пользователи не найдены</div>
+            </div>
           </div>
         </div>
 
-        <!-- Редакторы — tag-пикер -->
         <div class="field-group">
-          <label>Редакторы (могут управлять этой встречей)</label>
-          <div class="tag-picker-area">
-            <span v-for="uid in editDraft.editorIds" :key="uid" class="member-chip editor-chip">
-              <span class="mini-avatar mini-avatar-editor">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
-              {{ usersStore.byId(uid)?.name || uid }}
-              <button class="chip-remove" @click="removeEditEditor(uid)"><AppIcon name="close" :size="10" /></button>
-            </span>
-            <button class="btn btn-ghost btn-sm add-member-btn" @click="editEditorPickerOpen = !editEditorPickerOpen">
-              <AppIcon name="plus" :size="12" /> Редактор
+          <label>Редакторы</label>
+          <div class="assignee-picker tag-assignee-picker">
+            <button type="button" class="assignee-trigger" @click="editEditorPickerOpen = !editEditorPickerOpen">
+              <span class="assignee-avatar empty"><AppIcon name="plus" :size="10" /></span>
+              <span>Добавить редактора</span>
+              <span class="chevron"><AppIcon name="chevronDown" :size="10" /></span>
             </button>
-          </div>
-          <div v-if="editEditorPickerOpen" class="inline-picker">
-            <button
-              v-for="u in availableEditorsForEdit()" :key="u.id"
-              class="picker-option" @click="addEditEditor(u.id)"
-            >{{ u.name }}</button>
-            <span v-if="!availableEditorsForEdit().length" class="picker-empty">Все пользователи добавлены</span>
+            <div v-if="editDraft.editorIds.length" class="selected-tags">
+              <span v-for="uid in editDraft.editorIds" :key="uid" class="member-chip editor-chip">
+                <span class="mini-avatar mini-avatar-editor">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
+                {{ usersStore.byId(uid)?.name || uid }}
+                <button type="button" class="chip-remove" @click="removeEditEditor(uid)"><AppIcon name="close" :size="10" /></button>
+              </span>
+            </div>
+            <div v-if="editEditorPickerOpen" class="assignee-dropdown card scroll-thin">
+              <div class="assignee-search-wrap">
+                <input v-model="editEditorSearch" class="assignee-search-input" placeholder="Поиск пользователя..." />
+              </div>
+              <template v-if="availableEditorsForEdit().length">
+                <button v-for="u in availableEditorsForEdit()" :key="u.id" type="button" class="assignee-option" @click="addEditEditor(u.id)">
+                  <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
+                </button>
+              </template>
+              <div v-else class="assignee-no-results">Пользователи не найдены</div>
+            </div>
           </div>
         </div>
       </div>
@@ -596,20 +639,14 @@ function isRecurringMeeting(meeting) {
 .list-icon { display: flex; color: var(--color-primary); }
 .header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .header-actions .active { background: #eef2ff; border-color: #cfd8ff; color: var(--color-primary-dark); }
-
 .filters-bar { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 14px; }
 .search-input { flex: 1; border: none; outline: none; font-size: 13px; background: transparent; }
 .date-range { display: flex; align-items: center; gap: 6px; }
 .date-range input { border: 1px solid var(--color-border); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
 .date-sep { color: var(--color-text-muted); font-size: 12px; }
-
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
-
 .meetings-list { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
-.meeting-card {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 12px 14px; cursor: pointer; transition: box-shadow 0.12s ease, border-color 0.12s ease;
-}
+.meeting-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; cursor: pointer; transition: box-shadow 0.12s ease, border-color 0.12s ease; }
 .meeting-card:hover { border-color: var(--color-primary); box-shadow: 0 2px 8px rgba(79,124,255,0.08); }
 .meeting-card.dragging { opacity: 0.35; }
 .drag-handle { color: var(--color-text-muted); cursor: grab; flex-shrink: 0; }
@@ -620,10 +657,7 @@ function isRecurringMeeting(meeting) {
 .meeting-card-title { margin: 0; font-size: 14px; font-weight: 600; }
 .recurrence-badge { background: #eef1f7; color: var(--color-text-muted); font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
 .recurrence-badge-recurring { background: #eef2ff; color: var(--color-primary-dark); font-weight: 600; }
-.meeting-card-desc {
-  margin: 0; font-size: 12.5px; color: var(--color-text-muted);
-  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
-}
+.meeting-card-desc { margin: 0; font-size: 12.5px; color: var(--color-text-muted); display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .meeting-card-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .meeting-card-date { font-size: 12px; color: var(--color-text-muted); white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
 .task-count-tag { background: #eef1f7; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
@@ -632,7 +666,6 @@ function isRecurringMeeting(meeting) {
 .link-tag:hover { text-decoration: underline; }
 .btn-danger-ghost { color: var(--color-danger); }
 .btn-danger-ghost:hover { background: #fdeceb; }
-
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { width: 440px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 10px; }
@@ -646,47 +679,31 @@ function isRecurringMeeting(meeting) {
 .color-field { flex: 0 0 auto; }
 .color-field input[type=color] { padding: 2px; width: 40px; height: 32px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid var(--color-border); }
-
 .segmented-row { display: flex; gap: 6px; flex-wrap: wrap; }
-.segmented-btn {
-  border: 1px solid var(--color-border); background: var(--color-surface); padding: 6px 10px;
-  border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--color-text-muted);
-}
+.segmented-btn { border: 1px solid var(--color-border); background: var(--color-surface); padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 12.5px; color: var(--color-text-muted); }
 .segmented-btn.active { background: #eef2ff; border-color: #cfd8ff; color: var(--color-primary-dark); font-weight: 600; }
 .recurrence-box { border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; background: #fafbfe; }
 .recurrence-type-row { margin-bottom: 6px; }
 .weekday-picker { display: flex; gap: 6px; flex-wrap: wrap; }
-.weekday-btn {
-  border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 20px;
-  padding: 5px 10px; cursor: pointer; font-size: 12px; color: var(--color-text-muted);
-}
+.weekday-btn { border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 20px; padding: 5px 10px; cursor: pointer; font-size: 12px; color: var(--color-text-muted); }
 .weekday-btn.active { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
-
-.tag-picker-area { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.member-chip {
-  display: inline-flex; align-items: center; gap: 6px; background: #f4f0ff; color: #7c5cd6;
-  border-radius: 20px; padding: 3px 8px 3px 4px; font-size: 12.5px; font-weight: 500;
-}
+.assignee-picker { position: relative; }
+.assignee-trigger { display: flex; align-items: center; gap: 7px; border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 8px; padding: 6px 10px 6px 5px; font-size: 12.5px; cursor: pointer; width: 100%; }
+.assignee-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700; flex-shrink: 0; }
+.assignee-avatar.empty { background: #d9dde8; color: var(--color-text-muted); }
+.chevron { color: var(--color-text-muted); display: flex; margin-left: auto; }
+.assignee-dropdown { position: relative; margin-top: 6px; width: 100%; z-index: 20; padding: 6px 0 4px; max-height: 260px; overflow-y: auto; box-shadow: var(--shadow-2); }
+.assignee-search-wrap { padding: 4px 8px 6px; }
+.assignee-search-input { width: 100%; border: 1px solid var(--color-border); border-radius: 7px; padding: 5px 9px; font-size: 12.5px; outline: none; background: #f6f7fb; }
+.assignee-search-input:focus { border-color: var(--color-primary); background: #fff; }
+.assignee-option { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: none; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
+.assignee-option:hover { background: #f1f3f9; }
+.assignee-no-results { padding: 6px 12px; font-size: 12px; color: var(--color-text-muted); }
+.selected-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.member-chip { display: inline-flex; align-items: center; gap: 6px; background: #f4f0ff; color: #7c5cd6; border-radius: 20px; padding: 3px 8px 3px 4px; font-size: 12.5px; font-weight: 500; }
 .member-chip.editor-chip { background: #eef2ff; color: var(--color-primary-dark); }
-.mini-avatar {
-  display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px;
-  border-radius: 50%; background: #7c5cd6; color: #fff; font-size: 10px; font-weight: 700; flex-shrink: 0;
-}
+.mini-avatar { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #7c5cd6; color: #fff; font-size: 10px; font-weight: 700; }
 .mini-avatar-editor { background: var(--color-primary); }
-.chip-remove {
-  display: inline-flex; align-items: center; justify-content: center; background: none; border: none;
-  cursor: pointer; color: inherit; opacity: 0.7; padding: 0;
-}
-.chip-remove:hover { opacity: 1; }
-.add-member-btn { font-size: 12px; }
-.inline-picker {
-  display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow-y: auto;
-  border: 1px solid var(--color-border); border-radius: 8px; padding: 6px; margin-top: 4px; background: var(--color-surface);
-}
-.picker-option {
-  background: none; border: none; text-align: left; padding: 5px 8px; border-radius: 6px;
-  cursor: pointer; font-size: 13px; color: var(--color-text);
-}
-.picker-option:hover { background: #eef2ff; }
-.picker-empty { font-size: 12px; color: var(--color-text-muted); padding: 4px 8px; }
+.chip-remove { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; color: currentColor; }
+.tag-assignee-picker .assignee-trigger:hover { background: #f1f3f9; }
 </style>
