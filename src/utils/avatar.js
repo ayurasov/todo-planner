@@ -40,3 +40,15 @@ export function getShortName(name) {
   if (parts.length === 1) return parts[0]
   return `${parts[0]} ${parts[1].charAt(0).toUpperCase()}.`
 }
+
+/**
+ * Возвращает URL аватара с cache-busting параметром, который меняется раз в
+ * минуту. Это гарантирует, что после перебилда/замены файла браузер не будет
+ * показывать устаревшую версию из кэша.
+ * Если url пустой — возвращает пустую строку.
+ */
+export function avatarSrc(url) {
+  if (!url) return ''
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}_v=${Math.floor(Date.now() / 60000)}`
+}
