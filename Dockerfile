@@ -6,7 +6,8 @@ FROM node:20-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci
+# Regenerate lock file so all transitive deps are resolved, then do clean install
+RUN npm install --package-lock-only --ignore-scripts && npm ci
 
 COPY . .
 
