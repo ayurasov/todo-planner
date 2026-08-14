@@ -2,7 +2,7 @@
 import { reactive, ref, nextTick } from 'vue'
 import { useListsStore } from '../../stores/listsStore'
 import { useClickOutside } from '../../composables/useClickOutside'
-import { GroupByMode, SortField, GROUP_LABEL, SORT_LABEL, WEEKDAY_LABEL, MEETING_FREQ_LABEL } from '../../domain/entities/enums'
+import { GroupByMode, SortField, WEEKDAY_LABEL, MEETING_FREQ_LABEL } from '../../domain/entities/enums'
 import AppIcon from './AppIcon.vue'
 import RichTextEditor from './RichTextEditor.vue'
 
@@ -108,11 +108,6 @@ async function save() {
   }
 }
 
-function toggleView(view) {
-  const idx = form.allowedViews.indexOf(view)
-  if (idx === -1) form.allowedViews.push(view)
-  else if (form.allowedViews.length > 1) form.allowedViews.splice(idx, 1)
-}
 </script>
 
 <template>
