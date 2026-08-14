@@ -47,12 +47,18 @@ onMounted(async () => {
   const initialRange = presetToRange(DEFAULT_DATE_RANGE_PRESET)
   if (initialRange) { customFrom.value = initialRange.from; customTo.value = initialRange.to }
   await nextTick()
-  timelineChart = echarts.init(timelineEl.value)
-  bucketsChart = echarts.init(bucketsEl.value)
-  userTimelineChart = echarts.init(userTimelineEl.value)
-  renderTimeline()
-  renderBuckets()
-  renderUserTimeline()
+  // setTimeout гарантирует, что браузер уже выполнил layout и контейнеры имеют
+  // реальные размеры — без этого echarts.init получает offsetWidth/Height = 0
+  // и не рисует ничего (пустые div-ы). nextTick одного не достаточно:
+  // Vue обновляет DOM, но браузер ещё не посчитал layout.
+  setTimeout(() => {
+    timelineChart = echarts.init(timelineEl.value)
+    bucketsChart = echarts.init(bucketsEl.value)
+    userTimelineChart = echarts.init(userTimelineEl.value)
+    renderTimeline()
+    renderBuckets()
+    renderUserTimeline()
+  }, 0)
   window.addEventListener('resize', resizeAll)
 })
 
@@ -192,7 +198,7 @@ function renderUserTimeline() {
   })
 }
 
-watch(overview, () => { renderTimeline(); renderBuckets() })
+watch(overview, () => nextTick(() => { renderTimeline(); renderBuckets() }))
 watch(userDetail, () => nextTick(renderUserTimeline))
 
 function userName(id) {
