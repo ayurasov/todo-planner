@@ -130,6 +130,18 @@ const standaloneUnfinishedTasks = computed(() => {
   )).sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0))
 })
 
+/**
+ * Невыполненные «сквозные» задачи серии — привязаны к встрече (meetingId === id),
+ * но без привязки к конкретной подвстрече (occurrenceId пустой).
+ * Раньше в блоке «НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ» они не отображались совсем.
+ */
+const unfinishedSeriesTasksWithoutOccurrence = computed(() => {
+  if (!isRecurring.value) return []
+  return meetingTasks.value
+    .filter((t) => !t.occurrenceId && t.status !== 'done' && t.status !== 'cancelled')
+    .sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0))
+})
+
 const unfinishedGroupsByOccurrence = computed(() => {
   if (!isRecurring.value) return []
   const orderMap = new Map(occurrences.value.map((o, index) => [o.id, index]))
@@ -145,7 +157,9 @@ const unfinishedGroupsByOccurrence = computed(() => {
 })
 
 const unfinishedTotalCount = computed(() => (
-  unfinishedGroupsByOccurrence.value.reduce((sum, g) => sum + g.count, 0) + standaloneUnfinishedTasks.value.length
+  unfinishedGroupsByOccurrence.value.reduce((sum, g) => sum + g.count, 0)
+  + standaloneUnfinishedTasks.value.length
+  + unfinishedSeriesTasksWithoutOccurrence.value.length
 ))
 
 const filteredMeetingTasks = computed(() => filtersStore.apply(meetingTasks.value))
@@ -413,7 +427,18 @@ function toggleArchived() {
       <div v-if="unfinishedTotalCount" class="series-alert-bubble">НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ ({{ unfinishedTotalCount }})</div>
       <div v-else class="series-alert-subtitle">По серии нет невыполненных задач</div>
 
-      <div v-if="unfinishedGroupsByOccurrence.length || standaloneUnfinishedTasks.length" class="series-occ-list">
+      <div v-if="unfinishedGroupsByOccurrence.length || unfinishedSeriesTasksWithoutOccurrence.length || standaloneUnfinishedTasks.length" class="series-occ-list">
+        <!-- Сквозные задачи серии (meetingId задан, occurrenceId пустой) -->
+        <div v-if="unfinishedSeriesTasksWithoutOccurrence.length" class="series-occ-row card">
+          <div class="series-occ-marker">
+            <span class="series-occ-date series-occ-date--through">Сквозные задачи</span>
+            <span class="series-occ-count">({{ unfinishedSeriesTasksWithoutOccurrence.length }})</span>
+          </div>
+          <div class="series-occ-tasks">
+            <TaskListPanel :tasks="unfinishedSeriesTasksWithoutOccurrence" :show-toolbar="false" :meeting-mode="true" :flat="true" />
+          </div>
+        </div>
+        <!-- Задачи по конкретным подвстречам -->
         <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
           <div class="series-occ-marker">
             <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
@@ -423,6 +448,7 @@ function toggleArchived() {
             <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" :flat="true" />
           </div>
         </div>
+        <!-- Задачи, не привязанные ни к какой встрече (по связанным спискам) -->
         <div v-if="standaloneUnfinishedTasks.length" class="series-occ-row card">
           <div class="series-occ-marker">
             <span class="series-occ-date">Без встречи</span>
@@ -792,6 +818,7 @@ function toggleArchived() {
 .series-occ-row { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 14px; }
 .series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 6px; text-align: center; }
 .series-occ-date { font-size: 13px; font-weight: 700; color: #2f6fed; line-height: 1.3; }
+.series-occ-date--through { color: #7c5cd6; }
 .series-occ-count { font-size: 15px; font-weight: 700; color: var(--color-danger); }
 .series-occ-tasks { min-width: 0; }
 
