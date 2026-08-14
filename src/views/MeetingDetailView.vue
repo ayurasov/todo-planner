@@ -418,13 +418,6 @@ function toggleArchived() {
       <div v-else class="series-alert-subtitle">По серии нет невыполненных задач</div>
 
       <div v-if="unfinishedGroupsByOccurrence.length || standaloneUnfinishedTasks.length" class="series-occ-list">
-        <p class="hint-text series-occ-hint">
-          Сводка невыполненных задач по всей серии (только статус "не выполнено"/"в работе").
-          Полный список задач каждой подвстречи, включая выполненные — в разделе
-          «Подвстречи серии» ниже; каждая строка сводки соответствует подвстрече с той же датой.
-          Отдельно показаны невыполненные задачи без привязки к встрече вовсе, если они
-          находятся в тех же списках, что и задачи этой серии.
-        </p>
         <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
           <div class="series-occ-marker">
             <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
