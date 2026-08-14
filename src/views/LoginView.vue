@@ -2,6 +2,10 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/authStore'
+import { useUsersStore } from '../stores/usersStore'
+import { useListsStore } from '../stores/listsStore'
+import { useTasksStore } from '../stores/tasksStore'
+import { useNotificationsStore } from '../stores/notificationsStore'
 import AppIcon from '../components/common/AppIcon.vue'
 
 /**
@@ -10,6 +14,10 @@ import AppIcon from '../components/common/AppIcon.vue'
  * полноценная hero-card и аккуратные состояния ошибок/загрузки.
  */
 const authStore = useAuthStore()
+const usersStore = useUsersStore()
+const listsStore = useListsStore()
+const tasksStore = useTasksStore()
+const notificationsStore = useNotificationsStore()
 const router = useRouter()
 
 const login = ref('')
@@ -24,6 +32,22 @@ async function submit() {
   loading.value = true
   try {
     await authStore.login(login.value, password.value)
+
+    // После логина App.vue уже смонтирован и его onMounted не повторится,
+    // поэтому явно сбрасываем кеш и подгружаем данные прямо здесь.
+    // Это гарантирует, что имя/аватар пользователя появятся сразу.
+    usersStore.$reset()
+    listsStore.$reset()
+    tasksStore.$reset()
+    notificationsStore.$reset()
+    await Promise.all([
+      usersStore.load(),
+      listsStore.load(),
+      notificationsStore.load(),
+    ])
+    // tasksStore зависит от listsStore — грузим после
+    await tasksStore.load()
+
     router.push('/my-tasks')
   } catch (err) {
     // Промпт 24: сетевая недоступность backend -- отдельное, понятное сообщение,
