@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { useUsersStore } from '../stores/usersStore'
 import { useDepartmentsStore } from '../stores/departmentsStore'
 import { useIsAdmin } from '../composables/usePermissions'
@@ -89,6 +89,52 @@ async function toggleSystem(user) {
   await usersStore.updateUser(user.id, { isSystem: !user.isSystem })
 }
 
+// --- Мультиселект отделов (для руководителя) ---
+// Используется в обеих формах: создание и редактирование.
+// Паттерн аналогичен выбору исполнителя в TaskDetailPanel.
+
+function useDeptMultiselect(deptIdsRef, allDepts) {
+  const open = ref(false)
+  const search = ref('')
+  const inputEl = ref(null)
+
+  const filteredDepts = computed(() => {
+    const q = search.value.trim().toLowerCase()
+    return allDepts.value.filter((d) => !q || d.name.toLowerCase().includes(q))
+  })
+
+  function toggle(id) {
+    const idx = deptIdsRef.value.indexOf(id)
+    if (idx === -1) deptIdsRef.value.push(id)
+    else deptIdsRef.value.splice(idx, 1)
+  }
+
+  function removeTag(id) {
+    const idx = deptIdsRef.value.indexOf(id)
+    if (idx !== -1) deptIdsRef.value.splice(idx, 1)
+  }
+
+  function openMenu() {
+    open.value = true
+    search.value = ''
+    nextTick(() => inputEl.value?.focus())
+  }
+
+  function closeMenu() {
+    open.value = false
+  }
+
+  const selectedDepts = computed(() =>
+    deptIdsRef.value
+      .map((id) => allDepts.value.find((d) => d.id === id))
+      .filter(Boolean),
+  )
+
+  return { open, search, inputEl, filteredDepts, selectedDepts, toggle, removeTag, openMenu, closeMenu }
+}
+
+const allDepts = computed(() => departmentsStore.sortedDepartments)
+
 // --- Создание пользователя ---
 const showCreateForm = ref(false)
 const createError = ref('')
@@ -101,8 +147,17 @@ const createAvatarFile = ref(null)
 const createAvatarPreviewUrl = ref('')
 const createAvatarError = ref('')
 
+// Мультиселект для формы создания
+const createDeptIds = computed({
+  get: () => newUser.managerDepartmentIds,
+  set: (v) => { newUser.managerDepartmentIds = v },
+})
+const createDeptIdsRef = ref(newUser.managerDepartmentIds)
+const createMulti = useDeptMultiselect(createDeptIdsRef, allDepts)
+
 function resetCreateForm() {
   Object.assign(newUser, { login: '', name: '', email: '', globalRole: 'user', password: '', position: '', departmentId: '', managerDepartmentIds: [] })
+  createDeptIdsRef.value = newUser.managerDepartmentIds
   createError.value = ''
   clearCreateAvatarSelection()
 }
@@ -114,6 +169,7 @@ function openCreateForm() {
 
 function closeCreateForm() {
   showCreateForm.value = false
+  createMulti.closeMenu()
 }
 
 function validateAvatarFile(file) {
@@ -165,7 +221,7 @@ async function submitCreateUser() {
       password: newUser.password.trim() || undefined,
       position: newUser.position.trim() || undefined,
       departmentId: newUser.departmentId || null,
-      managerDepartmentIds: newUser.globalRole === 'manager' ? newUser.managerDepartmentIds : undefined,
+      managerDepartmentIds: newUser.globalRole === 'manager' ? [...createDeptIdsRef.value] : undefined,
     })
     if (createAvatarFile.value) {
       try {
@@ -193,19 +249,25 @@ const editAvatarFileInputEl = ref(null)
 const editAvatarUploading = ref(false)
 const editAvatarError = ref('')
 
+// Мультиселект для формы редактирования
+const editDeptIdsRef = ref([])
+const editMulti = useDeptMultiselect(editDeptIdsRef, allDepts)
+
 function openEditForm(user) {
   editingUser.value = user
   editForm.name = user.name || ''
   editForm.email = user.email || ''
   editForm.position = user.position || ''
   editForm.departmentId = user.departmentId || ''
-  editForm.managerDepartmentIds = Array.isArray(user.managerDepartmentIds) ? [...user.managerDepartmentIds] : []
+  editDeptIdsRef.value = Array.isArray(user.managerDepartmentIds) ? [...user.managerDepartmentIds] : []
   editError.value = ''
   editAvatarError.value = ''
+  editMulti.closeMenu()
 }
 
 function closeEditForm() {
   editingUser.value = null
+  editMulti.closeMenu()
 }
 
 async function submitEditUser() {
@@ -223,7 +285,7 @@ async function submitEditUser() {
       departmentId: editForm.departmentId || null,
     }
     if (editingUser.value.globalRole === 'manager') {
-      patch.managerDepartmentIds = editForm.managerDepartmentIds
+      patch.managerDepartmentIds = [...editDeptIdsRef.value]
     }
     await usersStore.updateUser(editingUser.value.id, patch)
     closeEditForm()
@@ -504,13 +566,57 @@ function onAvatarError(e) {
           <option v-for="(label, role) in ROLE_LABEL" :key="role" :value="role">{{ label }}</option>
         </select>
       </label>
+
+      <!-- Мультиселект отделов для руководителя (форма создания) -->
       <div v-if="newUser.globalRole === 'manager'" class="field">
-        <span>Отделы в управлении</span>
-        <div class="checkbox-list">
-          <label v-for="d in departmentsStore.sortedDepartments" :key="d.id" class="checkbox-item">
-            <input v-model="newUser.managerDepartmentIds" type="checkbox" :value="d.id" />
-            {{ d.name }}
-          </label>
+        <span class="field-label">Отделы в управлении</span>
+        <div class="dept-multiselect" :class="{ 'dept-multiselect--open': createMulti.open.value }">
+          <!-- Тэги выбранных отделов + поле-триггер -->
+          <div class="dept-multiselect__control" @click="createMulti.openMenu()">
+            <span
+              v-for="d in createMulti.selectedDepts.value"
+              :key="d.id"
+              class="dept-tag"
+            >
+              {{ d.name }}
+              <button
+                type="button"
+                class="dept-tag__remove"
+                @click.stop="createMulti.removeTag(d.id)"
+              >×</button>
+            </span>
+            <span v-if="!createMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">
+              Выберите отделы...
+            </span>
+            <span class="dept-multiselect__chevron">▾</span>
+          </div>
+
+          <!-- Дропдаун с поиском -->
+          <div v-if="createMulti.open.value" class="dept-multiselect__dropdown">
+            <div class="dept-multiselect__search-wrap">
+              <input
+                :ref="(el) => (createMulti.inputEl.value = el)"
+                v-model="createMulti.search.value"
+                class="dept-multiselect__search"
+                placeholder="Поиск отдела..."
+                @keyup.escape="createMulti.closeMenu()"
+              />
+            </div>
+            <template v-if="createMulti.filteredDepts.value.length">
+              <button
+                v-for="d in createMulti.filteredDepts.value"
+                :key="d.id"
+                type="button"
+                class="dept-multiselect__option"
+                :class="{ 'dept-multiselect__option--selected': createDeptIdsRef.includes(d.id) }"
+                @click="createMulti.toggle(d.id)"
+              >
+                <span class="dept-multiselect__option-check">{{ createDeptIdsRef.includes(d.id) ? '✓' : '' }}</span>
+                {{ d.name }}
+              </button>
+            </template>
+            <div v-else class="dept-multiselect__empty">Отделы не найдены</div>
+          </div>
         </div>
       </div>
 
@@ -569,13 +675,55 @@ function onAvatarError(e) {
           <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
       </label>
+
+      <!-- Мультиселект отделов для руководителя (форма редактирования) -->
       <div v-if="editingUser.globalRole === 'manager'" class="field">
-        <span>Отделы в управлении</span>
-        <div class="checkbox-list">
-          <label v-for="d in departmentsStore.sortedDepartments" :key="d.id" class="checkbox-item">
-            <input v-model="editForm.managerDepartmentIds" type="checkbox" :value="d.id" />
-            {{ d.name }}
-          </label>
+        <span class="field-label">Отделы в управлении</span>
+        <div class="dept-multiselect" :class="{ 'dept-multiselect--open': editMulti.open.value }">
+          <div class="dept-multiselect__control" @click="editMulti.openMenu()">
+            <span
+              v-for="d in editMulti.selectedDepts.value"
+              :key="d.id"
+              class="dept-tag"
+            >
+              {{ d.name }}
+              <button
+                type="button"
+                class="dept-tag__remove"
+                @click.stop="editMulti.removeTag(d.id)"
+              >×</button>
+            </span>
+            <span v-if="!editMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">
+              Выберите отделы...
+            </span>
+            <span class="dept-multiselect__chevron">▾</span>
+          </div>
+
+          <div v-if="editMulti.open.value" class="dept-multiselect__dropdown">
+            <div class="dept-multiselect__search-wrap">
+              <input
+                :ref="(el) => (editMulti.inputEl.value = el)"
+                v-model="editMulti.search.value"
+                class="dept-multiselect__search"
+                placeholder="Поиск отдела..."
+                @keyup.escape="editMulti.closeMenu()"
+              />
+            </div>
+            <template v-if="editMulti.filteredDepts.value.length">
+              <button
+                v-for="d in editMulti.filteredDepts.value"
+                :key="d.id"
+                type="button"
+                class="dept-multiselect__option"
+                :class="{ 'dept-multiselect__option--selected': editDeptIdsRef.includes(d.id) }"
+                @click="editMulti.toggle(d.id)"
+              >
+                <span class="dept-multiselect__option-check">{{ editDeptIdsRef.includes(d.id) ? '✓' : '' }}</span>
+                {{ d.name }}
+              </button>
+            </template>
+            <div v-else class="dept-multiselect__empty">Отделы не найдены</div>
+          </div>
         </div>
       </div>
 
@@ -616,3 +764,154 @@ function onAvatarError(e) {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* ── Dept multiselect ── */
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.dept-multiselect {
+  position: relative;
+}
+
+.dept-multiselect__control {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 36px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  background: var(--color-surface, #fff);
+  transition: border-color 0.12s;
+  user-select: none;
+}
+
+.dept-multiselect--open .dept-multiselect__control,
+.dept-multiselect__control:hover {
+  border-color: var(--color-primary);
+}
+
+.dept-multiselect__placeholder {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  flex: 1;
+}
+
+.dept-multiselect__chevron {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* Тэги */
+.dept-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eef2ff;
+  color: var(--color-primary, #4f7cff);
+  border-radius: 6px;
+  padding: 2px 6px 2px 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.dept-tag__remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--color-primary, #4f7cff);
+  opacity: 0.7;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+}
+
+.dept-tag__remove:hover {
+  opacity: 1;
+}
+
+/* Дропдаун */
+.dept-multiselect__dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(20, 24, 38, 0.14);
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px 0 4px;
+}
+
+.dept-multiselect__search-wrap {
+  padding: 4px 8px 6px;
+}
+
+.dept-multiselect__search {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  padding: 5px 9px;
+  font-size: 13px;
+  outline: none;
+  background: #f6f7fb;
+}
+
+.dept-multiselect__search:focus {
+  border-color: var(--color-primary);
+  background: #fff;
+}
+
+.dept-multiselect__option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 7px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--color-text);
+}
+
+.dept-multiselect__option:hover {
+  background: #f1f3f9;
+}
+
+.dept-multiselect__option--selected {
+  background: #eef2ff;
+  font-weight: 600;
+}
+
+.dept-multiselect__option-check {
+  width: 16px;
+  font-size: 13px;
+  color: var(--color-primary, #4f7cff);
+  flex-shrink: 0;
+}
+
+.dept-multiselect__empty {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+</style>
