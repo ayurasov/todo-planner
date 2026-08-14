@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { useTasksStore } from '../stores/tasksStore'
 import { useHistoryStore } from '../stores/historyStore'
@@ -26,9 +26,34 @@ let timelineChart = null
 let bucketsChart = null
 let userTimelineChart = null
 
+// ResizeObserver-ы: инициализируем ECharts ровно тогда, когда контейнер
+// впервые получает ненулевой размер. setTimeout(0) не надёжен — рендер
+// браузера может произойти позже, и init получает offsetWidth=0.
+let roTimeline = null
+let roBuckets = null
+let roUserTimeline = null
+
+function initWhenVisible(elRef, getter, setter, renderFn) {
+  const el = elRef.value
+  if (!el) return
+  if (el.offsetWidth > 0) {
+    setter(echarts.init(el))
+    renderFn()
+    return
+  }
+  const ro = new ResizeObserver(() => {
+    if (el.offsetWidth > 0) {
+      ro.disconnect()
+      setter(echarts.init(el))
+      renderFn()
+    }
+  })
+  ro.observe(el)
+  return ro
+}
+
 const selectedUserId = ref(null)
 
-// --- Общие фильтры аналитики ---
 const datePreset = ref(DEFAULT_DATE_RANGE_PRESET)
 const customFrom = ref('')
 const customTo = ref('')
@@ -46,20 +71,24 @@ onMounted(async () => {
   selectedUserId.value = usersStore.currentUser?.id || null
   const initialRange = presetToRange(DEFAULT_DATE_RANGE_PRESET)
   if (initialRange) { customFrom.value = initialRange.from; customTo.value = initialRange.to }
+
   await nextTick()
-  // setTimeout гарантирует, что браузер уже выполнил layout и контейнеры имеют
-  // реальные размеры — без этого echarts.init получает offsetWidth/Height = 0
-  // и не рисует ничего (пустые div-ы). nextTick одного не достаточно:
-  // Vue обновляет DOM, но браузер ещё не посчитал layout.
-  setTimeout(() => {
-    timelineChart = echarts.init(timelineEl.value)
-    bucketsChart = echarts.init(bucketsEl.value)
-    userTimelineChart = echarts.init(userTimelineEl.value)
-    renderTimeline()
-    renderBuckets()
-    renderUserTimeline()
-  }, 0)
+
+  roTimeline = initWhenVisible(timelineEl, () => timelineChart, (c) => { timelineChart = c }, renderTimeline)
+  roBuckets = initWhenVisible(bucketsEl, () => bucketsChart, (c) => { bucketsChart = c }, renderBuckets)
+  // userTimelineEl рендерится под v-if="userDetail" — инициализируем лениво в watch(userDetail)
+
   window.addEventListener('resize', resizeAll)
+})
+
+onBeforeUnmount(() => {
+  roTimeline?.disconnect()
+  roBuckets?.disconnect()
+  roUserTimeline?.disconnect()
+  window.removeEventListener('resize', resizeAll)
+  timelineChart?.dispose()
+  bucketsChart?.dispose()
+  userTimelineChart?.dispose()
 })
 
 function resizeAll() {
@@ -89,7 +118,6 @@ function resetFilters() {
 const listOptions = computed(() => listsStore.lists.map((l) => ({ id: l.id, label: l.title })))
 const meetingOptions = computed(() => meetingsStore.meetings.map((m) => ({ id: m.id, label: m.title })))
 
-// --- Единая точка фильтрации, применяется ко всей странице, включая индивидуальный разрез ---
 const filtered = computed(() => filterTasksAndHistory(tasksStore.tasks, historyStore.globalLog, {
   dateFrom: customFrom.value || null,
   dateTo: customTo.value || null,
@@ -122,8 +150,6 @@ function setAssigneeSort(field) {
   }
 }
 
-// Текущий пользователь всегда закреплён первой строкой (см. buildPerAssigneeStats),
-// сортировка и поиск применяются только к остальным строкам таблицы.
 const perAssignee = computed(() => {
   const currentId = usersStore.currentUser?.id
   const self = perAssigneeRaw.value.find((r) => r.userId === currentId)
@@ -199,7 +225,24 @@ function renderUserTimeline() {
 }
 
 watch(overview, () => nextTick(() => { renderTimeline(); renderBuckets() }))
-watch(userDetail, () => nextTick(renderUserTimeline))
+
+// userDetail блок рендерится под v-if — при первом появлении нужно инициализировать
+// chart, при последующих изменениях — только перерисовать.
+watch(userDetail, async (val) => {
+  if (!val) return
+  await nextTick()
+  if (!userTimelineChart && userTimelineEl.value) {
+    roUserTimeline?.disconnect()
+    roUserTimeline = initWhenVisible(
+      userTimelineEl,
+      () => userTimelineChart,
+      (c) => { userTimelineChart = c },
+      renderUserTimeline,
+    )
+    return
+  }
+  renderUserTimeline()
+})
 
 function userName(id) {
   return usersStore.byId(id)?.name || id
