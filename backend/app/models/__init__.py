@@ -11,6 +11,7 @@ from app.models.models import (
     ListMembershipORM,
     MeetingORM,
     MeetingAttendeeORM,
+    MeetingEditorORM,
     MeetingOccurrenceORM,
     RecurrenceTemplateORM,
     TaskORM,
@@ -31,8 +32,8 @@ from app.models.models import (
 __all__ = [
     "DepartmentORM", "ManagerDepartmentORM",
     "UserORM", "ListORM", "ListMembershipORM", "MeetingORM", "MeetingAttendeeORM",
-    "MeetingOccurrenceORM", "RecurrenceTemplateORM", "TaskORM", "TaskTagORM",
-    "TaskWatcherORM", "ChecklistItemORM", "NoteORM", "AttachmentORM",
-    "TaskHistoryEntryORM", "CommentORM", "CommentMentionORM", "SavedViewORM",
-    "NotificationORM", "ReminderTriggerORM", "CalendarIntegrationORM",
+    "MeetingEditorORM", "MeetingOccurrenceORM", "RecurrenceTemplateORM",
+    "TaskORM", "TaskTagORM", "TaskWatcherORM", "ChecklistItemORM", "NoteORM",
+    "AttachmentORM", "TaskHistoryEntryORM", "CommentORM", "CommentMentionORM",
+    "SavedViewORM", "NotificationORM", "ReminderTriggerORM", "CalendarIntegrationORM",
 ]
