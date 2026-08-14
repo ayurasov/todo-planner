@@ -269,9 +269,9 @@ async function submitEditUser() {
       email: editForm.email.trim(),
       position: editForm.position.trim() || null,
       departmentId: editForm.departmentId || null,
-    }
-    if (editingUser.value.globalRole === 'manager') {
-      patch.managerDepartmentIds = [...editDeptIdsRef.value]
+      // Всегда передаём managerDepartmentIds: если пользователь руководитель — передаём список,
+      // иначе — пустой массив (чтобы сбросить если роль была сменена)
+      managerDepartmentIds: editingUser.value.globalRole === 'manager' ? [...editDeptIdsRef.value] : [],
     }
     await usersStore.updateUser(editingUser.value.id, patch)
     closeEditForm()
@@ -500,97 +500,101 @@ function onAvatarError(e) {
   <!-- Модалка создания пользователя -->
   <div v-if="showCreateForm" class="modal-backdrop">
     <div class="modal-card">
-      <h3>Новый пользователь</h3>
-
-      <div class="avatar-field">
-        <div class="avatar-field-preview">
-          <img v-if="createAvatarPreviewUrl" :src="createAvatarPreviewUrl" class="avatar-preview-img" alt="" />
-          <span v-else class="avatar-preview-placeholder">фото</span>
-        </div>
-        <div class="avatar-field-actions">
-          <button type="button" class="btn btn-sm btn-ghost" @click="triggerCreateAvatarPick">Выбрать фото</button>
-          <button v-if="createAvatarFile" type="button" class="btn btn-sm btn-ghost" @click="clearCreateAvatarSelection">Убрать</button>
-          <input ref="createAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onCreateAvatarFileSelected" />
-        </div>
-        <p v-if="createAvatarError" class="field-error">{{ createAvatarError }}</p>
+      <div class="modal-header">
+        <h3>Новый пользователь</h3>
       </div>
-
-      <label class="field">
-        <span>Логин *</span>
-        <input v-model="newUser.login" type="text" autocomplete="off" />
-      </label>
-      <label class="field">
-        <span>Имя *</span>
-        <input v-model="newUser.name" type="text" />
-      </label>
-      <label class="field">
-        <span>Email *</span>
-        <input v-model="newUser.email" type="email" />
-      </label>
-      <label class="field">
-        <span>Пароль (оставьте пустым — будет сгенерирован)</span>
-        <input v-model="newUser.password" type="password" autocomplete="new-password" />
-      </label>
-      <label class="field">
-        <span>Должность</span>
-        <input v-model="newUser.position" type="text" />
-      </label>
-      <label class="field">
-        <span>Отдел</span>
-        <select v-model="newUser.departmentId">
-          <option value="">— не выбран —</option>
-          <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Роль</span>
-        <select v-model="newUser.globalRole">
-          <option v-for="(label, role) in ROLE_LABEL" :key="role" :value="role">{{ label }}</option>
-        </select>
-      </label>
-
-      <!-- Мультиселект отделов для руководителя (форма создания) -->
-      <div v-if="newUser.globalRole === 'manager'" class="field">
-        <span class="field-label">Отделы в управлении</span>
-        <div class="dept-multiselect" :class="{ 'dept-multiselect--open': createMulti.open.value }">
-          <div class="dept-multiselect__control" @click="createMulti.openMenu()">
-            <span v-for="d in createMulti.selectedDepts.value" :key="d.id" class="dept-tag">
-              {{ d.name }}
-              <button type="button" class="dept-tag__remove" @click.stop="createMulti.removeTag(d.id)">×</button>
-            </span>
-            <span v-if="!createMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">Выберите отделы...</span>
-            <span class="dept-multiselect__chevron">▾</span>
+      <!-- Скрольтится только содержимое — допозволяя дропдауну вылезать поверх -->
+      <div class="modal-body">
+        <div class="avatar-field">
+          <div class="avatar-field-preview">
+            <img v-if="createAvatarPreviewUrl" :src="createAvatarPreviewUrl" class="avatar-preview-img" alt="" />
+            <span v-else class="avatar-preview-placeholder">фото</span>
           </div>
-          <div v-if="createMulti.open.value" class="dept-multiselect__dropdown">
-            <div class="dept-multiselect__search-wrap">
-              <input
-                :ref="(el) => (createMulti.inputEl.value = el)"
-                v-model="createMulti.search.value"
-                class="dept-multiselect__search"
-                placeholder="Поиск отдела..."
-                @keyup.escape="createMulti.closeMenu()"
-              />
-            </div>
-            <template v-if="createMulti.filteredDepts.value.length">
-              <button
-                v-for="d in createMulti.filteredDepts.value"
-                :key="d.id"
-                type="button"
-                class="dept-multiselect__option"
-                :class="{ 'dept-multiselect__option--selected': createDeptIdsRef.includes(d.id) }"
-                @click="createMulti.toggle(d.id)"
-              >
-                <span class="dept-multiselect__option-check">{{ createDeptIdsRef.includes(d.id) ? '✓' : '' }}</span>
+          <div class="avatar-field-actions">
+            <button type="button" class="btn btn-sm btn-ghost" @click="triggerCreateAvatarPick">Выбрать фото</button>
+            <button v-if="createAvatarFile" type="button" class="btn btn-sm btn-ghost" @click="clearCreateAvatarSelection">Убрать</button>
+            <input ref="createAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onCreateAvatarFileSelected" />
+          </div>
+          <p v-if="createAvatarError" class="field-error">{{ createAvatarError }}</p>
+        </div>
+
+        <label class="field">
+          <span>Логин *</span>
+          <input v-model="newUser.login" type="text" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Имя *</span>
+          <input v-model="newUser.name" type="text" />
+        </label>
+        <label class="field">
+          <span>Email *</span>
+          <input v-model="newUser.email" type="email" />
+        </label>
+        <label class="field">
+          <span>Пароль (оставьте пустым — будет сгенерирован)</span>
+          <input v-model="newUser.password" type="password" autocomplete="new-password" />
+        </label>
+        <label class="field">
+          <span>Должность</span>
+          <input v-model="newUser.position" type="text" />
+        </label>
+        <label class="field">
+          <span>Отдел</span>
+          <select v-model="newUser.departmentId">
+            <option value="">— не выбран —</option>
+            <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Роль</span>
+          <select v-model="newUser.globalRole">
+            <option v-for="(label, role) in ROLE_LABEL" :key="role" :value="role">{{ label }}</option>
+          </select>
+        </label>
+
+        <!-- Мультиселект отделов для руководителя (форма создания) -->
+        <div v-if="newUser.globalRole === 'manager'" class="field">
+          <span class="field-label">Отделы в управлении</span>
+          <div class="dept-multiselect" :class="{ 'dept-multiselect--open': createMulti.open.value }">
+            <div class="dept-multiselect__control" @click="createMulti.openMenu()">
+              <span v-for="d in createMulti.selectedDepts.value" :key="d.id" class="dept-tag">
                 {{ d.name }}
-              </button>
-            </template>
-            <div v-else class="dept-multiselect__empty">Отделы не найдены</div>
+                <button type="button" class="dept-tag__remove" @click.stop="createMulti.removeTag(d.id)">×</button>
+              </span>
+              <span v-if="!createMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">Выберите отделы...</span>
+              <span class="dept-multiselect__chevron">▾</span>
+            </div>
+            <div v-if="createMulti.open.value" class="dept-multiselect__dropdown">
+              <div class="dept-multiselect__search-wrap">
+                <input
+                  :ref="(el) => (createMulti.inputEl.value = el)"
+                  v-model="createMulti.search.value"
+                  class="dept-multiselect__search"
+                  placeholder="Поиск отдела..."
+                  @keyup.escape="createMulti.closeMenu()"
+                />
+              </div>
+              <template v-if="createMulti.filteredDepts.value.length">
+                <button
+                  v-for="d in createMulti.filteredDepts.value"
+                  :key="d.id"
+                  type="button"
+                  class="dept-multiselect__option"
+                  :class="{ 'dept-multiselect__option--selected': createDeptIdsRef.includes(d.id) }"
+                  @click="createMulti.toggle(d.id)"
+                >
+                  <span class="dept-multiselect__option-check">{{ createDeptIdsRef.includes(d.id) ? '✓' : '' }}</span>
+                  {{ d.name }}
+                </button>
+              </template>
+              <div v-else class="dept-multiselect__empty">Отделы не найдены</div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <p v-if="createError" class="field-error">{{ createError }}</p>
-      <div class="modal-actions">
+        <p v-if="createError" class="field-error">{{ createError }}</p>
+      </div>
+      <div class="modal-footer">
         <button class="btn btn-ghost btn-sm" @click="closeCreateForm">Отмена</button>
         <button class="btn btn-primary btn-sm" :disabled="creating" @click="submitCreateUser">
           {{ creating ? 'Создание...' : 'Создать' }}
@@ -602,91 +606,94 @@ function onAvatarError(e) {
   <!-- Модалка редактирования -->
   <div v-if="editingUser" class="modal-backdrop">
     <div class="modal-card">
-      <h3>Редактировать пользователя</h3>
-
-      <div class="avatar-field">
-        <div class="avatar-field-preview">
-          <img
-            v-if="editingUser.avatarUrl"
-            :src="avatarSrc(editingUser.avatarUrl)"
-            class="avatar-preview-img"
-            alt=""
-            @error="(e) => { e.target.style.display='none' }"
-          />
-          <span v-if="!editingUser.avatarUrl" class="avatar-preview-placeholder">фото</span>
-        </div>
-        <div class="avatar-field-actions">
-          <button type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="triggerEditAvatarPick">
-            {{ editAvatarUploading ? 'Загрузка...' : 'Изменить фото' }}
-          </button>
-          <button v-if="editingUser.avatarUrl" type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="handleRemoveEditAvatar">Удалить фото</button>
-          <input ref="editAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onEditAvatarFileSelected" />
-        </div>
-        <p v-if="editAvatarError" class="field-error">{{ editAvatarError }}</p>
+      <div class="modal-header">
+        <h3>Редактировать пользователя</h3>
       </div>
-
-      <label class="field">
-        <span>Имя *</span>
-        <input v-model="editForm.name" type="text" />
-      </label>
-      <label class="field">
-        <span>Email *</span>
-        <input v-model="editForm.email" type="email" />
-      </label>
-      <label class="field">
-        <span>Должность</span>
-        <input v-model="editForm.position" type="text" />
-      </label>
-      <label class="field">
-        <span>Отдел</span>
-        <select v-model="editForm.departmentId">
-          <option value="">— не выбран —</option>
-          <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-      </label>
-
-      <!-- Мультиселект отделов для руководителя (форма редактирования) -->
-      <div v-if="editingUser.globalRole === 'manager'" class="field">
-        <span class="field-label">Отделы в управлении</span>
-        <div class="dept-multiselect" :class="{ 'dept-multiselect--open': editMulti.open.value }">
-          <div class="dept-multiselect__control" @click="editMulti.openMenu()">
-            <span v-for="d in editMulti.selectedDepts.value" :key="d.id" class="dept-tag">
-              {{ d.name }}
-              <button type="button" class="dept-tag__remove" @click.stop="editMulti.removeTag(d.id)">×</button>
-            </span>
-            <span v-if="!editMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">Выберите отделы...</span>
-            <span class="dept-multiselect__chevron">▾</span>
+      <div class="modal-body">
+        <div class="avatar-field">
+          <div class="avatar-field-preview">
+            <img
+              v-if="editingUser.avatarUrl"
+              :src="avatarSrc(editingUser.avatarUrl)"
+              class="avatar-preview-img"
+              alt=""
+              @error="(e) => { e.target.style.display='none' }"
+            />
+            <span v-if="!editingUser.avatarUrl" class="avatar-preview-placeholder">фото</span>
           </div>
-          <div v-if="editMulti.open.value" class="dept-multiselect__dropdown">
-            <div class="dept-multiselect__search-wrap">
-              <input
-                :ref="(el) => (editMulti.inputEl.value = el)"
-                v-model="editMulti.search.value"
-                class="dept-multiselect__search"
-                placeholder="Поиск отдела..."
-                @keyup.escape="editMulti.closeMenu()"
-              />
-            </div>
-            <template v-if="editMulti.filteredDepts.value.length">
-              <button
-                v-for="d in editMulti.filteredDepts.value"
-                :key="d.id"
-                type="button"
-                class="dept-multiselect__option"
-                :class="{ 'dept-multiselect__option--selected': editDeptIdsRef.includes(d.id) }"
-                @click="editMulti.toggle(d.id)"
-              >
-                <span class="dept-multiselect__option-check">{{ editDeptIdsRef.includes(d.id) ? '✓' : '' }}</span>
+          <div class="avatar-field-actions">
+            <button type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="triggerEditAvatarPick">
+              {{ editAvatarUploading ? 'Загрузка...' : 'Изменить фото' }}
+            </button>
+            <button v-if="editingUser.avatarUrl" type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="handleRemoveEditAvatar">Удалить фото</button>
+            <input ref="editAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onEditAvatarFileSelected" />
+          </div>
+          <p v-if="editAvatarError" class="field-error">{{ editAvatarError }}</p>
+        </div>
+
+        <label class="field">
+          <span>Имя *</span>
+          <input v-model="editForm.name" type="text" />
+        </label>
+        <label class="field">
+          <span>Email *</span>
+          <input v-model="editForm.email" type="email" />
+        </label>
+        <label class="field">
+          <span>Должность</span>
+          <input v-model="editForm.position" type="text" />
+        </label>
+        <label class="field">
+          <span>Отдел</span>
+          <select v-model="editForm.departmentId">
+            <option value="">— не выбран —</option>
+            <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
+          </select>
+        </label>
+
+        <!-- Мультиселект отделов для руководителя (форма редактирования) -->
+        <div v-if="editingUser.globalRole === 'manager'" class="field">
+          <span class="field-label">Отделы в управлении</span>
+          <div class="dept-multiselect" :class="{ 'dept-multiselect--open': editMulti.open.value }">
+            <div class="dept-multiselect__control" @click="editMulti.openMenu()">
+              <span v-for="d in editMulti.selectedDepts.value" :key="d.id" class="dept-tag">
                 {{ d.name }}
-              </button>
-            </template>
-            <div v-else class="dept-multiselect__empty">Отделы не найдены</div>
+                <button type="button" class="dept-tag__remove" @click.stop="editMulti.removeTag(d.id)">×</button>
+              </span>
+              <span v-if="!editMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">Выберите отделы...</span>
+              <span class="dept-multiselect__chevron">▾</span>
+            </div>
+            <div v-if="editMulti.open.value" class="dept-multiselect__dropdown">
+              <div class="dept-multiselect__search-wrap">
+                <input
+                  :ref="(el) => (editMulti.inputEl.value = el)"
+                  v-model="editMulti.search.value"
+                  class="dept-multiselect__search"
+                  placeholder="Поиск отдела..."
+                  @keyup.escape="editMulti.closeMenu()"
+                />
+              </div>
+              <template v-if="editMulti.filteredDepts.value.length">
+                <button
+                  v-for="d in editMulti.filteredDepts.value"
+                  :key="d.id"
+                  type="button"
+                  class="dept-multiselect__option"
+                  :class="{ 'dept-multiselect__option--selected': editDeptIdsRef.includes(d.id) }"
+                  @click="editMulti.toggle(d.id)"
+                >
+                  <span class="dept-multiselect__option-check">{{ editDeptIdsRef.includes(d.id) ? '✓' : '' }}</span>
+                  {{ d.name }}
+                </button>
+              </template>
+              <div v-else class="dept-multiselect__empty">Отделы не найдены</div>
+            </div>
           </div>
         </div>
-      </div>
 
-      <p v-if="editError" class="field-error">{{ editError }}</p>
-      <div class="modal-actions">
+        <p v-if="editError" class="field-error">{{ editError }}</p>
+      </div>
+      <div class="modal-footer">
         <button class="btn btn-ghost btn-sm" @click="closeEditForm">Отмена</button>
         <button class="btn btn-primary btn-sm" :disabled="savingEdit" @click="submitEditUser">
           {{ savingEdit ? 'Сохранение...' : 'Сохранить' }}
@@ -698,9 +705,11 @@ function onAvatarError(e) {
   <!-- Подтверждение удаления -->
   <div v-if="confirmDeleteUser" class="modal-backdrop">
     <div class="modal-card modal-card-sm">
-      <h3>Удалить пользователя?</h3>
-      <p>{{ confirmDeleteUser.name }} ({{ confirmDeleteUser.email }}) будет удалён без возможности восстановления.</p>
-      <div class="modal-actions">
+      <div class="modal-header"><h3>Удалить пользователя?</h3></div>
+      <div class="modal-body">
+        <p>{{ confirmDeleteUser.name }} ({{ confirmDeleteUser.email }}) будет удалён без возможности восстановления.</p>
+      </div>
+      <div class="modal-footer">
         <button class="btn btn-ghost btn-sm" @click="confirmDeleteUser = null">Отмена</button>
         <button class="btn btn-danger btn-sm" :disabled="deletingId === confirmDeleteUser.id" @click="confirmDelete">
           {{ deletingId === confirmDeleteUser.id ? 'Удаление...' : 'Удалить' }}
@@ -712,11 +721,13 @@ function onAvatarError(e) {
   <!-- Модалка с временным паролем -->
   <div v-if="temporaryPasswordInfo" class="modal-backdrop">
     <div class="modal-card modal-card-sm">
-      <h3>Временный пароль</h3>
-      <p>Передайте пользователю:</p>
-      <p><strong>Логин:</strong> {{ temporaryPasswordInfo.login }}</p>
-      <p><strong>Пароль:</strong> <code>{{ temporaryPasswordInfo.password }}</code></p>
-      <div class="modal-actions">
+      <div class="modal-header"><h3>Временный пароль</h3></div>
+      <div class="modal-body">
+        <p>Передайте пользователю:</p>
+        <p><strong>Логин:</strong> {{ temporaryPasswordInfo.login }}</p>
+        <p><strong>Пароль:</strong> <code>{{ temporaryPasswordInfo.password }}</code></p>
+      </div>
+      <div class="modal-footer">
         <button class="btn btn-primary btn-sm" @click="closePasswordModal">Закрыть</button>
       </div>
     </div>
@@ -777,7 +788,6 @@ function onAvatarError(e) {
   font-size: 12px; font-weight: 700; flex-shrink: 0;
 }
 .user-avatar-img { object-fit: cover; }
-.avatar-lg { width: 56px; height: 56px; font-size: 18px; }
 .user-info { display: flex; flex-direction: column; min-width: 0; }
 .user-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .self-badge {
@@ -799,17 +809,42 @@ function onAvatarError(e) {
 .btn-warning { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 .btn-warning:hover:not(:disabled) { background: #fde68a; }
 
-/* ── Modals ── */
+/* ── Modals ──
+   modal-card — БЕЗ overflow, чтобы absolute-дропдаун вылезал поверх границ.
+   Скролл внутри modal-body.
+*/
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(20, 24, 34, 0.45);
   display: flex; align-items: center; justify-content: center; z-index: 100;
 }
 .modal-card {
-  background: #fff; border-radius: 10px; padding: 20px 22px; width: 380px;
-  display: flex; flex-direction: column; gap: 10px; max-height: 90vh; overflow-y: auto;
+  background: #fff; border-radius: 10px;
+  width: 520px; max-width: calc(100vw - 32px);
+  display: flex; flex-direction: column;
+  max-height: 90vh;
+  /* overflow: hidden — не auto! чтобы dropdown не обрезался */
+  overflow: hidden;
 }
-.modal-card-sm { width: 320px; }
-.modal-card h3 { margin: 0 0 4px; font-size: 16px; }
+.modal-card-sm { width: 340px; }
+.modal-header {
+  padding: 18px 22px 0;
+  flex-shrink: 0;
+}
+.modal-header h3 { margin: 0 0 12px; font-size: 16px; }
+.modal-body {
+  padding: 0 22px 4px;
+  overflow-y: auto;     /* скролл внутри — не мешает absolute dropdown */
+  display: flex; flex-direction: column; gap: 10px;
+  /* overflow-x visible чтобы dropdown мог вылезти за край при необходимости */
+  overflow-x: visible;
+}
+.modal-footer {
+  padding: 10px 22px 18px;
+  flex-shrink: 0;
+  display: flex; justify-content: flex-end; gap: 8px;
+  border-top: 1px solid var(--color-border);
+}
+
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
 .field input, .field select {
   border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 9px; font-size: 13px;
@@ -824,7 +859,6 @@ function onAvatarError(e) {
 .avatar-preview-img { width: 100%; height: 100%; object-fit: cover; }
 .avatar-preview-placeholder { font-size: 11px; color: var(--color-text-muted); }
 .avatar-field-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
 .field-error { color: #d64545; font-size: 12px; margin: 0; }
 
 /* ── Dept multiselect ── */
@@ -856,11 +890,13 @@ function onAvatarError(e) {
 }
 .dept-tag__remove:hover { opacity: 1; }
 
+/* dropdown вылезает поверх благодаря position:fixed + z-index */
 .dept-multiselect__dropdown {
-  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+  z-index: 200;
   background: var(--color-surface, #fff); border: 1px solid var(--color-border);
   border-radius: 10px; box-shadow: 0 8px 24px rgba(20, 24, 38, 0.14);
-  max-height: 260px; overflow-y: auto; padding: 6px 0 4px;
+  max-height: 220px; overflow-y: auto; padding: 6px 0 4px;
 }
 .dept-multiselect__search-wrap { padding: 4px 8px 6px; }
 .dept-multiselect__search {
