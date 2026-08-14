@@ -14,6 +14,7 @@ import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import AppIcon from '../components/common/AppIcon.vue'
 import RichTextEditor from '../components/common/RichTextEditor.vue'
 import ConfirmModal from '../components/common/ConfirmModal.vue'
+import UserMultiSelect from '../components/common/UserMultiSelect.vue'
 import { formatDateTime, formatTime, formatMeetingRecurrence } from '../utils/formatters'
 import { meetingSummaryParser, MATCHED_PATTERN_LABEL } from '../services/MeetingSummaryParser'
 import { meetingOccurrenceService } from '../services/MeetingOccurrenceService'
@@ -34,10 +35,7 @@ const editDraft = ref({
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
 })
 
-const editAttendeePickerOpen = ref(false)
-const editEditorPickerOpen = ref(false)
-const editAttendeeSearch = ref('')
-const editEditorSearch = ref('')
+
 
 const showSummaryParser = ref(false)
 const summaryText = ref('')
@@ -307,41 +305,7 @@ function startEdit() {
     recurrenceFreq: meeting.value.recurrence?.freq || 'weekly',
     recurrenceWeekdays: [...(meeting.value.recurrence?.weekdays || [])],
   }
-  editAttendeePickerOpen.value = false
-  editEditorPickerOpen.value = false
-  editAttendeeSearch.value = ''
-  editEditorSearch.value = ''
   editing.value = true
-}
-
-const assignableUsers = computed(() => usersStore.assignableUsers || [])
-
-function filterUsers(users, search) {
-  const q = search.trim().toLowerCase()
-  if (!q) return users
-  return users.filter((u) => u.name.toLowerCase().includes(q))
-}
-function availableAttendeesForEdit() {
-  const ids = new Set(editDraft.value.attendeeIds)
-  return filterUsers(assignableUsers.value.filter((u) => !ids.has(u.id)), editAttendeeSearch.value)
-}
-function availableEditorsForEdit() {
-  const ids = new Set(editDraft.value.editorIds)
-  return filterUsers(assignableUsers.value.filter((u) => !ids.has(u.id)), editEditorSearch.value)
-}
-function addEditAttendee(userId) {
-  if (!editDraft.value.attendeeIds.includes(userId)) editDraft.value.attendeeIds.push(userId)
-  editAttendeeSearch.value = ''
-}
-function removeEditAttendee(userId) {
-  editDraft.value.attendeeIds = editDraft.value.attendeeIds.filter((id) => id !== userId)
-}
-function addEditEditor(userId) {
-  if (!editDraft.value.editorIds.includes(userId)) editDraft.value.editorIds.push(userId)
-  editEditorSearch.value = ''
-}
-function removeEditEditor(userId) {
-  editDraft.value.editorIds = editDraft.value.editorIds.filter((id) => id !== userId)
 }
 
 function withTimeOfDay(baseDate, timeStr) {
@@ -743,60 +707,25 @@ function toggleArchived() {
           </div>
           <div class="field-group">
             <label>Участники (опционально — если не выбрано никого, ассайн задач встречи доступен на всех)</label>
-            <div class="assignee-picker tag-assignee-picker">
-              <button type="button" class="assignee-trigger" @click="editAttendeePickerOpen = !editAttendeePickerOpen">
-                <span class="assignee-avatar empty"><AppIcon name="plus" :size="10" /></span>
-                <span>Добавить участника</span>
-                <span class="chevron"><AppIcon name="chevronDown" :size="10" /></span>
-              </button>
-              <div v-if="editDraft.attendeeIds.length" class="selected-tags">
-                <span v-for="uid in editDraft.attendeeIds" :key="uid" class="member-chip attendee-chip">
-                  <span class="mini-avatar">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
-                  {{ usersStore.byId(uid)?.name || uid }}
-                  <button type="button" class="chip-remove" @click="removeEditAttendee(uid)"><AppIcon name="close" :size="10" /></button>
-                </span>
-              </div>
-              <div v-if="editAttendeePickerOpen" class="assignee-dropdown card scroll-thin">
-                <div class="assignee-search-wrap">
-                  <input v-model="editAttendeeSearch" class="assignee-search-input" placeholder="Поиск пользователя..." />
-                </div>
-                <template v-if="availableAttendeesForEdit().length">
-                  <button v-for="u in availableAttendeesForEdit()" :key="u.id" type="button" class="assignee-option" @click="addEditAttendee(u.id)">
-                    <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
-                  </button>
-                </template>
-                <div v-else class="assignee-no-results">Пользователи не найдены</div>
-              </div>
-            </div>
+            <UserMultiSelect
+              v-model="editDraft.attendeeIds"
+              :users="usersStore.users"
+              placeholder="Добавить участника"
+              empty-hint="Никого не выбрано — доступно всем"
+              chip-class="attendee-chip"
+            />
           </div>
 
           <div class="field-group">
             <label>Редакторы</label>
-            <div class="assignee-picker tag-assignee-picker">
-              <button type="button" class="assignee-trigger" @click="editEditorPickerOpen = !editEditorPickerOpen">
-                <span class="assignee-avatar empty"><AppIcon name="plus" :size="10" /></span>
-                <span>Добавить редактора</span>
-                <span class="chevron"><AppIcon name="chevronDown" :size="10" /></span>
-              </button>
-              <div v-if="editDraft.editorIds.length" class="selected-tags">
-                <span v-for="uid in editDraft.editorIds" :key="uid" class="member-chip editor-chip">
-                  <span class="mini-avatar mini-avatar-editor">{{ usersStore.byId(uid)?.name?.charAt(0) || '?' }}</span>
-                  {{ usersStore.byId(uid)?.name || uid }}
-                  <button type="button" class="chip-remove" @click="removeEditEditor(uid)"><AppIcon name="close" :size="10" /></button>
-                </span>
-              </div>
-              <div v-if="editEditorPickerOpen" class="assignee-dropdown card scroll-thin">
-                <div class="assignee-search-wrap">
-                  <input v-model="editEditorSearch" class="assignee-search-input" placeholder="Поиск пользователя..." />
-                </div>
-                <template v-if="availableEditorsForEdit().length">
-                  <button v-for="u in availableEditorsForEdit()" :key="u.id" type="button" class="assignee-option" @click="addEditEditor(u.id)">
-                    <span class="assignee-avatar">{{ u.name.charAt(0) }}</span>{{ u.name }}
-                  </button>
-                </template>
-                <div v-else class="assignee-no-results">Пользователи не найдены</div>
-              </div>
-            </div>
+            <UserMultiSelect
+              v-model="editDraft.editorIds"
+              :users="usersStore.users"
+              placeholder="Добавить редактора"
+              empty-hint="Редакторы не назначены"
+              chip-class="editor-chip"
+              avatar-class="mini-avatar-editor"
+            />
           </div>
         </div>
         <div class="modal-actions">
@@ -901,24 +830,6 @@ function toggleArchived() {
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { width: 620px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
-.assignee-picker { position: relative; }
-.tag-assignee-picker { display: flex; flex-direction: column; }
-.assignee-trigger { display: flex; align-items: center; gap: 7px; border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 8px; padding: 6px 10px 6px 5px; font-size: 12.5px; cursor: pointer; width: 100%; }
-.assignee-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700; flex-shrink: 0; }
-.assignee-avatar.empty { background: var(--color-surface-offset); color: var(--color-text-muted); }
-.chevron { color: var(--color-text-muted); display: flex; margin-left: auto; }
-.selected-tags { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
-.member-chip { display: inline-flex; align-items: center; gap: 6px; background: #f4f0ff; color: #7c5cd6; border-radius: 20px; padding: 3px 8px 3px 4px; font-size: 12.5px; font-weight: 500; }
-.attendee-chip { background: #f4f0ff; color: #7c5cd6; }
-.editor-chip { background: #eef2ff; color: var(--color-primary-dark); }
-.mini-avatar { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #7c5cd6; color: #fff; font-size: 10px; font-weight: 700; }
-.mini-avatar-editor { background: var(--color-primary); }
-.chip-remove { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; color: currentColor; }
-.assignee-dropdown { position: absolute; top: 100%; left: 0; margin-top: 6px; width: 100%; z-index: 30; padding: 6px 0 4px; max-height: 260px; overflow-y: auto; box-shadow: var(--shadow-2); background: var(--color-surface); border-radius: 10px; }
-.assignee-search-wrap { padding: 4px 8px 6px; }
-.assignee-search-input { width: 100%; border: 1px solid var(--color-border); border-radius: 7px; padding: 5px 9px; font-size: 12.5px; outline: none; background: #f6f7fb; }
-.assignee-option { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: none; background: none; padding: 6px 12px; font-size: 12.5px; cursor: pointer; }
-.assignee-no-results { padding: 6px 12px; font-size: 12px; color: var(--color-text-muted); }
 
 .modal-occurrence { width: 860px; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 10px; }
