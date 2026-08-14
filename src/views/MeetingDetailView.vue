@@ -253,14 +253,9 @@ async function saveOccurrence() {
   occurrenceEditing.value = false
 }
 
-function stripHtml(html) {
-  const div = document.createElement('div')
-  div.innerHTML = html || ''
-  return div.textContent || div.innerText || ''
-}
-
 function openSummaryParser(occurrence = null) {
   selectedSummaryOccurrenceId.value = occurrence?.id || 'all'
+  // Передаём raw HTML — парсер сам распознаёт теги и сохраняет структуру списков
   summaryText.value = occurrence ? (occurrence.description || '') : (meeting.value?.description || '')
   parsedCandidates.value = []
   parseAttempted.value = false
@@ -268,7 +263,9 @@ function openSummaryParser(occurrence = null) {
 }
 
 function runParse() {
-  parsedCandidates.value = meetingSummaryParser.parse(stripHtml(summaryText.value), { knownUsers: usersStore.users })
+  // summaryText может быть HTML (из RichTextEditor) или plain text —
+  // парсер автоматически определяет формат и обрабатывает оба варианта
+  parsedCandidates.value = meetingSummaryParser.parse(summaryText.value, { knownUsers: usersStore.users })
   parseAttempted.value = true
 }
 
@@ -596,9 +593,10 @@ function toggleArchived() {
         </div>
         <div class="modal-body">
           <p class="hint-text">
-            Вставьте текстовое резюме встречи. Кандидатами в задачи считаются строки,
-            начинающиеся с "-", "•", номера пункта, либо в формате "Имя: сделать...".
-            Ничего не создаётся без вашего подтверждения.
+            Вставьте резюме встречи. Поддерживаются: нумерованные и маркированные
+            списки (в том числе скопированные из документов), строки с дефисом/•,
+            формат «Имя: задача». Если внутри пункта есть строка «Ответственный: Имя»
+            — исполнитель будет предложен автоматически.
           </p>
           <div v-if="isRecurring" class="field-group">
             <label>Подвстреча для создаваемых задач</label>
@@ -626,9 +624,9 @@ function toggleArchived() {
                   <div class="candidate-meta">
                     <span class="tag">{{ MATCHED_PATTERN_LABEL[c.matchedPattern] }}</span>
                     <span v-if="c.assigneeNameRaw" class="tag">
-                      Имя в тексте: "{{ c.assigneeNameRaw }}"
-                      <template v-if="c.assigneeGuess">→ сопоставлено: {{ usersStore.byId(c.assigneeGuess)?.name }}</template>
-                      <template v-else>→ исполнитель не найден</template>
+                      Ответственный: "{{ c.assigneeNameRaw }}"
+                      <template v-if="c.assigneeGuess"> → {{ usersStore.byId(c.assigneeGuess)?.name }}</template>
+                      <template v-else> → не найден в системе</template>
                     </span>
                   </div>
                 </div>
@@ -785,9 +783,6 @@ function toggleArchived() {
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
 .empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }
 
-/* По скриншоту верхний заголовок должен выглядеть так же, как bubble "НЕ ВЫПОЛНЕНО",
-   только с полным названием серии встреч. Отдельная строка "Открытых задач: x" убрана —
-   она дублировала число, которое уже есть в заголовке. */
 .series-alert-bubble {
   display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px;
   color: var(--color-danger); font-size: 13.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
@@ -796,8 +791,6 @@ function toggleArchived() {
 .series-occ-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
 .series-occ-row { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 14px; }
 .series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 6px; text-align: center; }
-/* Дата подсерии — жирная и синяя. Счётчик рядом теперь оформлен так же ярко,
-   как в bubble "НЕ ВЫПОЛНЕНО": жирный, красный, крупнее прежнего. */
 .series-occ-date { font-size: 13px; font-weight: 700; color: #2f6fed; line-height: 1.3; }
 .series-occ-count { font-size: 15px; font-weight: 700; color: var(--color-danger); }
 .series-occ-tasks { min-width: 0; }
