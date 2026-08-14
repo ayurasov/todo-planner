@@ -24,12 +24,12 @@ function departmentName(departmentId) {
 
 // --- Фильтрация и сортировка ---
 const searchQuery = ref('')
-const roleFilter = ref('all') // all | admin | manager | user
-const statusFilter = ref('all') // all | active | inactive
-const departmentFilter = ref('all') // all | departmentId
-const showSystem = ref(true) // показывать системных в таблице (вкл. по умолчанию)
-const sortBy = ref('name') // name | department | position | role | status
-const sortDir = ref('asc') // asc | desc
+const roleFilter = ref('all')
+const statusFilter = ref('all')
+const departmentFilter = ref('all')
+const showSystem = ref(true)
+const sortBy = ref('name')
+const sortDir = ref('asc')
 
 function isSelf(user) {
   return usersStore.currentUser?.id === user.id
@@ -83,16 +83,11 @@ async function toggleActive(user) {
   await usersStore.updateUser(user.id, { isActive: !user.isActive })
 }
 
-// Системный флаг: разрешено менять для ЛЮБОГО пользователя включая себя.
-// Это позволяет администратору самому стать системным (скрыться из списков исполнителей).
 async function toggleSystem(user) {
   await usersStore.updateUser(user.id, { isSystem: !user.isSystem })
 }
 
 // --- Мультиселект отделов (для руководителя) ---
-// Используется в обеих формах: создание и редактирование.
-// Паттерн аналогичен выбору исполнителя в TaskDetailPanel.
-
 function useDeptMultiselect(deptIdsRef, allDepts) {
   const open = ref(false)
   const search = ref('')
@@ -147,17 +142,12 @@ const createAvatarFile = ref(null)
 const createAvatarPreviewUrl = ref('')
 const createAvatarError = ref('')
 
-// Мультиселект для формы создания
-const createDeptIds = computed({
-  get: () => newUser.managerDepartmentIds,
-  set: (v) => { newUser.managerDepartmentIds = v },
-})
-const createDeptIdsRef = ref(newUser.managerDepartmentIds)
+const createDeptIdsRef = ref([])
 const createMulti = useDeptMultiselect(createDeptIdsRef, allDepts)
 
 function resetCreateForm() {
   Object.assign(newUser, { login: '', name: '', email: '', globalRole: 'user', password: '', position: '', departmentId: '', managerDepartmentIds: [] })
-  createDeptIdsRef.value = newUser.managerDepartmentIds
+  createDeptIdsRef.value = []
   createError.value = ''
   clearCreateAvatarSelection()
 }
@@ -188,10 +178,7 @@ function onCreateAvatarFileSelected(event) {
   event.target.value = ''
   if (!file) return
   const err = validateAvatarFile(file)
-  if (err) {
-    createAvatarError.value = err
-    return
-  }
+  if (err) { createAvatarError.value = err; return }
   createAvatarError.value = ''
   createAvatarFile.value = file
   if (createAvatarPreviewUrl.value) URL.revokeObjectURL(createAvatarPreviewUrl.value)
@@ -249,7 +236,6 @@ const editAvatarFileInputEl = ref(null)
 const editAvatarUploading = ref(false)
 const editAvatarError = ref('')
 
-// Мультиселект для формы редактирования
 const editDeptIdsRef = ref([])
 const editMulti = useDeptMultiselect(editDeptIdsRef, allDepts)
 
@@ -307,10 +293,7 @@ async function onEditAvatarFileSelected(event) {
   event.target.value = ''
   if (!file || !editingUser.value) return
   const err = validateAvatarFile(file)
-  if (err) {
-    editAvatarError.value = err
-    return
-  }
+  if (err) { editAvatarError.value = err; return }
   editAvatarError.value = ''
   editAvatarUploading.value = true
   try {
@@ -375,7 +358,6 @@ function closePasswordModal() {
   temporaryPasswordInfo.value = null
 }
 
-/** При ошибке загрузки img — скрыть img, показать fallback-спан рядом */
 function onAvatarError(e) {
   const img = e.target
   img.style.display = 'none'
@@ -571,27 +553,14 @@ function onAvatarError(e) {
       <div v-if="newUser.globalRole === 'manager'" class="field">
         <span class="field-label">Отделы в управлении</span>
         <div class="dept-multiselect" :class="{ 'dept-multiselect--open': createMulti.open.value }">
-          <!-- Тэги выбранных отделов + поле-триггер -->
           <div class="dept-multiselect__control" @click="createMulti.openMenu()">
-            <span
-              v-for="d in createMulti.selectedDepts.value"
-              :key="d.id"
-              class="dept-tag"
-            >
+            <span v-for="d in createMulti.selectedDepts.value" :key="d.id" class="dept-tag">
               {{ d.name }}
-              <button
-                type="button"
-                class="dept-tag__remove"
-                @click.stop="createMulti.removeTag(d.id)"
-              >×</button>
+              <button type="button" class="dept-tag__remove" @click.stop="createMulti.removeTag(d.id)">×</button>
             </span>
-            <span v-if="!createMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">
-              Выберите отделы...
-            </span>
+            <span v-if="!createMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">Выберите отделы...</span>
             <span class="dept-multiselect__chevron">▾</span>
           </div>
-
-          <!-- Дропдаун с поиском -->
           <div v-if="createMulti.open.value" class="dept-multiselect__dropdown">
             <div class="dept-multiselect__search-wrap">
               <input
@@ -681,24 +650,13 @@ function onAvatarError(e) {
         <span class="field-label">Отделы в управлении</span>
         <div class="dept-multiselect" :class="{ 'dept-multiselect--open': editMulti.open.value }">
           <div class="dept-multiselect__control" @click="editMulti.openMenu()">
-            <span
-              v-for="d in editMulti.selectedDepts.value"
-              :key="d.id"
-              class="dept-tag"
-            >
+            <span v-for="d in editMulti.selectedDepts.value" :key="d.id" class="dept-tag">
               {{ d.name }}
-              <button
-                type="button"
-                class="dept-tag__remove"
-                @click.stop="editMulti.removeTag(d.id)"
-              >×</button>
+              <button type="button" class="dept-tag__remove" @click.stop="editMulti.removeTag(d.id)">×</button>
             </span>
-            <span v-if="!editMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">
-              Выберите отделы...
-            </span>
+            <span v-if="!editMulti.selectedDepts.value.length" class="dept-multiselect__placeholder">Выберите отделы...</span>
             <span class="dept-multiselect__chevron">▾</span>
           </div>
-
           <div v-if="editMulti.open.value" class="dept-multiselect__dropdown">
             <div class="dept-multiselect__search-wrap">
               <input
@@ -766,152 +724,159 @@ function onAvatarError(e) {
 </template>
 
 <style scoped>
-/* ── Dept multiselect ── */
-.field-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  margin-bottom: 4px;
-}
+/* ── Layout ── */
+.view-header { margin-bottom: 14px; }
+.view-header h2 { margin: 0; font-size: 19px; }
+.users-header { display: flex; align-items: center; justify-content: space-between; }
+.users-section { padding: 16px 18px; }
+.hint-text { font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 14px; }
+.empty-hint { margin: 16px 0 0; text-align: center; }
+.file-input-hidden { display: none; }
 
-.dept-multiselect {
-  position: relative;
+/* ── Filters ── */
+.filters-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.filter-input {
+  flex: 1 1 220px; border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 10px; font-size: 12.5px;
 }
+.filter-select {
+  border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 9px; font-size: 12.5px;
+}
+.filter-checkbox { display: flex; align-items: center; gap: 5px; font-size: 12.5px; cursor: pointer; user-select: none; }
+.filter-checkbox input { cursor: pointer; }
+
+/* ── Table ── */
+.users-table { display: flex; flex-direction: column; }
+.users-table-head {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 150px 140px 260px;
+  gap: 10px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);
+  padding: 0 8px 8px; border-bottom: 1px solid var(--color-border);
+}
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { color: var(--color-text); }
+.user-row {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 150px 140px 260px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--color-border);
+}
+.user-row.inactive { opacity: 0.55; }
+.user-row.is-system { background: #f8f6ff; }
+
+/* ── User cell ── */
+.user-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.text-cell { font-size: 12.5px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
+.user-avatar-wrap { position: relative; flex-shrink: 0; }
+.user-avatar {
+  width: 30px; height: 30px; border-radius: 50%;
+  background: #b7bfd1; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+}
+.user-avatar-img { object-fit: cover; }
+.avatar-lg { width: 56px; height: 56px; font-size: 18px; }
+.user-info { display: flex; flex-direction: column; min-width: 0; }
+.user-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.self-badge {
+  font-size: 10px; font-weight: 700; background: #eef1f7; color: var(--color-text-muted);
+  padding: 1px 6px; border-radius: 10px;
+}
+.system-badge {
+  font-size: 10px; font-weight: 600; background: #ede9fe; color: #6d28d9;
+  padding: 1px 6px; border-radius: 10px; cursor: default;
+}
+.user-email { font-size: 12px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
+.managed-badge { font-size: 11px; color: #4f7cff; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Row controls ── */
+.role-select { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 9px; font-size: 12.5px; }
+.role-select:disabled { opacity: 0.6; cursor: not-allowed; }
+.status-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.btn-warning { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+.btn-warning:hover:not(:disabled) { background: #fde68a; }
+
+/* ── Modals ── */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(20, 24, 34, 0.45);
+  display: flex; align-items: center; justify-content: center; z-index: 100;
+}
+.modal-card {
+  background: #fff; border-radius: 10px; padding: 20px 22px; width: 380px;
+  display: flex; flex-direction: column; gap: 10px; max-height: 90vh; overflow-y: auto;
+}
+.modal-card-sm { width: 320px; }
+.modal-card h3 { margin: 0 0 4px; font-size: 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.field input, .field select {
+  border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 9px; font-size: 13px;
+}
+.field-label { display: block; font-size: 13px; font-weight: 500; color: var(--color-text-muted); margin-bottom: 4px; }
+.avatar-field { display: flex; align-items: center; gap: 12px; }
+.avatar-field-preview {
+  width: 56px; height: 56px; border-radius: 50%; overflow: hidden;
+  background: #eef1f7; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: var(--color-text-muted); flex-shrink: 0;
+}
+.avatar-preview-img { width: 100%; height: 100%; object-fit: cover; }
+.avatar-preview-placeholder { font-size: 11px; color: var(--color-text-muted); }
+.avatar-field-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.field-error { color: #d64545; font-size: 12px; margin: 0; }
+
+/* ── Dept multiselect ── */
+.dept-multiselect { position: relative; }
 
 .dept-multiselect__control {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  min-height: 36px;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  padding: 4px 8px;
-  cursor: pointer;
-  background: var(--color-surface, #fff);
-  transition: border-color 0.12s;
-  user-select: none;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px;
+  min-height: 36px; border: 1px solid var(--color-border);
+  border-radius: 8px; padding: 4px 8px;
+  cursor: pointer; background: var(--color-surface, #fff);
+  transition: border-color 0.12s; user-select: none;
 }
-
 .dept-multiselect--open .dept-multiselect__control,
-.dept-multiselect__control:hover {
-  border-color: var(--color-primary);
-}
+.dept-multiselect__control:hover { border-color: var(--color-primary); }
 
-.dept-multiselect__placeholder {
-  font-size: 13px;
-  color: var(--color-text-muted);
-  flex: 1;
-}
+.dept-multiselect__placeholder { font-size: 13px; color: var(--color-text-muted); flex: 1; }
+.dept-multiselect__chevron { margin-left: auto; font-size: 11px; color: var(--color-text-muted); flex-shrink: 0; }
 
-.dept-multiselect__chevron {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--color-text-muted);
-  flex-shrink: 0;
-}
-
-/* Тэги */
 .dept-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: #eef2ff;
-  color: var(--color-primary, #4f7cff);
-  border-radius: 6px;
-  padding: 2px 6px 2px 8px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.4;
-  white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
+  background: #eef2ff; color: var(--color-primary, #4f7cff);
+  border-radius: 6px; padding: 2px 6px 2px 8px;
+  font-size: 12px; font-weight: 500; line-height: 1.4; white-space: nowrap;
 }
-
 .dept-tag__remove {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  color: var(--color-primary, #4f7cff);
-  opacity: 0.7;
-  padding: 0 2px;
-  display: flex;
-  align-items: center;
+  background: none; border: none; cursor: pointer;
+  font-size: 14px; line-height: 1; color: var(--color-primary, #4f7cff);
+  opacity: 0.7; padding: 0 2px; display: flex; align-items: center;
 }
+.dept-tag__remove:hover { opacity: 1; }
 
-.dept-tag__remove:hover {
-  opacity: 1;
-}
-
-/* Дропдаун */
 .dept-multiselect__dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
-  z-index: 50;
-  background: var(--color-surface, #fff);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(20, 24, 38, 0.14);
-  max-height: 260px;
-  overflow-y: auto;
-  padding: 6px 0 4px;
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 50;
+  background: var(--color-surface, #fff); border: 1px solid var(--color-border);
+  border-radius: 10px; box-shadow: 0 8px 24px rgba(20, 24, 38, 0.14);
+  max-height: 260px; overflow-y: auto; padding: 6px 0 4px;
 }
-
-.dept-multiselect__search-wrap {
-  padding: 4px 8px 6px;
-}
-
+.dept-multiselect__search-wrap { padding: 4px 8px 6px; }
 .dept-multiselect__search {
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: 7px;
-  padding: 5px 9px;
-  font-size: 13px;
-  outline: none;
-  background: #f6f7fb;
+  width: 100%; border: 1px solid var(--color-border);
+  border-radius: 7px; padding: 5px 9px; font-size: 13px;
+  outline: none; background: #f6f7fb;
 }
-
-.dept-multiselect__search:focus {
-  border-color: var(--color-primary);
-  background: #fff;
-}
+.dept-multiselect__search:focus { border-color: var(--color-primary); background: #fff; }
 
 .dept-multiselect__option {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  border: none;
-  background: none;
-  padding: 7px 12px;
-  font-size: 13px;
-  cursor: pointer;
-  color: var(--color-text);
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; text-align: left; border: none; background: none;
+  padding: 7px 12px; font-size: 13px; cursor: pointer; color: var(--color-text);
 }
-
-.dept-multiselect__option:hover {
-  background: #f1f3f9;
-}
-
-.dept-multiselect__option--selected {
-  background: #eef2ff;
-  font-weight: 600;
-}
-
-.dept-multiselect__option-check {
-  width: 16px;
-  font-size: 13px;
-  color: var(--color-primary, #4f7cff);
-  flex-shrink: 0;
-}
-
-.dept-multiselect__empty {
-  padding: 8px 12px;
-  font-size: 12px;
-  color: var(--color-text-muted);
-}
+.dept-multiselect__option:hover { background: #f1f3f9; }
+.dept-multiselect__option--selected { background: #eef2ff; font-weight: 600; }
+.dept-multiselect__option-check { width: 16px; font-size: 13px; color: var(--color-primary, #4f7cff); flex-shrink: 0; }
+.dept-multiselect__empty { padding: 8px 12px; font-size: 12px; color: var(--color-text-muted); }
 </style>
