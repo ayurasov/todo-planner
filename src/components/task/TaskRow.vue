@@ -38,7 +38,7 @@ const addingSubtask = ref(false)
 const subtaskDraft = ref('')
 const subtaskInputEl = ref(null)
 
-const contextMenu = ref(null) // { x, y }
+const contextMenu = ref(null)
 const checklistExpanded = ref(false)
 const newInlineChecklistTitle = ref('')
 const inlineChecklistInputEl = ref(null)
@@ -49,14 +49,10 @@ const list = computed(() => listsStore.byId(props.task.listId))
 const overdue = computed(() => isOverdue(props.task.dueDate, props.task.status))
 const isDone = computed(() => props.task.status === 'done')
 
-// Задача, созданная внутри конкретной подвстречи регулярной серии, должна нести
-// на себе метку "из какой встречи и когда" — иначе в общих списках (Мои задачи,
-// список) невозможно понять контекст её появления. occurrenceById ищет по всем
-// встречам сразу, поэтому здесь достаточно task.occurrenceId без meetingId.
 const occurrenceInfo = computed(() => (props.task.occurrenceId ? meetingsStore.occurrenceById(props.task.occurrenceId) : null))
 const occurrenceBadgeLabel = computed(() => {
   if (!occurrenceInfo.value) return null
-  return `${occurrenceInfo.value.meeting.title} · ${formatDateTime(occurrenceInfo.value.occurrence.date)}`
+  return `${occurrenceInfo.value.meeting.title} \xb7 ${formatDateTime(occurrenceInfo.value.occurrence.date)}`
 })
 
 function openOccurrenceMeeting() {
@@ -70,12 +66,7 @@ const commentsCount = computed(() => tasksStore.commentsByTask[props.task.id]?.l
 
 const { canEditThisTask, canToggleStatus, reason: permissionReason } = useTaskPermissions(() => props.task)
 
-// Быстрый ассайн исполнителя кликом по аватару строки — не требует
-// открытия контекстного меню. Список кандидатов — тот же, что и в
-// контекстном меню (учитывает состав встречи, если задача к ней привязана).
-// Дропдаун рендерится через Teleport в body и позиционируется по
-// getBoundingClientRect кнопки-аватара — иначе он обрезался overflow/скроллом
-// родительских контейнеров списка задач и "проваливался" за пределы экрана.
+// --- Быстрое назначение исполнителя ---
 const assignPickerOpen = ref(false)
 const avatarBtnEl = ref(null)
 const dropdownEl = ref(null)
@@ -85,10 +76,7 @@ useClickOutside(dropdownEl, () => { assignPickerOpen.value = false })
 
 function toggleAssignPicker() {
   if (!canEditThisTask.value) return
-  if (assignPickerOpen.value) {
-    assignPickerOpen.value = false
-    return
-  }
+  if (assignPickerOpen.value) { assignPickerOpen.value = false; return }
   const margin = 8
   const rect = avatarBtnEl.value.getBoundingClientRect()
   const dropdownW = 220
@@ -96,9 +84,7 @@ function toggleAssignPicker() {
   let left = rect.right - dropdownW
   left = Math.min(Math.max(margin, left), window.innerWidth - dropdownW - margin)
   let top = rect.bottom + 4
-  if (top + estimatedH > window.innerHeight - margin) {
-    top = Math.max(margin, rect.top - estimatedH - 4)
-  }
+  if (top + estimatedH > window.innerHeight - margin) top = Math.max(margin, rect.top - estimatedH - 4)
   dropdownPos.value = { top, left }
   assignPickerOpen.value = true
 }
@@ -107,6 +93,73 @@ function quickAssign(userId) {
   tasksStore.assignTask(props.task.id, userId)
   assignPickerOpen.value = false
 }
+
+// --- Быстрый выбор срока ---
+// Дропдаун открывается кликом по бейджу срока в строке задачи.
+// Содержит: пресеты (Сегодня/Завтра/+3/+7) + нативный date-input + кнопка "Без срока".
+// Позиционирование через getBoundingClientRect — такой же подход, как у assign-dropdown,
+// чтобы дропдаун не обрезался overflow родительских контейнеров.
+const datePickerOpen = ref(false)
+const dueDateBtnEl = ref(null)
+const datePickerEl = ref(null)
+const datePickerPos = ref({ top: 0, left: 0 })
+// customDate — строка 'YYYY-MM-DD' для нативного input[type=date]
+const customDate = ref('')
+useClickOutside(datePickerEl, () => { datePickerOpen.value = false })
+
+function toLocalYYYYMMDD(date) {
+  const d = new Date(date)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function offsetDate(days) {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return d
+}
+
+function openDatePicker(e) {
+  if (!canEditThisTask.value) return
+  e.stopPropagation()
+  if (datePickerOpen.value) { datePickerOpen.value = false; return }
+  customDate.value = props.task.dueDate ? toLocalYYYYMMDD(props.task.dueDate) : toLocalYYYYMMDD(new Date())
+  const margin = 8
+  const rect = dueDateBtnEl.value.getBoundingClientRect()
+  const dropdownW = 210
+  const estimatedH = 210
+  let left = rect.left
+  left = Math.min(Math.max(margin, left), window.innerWidth - dropdownW - margin)
+  let top = rect.bottom + 4
+  if (top + estimatedH > window.innerHeight - margin) top = Math.max(margin, rect.top - estimatedH - 4)
+  datePickerPos.value = { top, left }
+  datePickerOpen.value = true
+}
+
+function applyDate(isoOrDate) {
+  const iso = isoOrDate instanceof Date ? isoOrDate.toISOString() : new Date(isoOrDate).toISOString()
+  tasksStore.rescheduleTask(props.task.id, iso)
+  datePickerOpen.value = false
+}
+
+function clearDueDate() {
+  tasksStore.rescheduleTask(props.task.id, null)
+  datePickerOpen.value = false
+}
+
+function applyCustomDate() {
+  if (!customDate.value) return
+  applyDate(customDate.value)
+}
+
+const DATE_PRESETS = [
+  { label: '\u0421\u0435\u0433\u043e\u0434\u043d\u044f', days: 0 },
+  { label: '\u0417\u0430\u0432\u0442\u0440\u0430', days: 1 },
+  { label: '\u0427\u0435\u0440\u0435\u0437 3 \u0434\u043d\u044f', days: 3 },
+  { label: '\u0427\u0435\u0440\u0435\u0437 \u043d\u0435\u0434\u0435\u043b\u044e', days: 7 },
+]
 
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
 
@@ -139,9 +192,7 @@ function startEditTitle() {
 function commitTitle() {
   editingTitle.value = false
   const trimmed = titleDraft.value.trim()
-  if (trimmed && trimmed !== props.task.title) {
-    tasksStore.updateTaskField(props.task.id, 'title', trimmed)
-  }
+  if (trimmed && trimmed !== props.task.title) tasksStore.updateTaskField(props.task.id, 'title', trimmed)
 }
 
 function cancelEditTitle() {
@@ -160,19 +211,13 @@ async function commitSubtask(keepOpen = false) {
   const title = subtaskDraft.value.trim()
   if (title) {
     await tasksStore.createTask({
-      listId: props.task.listId,
-      parentTaskId: props.task.id,
-      title,
-      priority: props.task.priority,
-      assigneeId: props.task.assigneeId,
+      listId: props.task.listId, parentTaskId: props.task.id, title,
+      priority: props.task.priority, assigneeId: props.task.assigneeId,
     })
   }
   subtaskDraft.value = ''
-  if (keepOpen && title) {
-    nextTick(() => subtaskInputEl.value?.focus())
-  } else {
-    addingSubtask.value = false
-  }
+  if (keepOpen && title) nextTick(() => subtaskInputEl.value?.focus())
+  else addingSubtask.value = false
 }
 
 function cancelAddSubtask() {
@@ -185,14 +230,10 @@ async function toggleChecklistExpand() {
   if (checklistExpanded.value && !tasksStore.checklistByTask[props.task.id]) {
     await tasksStore.loadChecklist(props.task.id)
   }
-  if (checklistExpanded.value) {
-    nextTick(() => inlineChecklistInputEl.value?.focus())
-  }
+  if (checklistExpanded.value) nextTick(() => inlineChecklistInputEl.value?.focus())
 }
 
-function toggleChecklistDone(itemId) {
-  tasksStore.toggleChecklistItem(props.task.id, itemId)
-}
+function toggleChecklistDone(itemId) { tasksStore.toggleChecklistItem(props.task.id, itemId) }
 
 async function addInlineChecklistItem() {
   const title = newInlineChecklistTitle.value.trim()
@@ -202,18 +243,14 @@ async function addInlineChecklistItem() {
   nextTick(() => inlineChecklistInputEl.value?.focus())
 }
 
-function removeInlineChecklistItem(itemId) {
-  tasksStore.removeChecklistItem(props.task.id, itemId)
-}
+function removeInlineChecklistItem(itemId) { tasksStore.removeChecklistItem(props.task.id, itemId) }
 
 function openContextMenu(e) {
   e.preventDefault()
   contextMenu.value = { x: e.clientX, y: e.clientY }
 }
 
-function closeContextMenu() {
-  contextMenu.value = null
-}
+function closeContextMenu() { contextMenu.value = null }
 </script>
 
 <template>
@@ -260,64 +297,96 @@ function closeContextMenu() {
           </span>
           <span v-if="prefs.showCommentsCount && commentsCount" class="mini-count"><AppIcon name="message" :size="11" />{{ commentsCount }}</span>
         </span>
-        <div class="task-meta" v-if="!editingTitle">
-          <!-- Порядок мета-полей: создано → срок (или "не установлен") → остальное.
-               Раньше срок шёл первым, а "создано" — где-то дальше по потоку.
-               Теперь дата создания всегда крайняя левая, следом — срок,
-               причём если срока нет, честно показываем "Срок: не установлен",
-               а не просто скрываем поле. -->
-          <span v-if="prefs.showCreatedDate && task.createdAt" class="date-meta" :title="`Создано: ${formatDate(task.createdAt)}`"><AppIcon name="plus" :size="11" /> создано {{ relativeTimeAgo(task.createdAt) }}</span>
-          <span v-if="prefs.showDueDate" class="due-date" :class="{ 'due-overdue': overdue }" title="Крайний срок">
-            <AppIcon name="calendar" :size="11" /> {{ task.dueDate ? relativeDay(task.dueDate) : 'срок не установлен' }}
+        <div v-if="!editingTitle" class="task-meta">
+          <span v-if="prefs.showCreatedDate && task.createdAt" class="date-meta" :title="`\u0421\u043e\u0437\u0434\u0430\u043d\u043e: ${formatDate(task.createdAt)}`">
+            <AppIcon name="plus" :size="11" /> \u0441\u043e\u0437\u0434\u0430\u043d\u043e {{ relativeTimeAgo(task.createdAt) }}
           </span>
+
+          <!-- Срок: кликабельный бейдж. Если задачу можно редактировать — открывает
+               быстрый date-picker прямо в строке. Иначе только показывает дату. -->
+          <span
+            v-if="prefs.showDueDate"
+            ref="dueDateBtnEl"
+            class="due-date" :class="{ 'due-overdue': overdue, 'due-date-clickable': canEditThisTask }"
+            :title="canEditThisTask ? '\u041d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u0440\u043e\u043a' : '\u041a\u0440\u0430\u0439\u043d\u0438\u0439 \u0441\u0440\u043e\u043a'"
+            @click.stop="openDatePicker"
+          >
+            <AppIcon name="calendar" :size="11" />
+            {{ task.dueDate ? relativeDay(task.dueDate) : '\u0441\u0440\u043e\u043a \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d' }}
+            <AppIcon v-if="canEditThisTask" name="chevronDown" :size="9" class="due-date-caret" />
+          </span>
+
           <PriorityBadge :priority="task.priority" />
-          <!-- Бейдж подвстречи: показывает, к какому конкретному вхождению регулярной серии
-               относится задача (название встречи + дата/время этой подвстречи). Кликабелен —
-               ведёт на страницу встречи, чтобы можно было быстро увидеть остальной контекст. -->
           <button
             v-if="occurrenceBadgeLabel"
             class="tag occurrence-badge"
-            :title="'Открыть встречу: ' + occurrenceBadgeLabel"
+            :title="'\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0432\u0441\u0442\u0440\u0435\u0447\u0443: ' + occurrenceBadgeLabel"
             @click.stop="openOccurrenceMeeting"
           ><AppIcon name="repeat" :size="11" /> {{ occurrenceBadgeLabel }}</button>
-          <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`"><AppIcon name="check" :size="11" /> {{ formatDate(task.completedAt) }}</span>
-          <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`Последнее изменение: ${formatDate(task.updatedAt)}`"><AppIcon name="edit" :size="11" /> {{ relativeTimeAgo(task.updatedAt) }}</span>
+          <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e: ${formatDate(task.completedAt)}`">
+            <AppIcon name="check" :size="11" /> {{ formatDate(task.completedAt) }}
+          </span>
+          <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0435 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435: ${formatDate(task.updatedAt)}`">
+            <AppIcon name="edit" :size="11" /> {{ relativeTimeAgo(task.updatedAt) }}
+          </span>
           <span v-if="prefs.showListBadgeInMyTasks && list" class="tag list-badge" :style="{ background: list.color + '22', color: list.color }">{{ list.title }}</span>
-          <span v-if="prefs.showTags && task.tags?.length" class="tag" v-for="tag in task.tags" :key="tag">{{ tag }}</span>
+          <span v-if="prefs.showTags && task.tags?.length" v-for="tag in task.tags" :key="tag" class="tag">{{ tag }}</span>
           <span v-if="prefs.showWatchers && task.watcherIds?.length" class="tag watcher-tag"><AppIcon name="eye" :size="11" /> {{ task.watcherIds.length }}</span>
         </div>
       </div>
 
-      <!-- Детальный вид исполнителя (по умолчанию включён через prefs.detailedAssigneeView):
-           показывает и иконку/аватар, и полную расшифровку имени — как в поле
-           "Добавить подзадачу"/дропдауне назначения, а не только круглый аватар с инициалами.
-           Компактный вид (только аватар) остаётся доступен через настройку "Аватар исполнителя"
-           без детализации — на случай узких списков/предпочтения минимализма. -->
       <div v-if="prefs.showAssigneeAvatar" class="task-assignee" :class="{ 'task-assignee-detailed': prefs.detailedAssigneeView }">
         <button
           ref="avatarBtnEl"
           class="avatar-btn" :class="{ 'avatar-btn-disabled': !canEditThisTask, 'avatar-btn-detailed': prefs.detailedAssigneeView }"
-          :title="canEditThisTask ? (assignee ? `Исполнитель: ${assignee.name} — нажмите, чтобы изменить` : 'Назначить исполнителя') : assignee?.name"
+          :title="canEditThisTask ? (assignee ? `\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c: ${assignee.name} \u2014 \u043d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c` : '\u041d\u0430\u0437\u043d\u0430\u0447\u0438\u0442\u044c \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f') : assignee?.name"
           @click.stop="toggleAssignPicker"
         >
           <span v-if="assignee" class="avatar" :class="{ 'avatar-compact': prefs.compactAvatars && !prefs.detailedAssigneeView }" :style="{ background: getAvatarColor(assignee.name) }">{{ getInitials(assignee.name) }}</span>
           <span v-else class="avatar avatar-empty" :class="{ 'avatar-compact': prefs.compactAvatars && !prefs.detailedAssigneeView }">+</span>
-          <span v-if="prefs.detailedAssigneeView" class="assignee-name">{{ assignee ? assignee.name : 'Без исполнителя' }}</span>
+          <span v-if="prefs.detailedAssigneeView" class="assignee-name">{{ assignee ? assignee.name : '\u0411\u0435\u0437 \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f' }}</span>
         </button>
       </div>
 
-      <!-- Иконки быстрых действий раньше показывались только по hover (opacity: 0 → 1),
-           из-за чего на touch-устройствах и при быстром сканировании списка их не было видно
-           вообще. Теперь они всегда видимы (opacity: 1), а на hover только чуть темнее фон.
-           Кнопка "Ещё" (шестерёнка) убрана как избыточная: полный набор действий уже доступен
-           через правый клик по строке (контекстное меню), это дублирование только занимало место. -->
       <div class="task-quick-actions">
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить подзадачу" @click.stop="startAddSubtask"><AppIcon name="plus" :size="13" /></button>
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить чек-лист" @click.stop="toggleChecklistExpand"><AppIcon name="checklist" :size="13" /></button>
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Отложить на день" @click.stop="snooze"><AppIcon name="alarm" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043f\u043e\u0434\u0437\u0430\u0434\u0430\u0447\u0443" @click.stop="startAddSubtask"><AppIcon name="plus" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0447\u0435\u043a-\u043b\u0438\u0441\u0442" @click.stop="toggleChecklistExpand"><AppIcon name="checklist" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="\u041e\u0442\u043b\u043e\u0436\u0438\u0442\u044c \u043d\u0430 \u0434\u0435\u043d\u044c" @click.stop="snooze"><AppIcon name="alarm" :size="13" /></button>
       </div>
     </div>
 
+    <!-- Quick due-date picker -->
+    <Teleport to="body">
+      <div
+        v-if="datePickerOpen"
+        ref="datePickerEl"
+        class="date-picker-dropdown card"
+        :style="{ top: `${datePickerPos.top}px`, left: `${datePickerPos.left}px` }"
+        @click.stop
+      >
+        <div class="date-picker-label">\u0421\u0440\u043e\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f</div>
+        <div class="date-presets">
+          <button
+            v-for="p in DATE_PRESETS" :key="p.days"
+            class="date-preset-btn"
+            @click="applyDate(offsetDate(p.days))"
+          >{{ p.label }}</button>
+        </div>
+        <div class="date-picker-custom">
+          <input
+            v-model="customDate"
+            type="date"
+            class="date-input"
+            @change="applyCustomDate"
+          />
+        </div>
+        <button class="date-clear-btn" @click="clearDueDate">
+          <AppIcon name="close" :size="11" /> \u0411\u0435\u0437 \u0441\u0440\u043e\u043a\u0430
+        </button>
+      </div>
+    </Teleport>
+
+    <!-- Quick assign picker -->
     <Teleport to="body">
       <div
         v-if="assignPickerOpen"
@@ -326,7 +395,7 @@ function closeContextMenu() {
         :style="{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px` }"
         @click.stop
       >
-        <div class="assign-dropdown-label">Назначить исполнителя</div>
+        <div class="assign-dropdown-label">\u041d\u0430\u0437\u043d\u0430\u0447\u0438\u0442\u044c \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f</div>
         <button
           v-for="u in assignableUsers" :key="u.id"
           class="assign-option" :class="{ active: task.assigneeId === u.id }"
@@ -337,7 +406,7 @@ function closeContextMenu() {
           <span v-if="task.assigneeId === u.id" class="assign-check"><AppIcon name="check" :size="12" /></span>
         </button>
         <button class="assign-option" @click="quickAssign(null)">
-          <span class="assign-avatar assign-avatar-empty">—</span> Без исполнителя
+          <span class="assign-avatar assign-avatar-empty">\u2014</span> \u0411\u0435\u0437 \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f
         </button>
       </div>
     </Teleport>
@@ -352,10 +421,10 @@ function closeContextMenu() {
         <input
           ref="inlineChecklistInputEl"
           v-model="newInlineChecklistTitle"
-          placeholder="Новый пункт чек-листа"
+          placeholder="\u041d\u043e\u0432\u044b\u0439 \u043f\u0443\u043d\u043a\u0442 \u0447\u0435\u043a-\u043b\u0438\u0441\u0442\u0430"
           @keyup.enter="addInlineChecklistItem"
         />
-        <button class="btn btn-sm" @click="addInlineChecklistItem">Добавить</button>
+        <button class="btn btn-sm" @click="addInlineChecklistItem">\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c</button>
       </div>
     </div>
 
@@ -367,7 +436,7 @@ function closeContextMenu() {
           ref="subtaskInputEl"
           v-model="subtaskDraft"
           class="subtask-add-input"
-          placeholder="Название подзадачи, Enter — добавить и продолжить"
+          placeholder="\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043f\u043e\u0434\u0437\u0430\u0434\u0430\u0447\u0438, Enter \u2014 \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0438 \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c"
           @keyup.enter="commitSubtask(true)"
           @keyup.escape="cancelAddSubtask"
           @blur="commitSubtask(false)"
@@ -421,22 +490,27 @@ function closeContextMenu() {
 .mini-count-clickable { cursor: pointer; padding: 1px 5px; border-radius: 4px; }
 .mini-count-clickable:hover { background: #eef1f7; color: var(--color-text); }
 .task-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.due-date { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 3px; }
+.due-date {
+  font-size: 11.5px; color: var(--color-text-muted);
+  display: inline-flex; align-items: center; gap: 3px;
+}
+.due-date-clickable {
+  cursor: pointer; border-radius: 5px; padding: 1px 5px; margin: -1px -5px;
+  transition: background 120ms;
+}
+.due-date-clickable:hover { background: #eef1f7; color: var(--color-text); }
+.due-date-caret { opacity: 0.5; }
+.due-overdue { color: var(--color-danger) !important; font-weight: 600; }
 .date-meta { font-size: 11px; color: var(--color-text-muted); opacity: 0.75; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
 .date-meta-done { color: #1e9e4d; opacity: 0.85; }
 .list-badge { font-weight: 600; }
 .watcher-tag { background: #f4f0ff; color: #7c5cd6; display: inline-flex; align-items: center; gap: 3px; }
-/* Бейдж подвстречи выделен акцентным синим фоном (в отличие от нейтральных .tag),
-   чтобы сразу читался как ссылка на встречу, а не просто метаданные, и был кликабелен. */
 .occurrence-badge {
   background: #eef2ff; color: var(--color-primary-dark); font-weight: 600; border: none; cursor: pointer;
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 999px;
 }
 .occurrence-badge:hover { background: #dfe6ff; }
 .task-assignee { width: 26px; flex-shrink: 0; position: relative; }
-/* В детальном режиме исполнитель — не просто круглый значок, а пилюля с именем,
-   поэтому фиксированная узкая ширина 26px больше не подходит: даём авто-ширину
-   с ограничением, чтобы длинные имена не разрывали строку списка. */
 .task-assignee-detailed { width: auto; max-width: 180px; flex-shrink: 0; }
 .avatar-btn { border: none; background: none; padding: 0; cursor: pointer; display: flex; border-radius: 50%; }
 .avatar-btn-disabled { cursor: default; }
@@ -446,17 +520,44 @@ function closeContextMenu() {
 }
 .avatar-btn-detailed:hover { background: #e4e8f2; }
 .avatar-btn-detailed.avatar-btn-disabled:hover { background: #eef1f7; }
-.assignee-name {
-  font-size: 12px; font-weight: 600; color: var(--color-text); white-space: nowrap;
-  overflow: hidden; text-overflow: ellipsis;
-}
+.assignee-name { font-size: 12px; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .avatar {
   width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary);
-  color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700;
-  flex-shrink: 0;
+  color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0;
 }
 .avatar-empty { background: #d9dde8; color: var(--color-text-muted); font-weight: 700; }
 .avatar-compact { width: 18px; height: 18px; font-size: 8px; }
+
+/* --- Date picker dropdown --- */
+.date-picker-dropdown {
+  position: fixed; z-index: 500; width: 210px;
+  padding: 8px; display: flex; flex-direction: column; gap: 6px;
+  box-shadow: 0 4px 12px rgba(20, 24, 38, 0.08), 0 16px 40px rgba(20, 24, 38, 0.16);
+}
+.date-picker-label {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--color-text-muted); padding: 2px 4px 4px;
+}
+.date-presets { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.date-preset-btn {
+  border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 7px;
+  padding: 6px 8px; font-size: 12px; cursor: pointer; color: var(--color-text); text-align: center;
+}
+.date-preset-btn:hover { background: #eef1f7; border-color: var(--color-primary); color: var(--color-primary); }
+.date-picker-custom { display: flex; }
+.date-input {
+  flex: 1; border: 1px solid var(--color-border); border-radius: 7px;
+  padding: 6px 8px; font-size: 12.5px; outline: none; cursor: pointer;
+}
+.date-input:focus { border-color: var(--color-primary); }
+.date-clear-btn {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  border: none; background: none; padding: 5px 8px; border-radius: 7px;
+  font-size: 12px; cursor: pointer; color: var(--color-text-muted);
+}
+.date-clear-btn:hover { background: #ffeaea; color: var(--color-danger); }
+
+/* --- Assign dropdown --- */
 .assign-dropdown {
   position: fixed; z-index: 500; min-width: 220px;
   padding: 6px; display: flex; flex-direction: column; gap: 1px; max-height: 280px; overflow-y: auto;
@@ -475,6 +576,7 @@ function closeContextMenu() {
 }
 .assign-avatar-empty { background: #d9dde8; color: var(--color-text-muted); }
 .assign-check { margin-left: auto; color: var(--color-primary); font-weight: 700; display: flex; }
+
 .task-quick-actions { display: flex; gap: 2px; opacity: 1; }
 .task-children { border-left: 1px solid var(--color-border); margin-left: 20px; }
 .subtask-add-row { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: #fafbfe; }
