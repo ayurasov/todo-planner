@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { useUsersStore } from '../stores/usersStore'
 import { useDepartmentsStore } from '../stores/departmentsStore'
 import { useIsAdmin } from '../composables/usePermissions'
-import { getInitials, getAvatarColor } from '../utils/avatar'
+import { getInitials, getAvatarColor, avatarSrc } from '../utils/avatar'
 
 const usersStore = useUsersStore()
 const departmentsStore = useDepartmentsStore()
@@ -312,6 +312,14 @@ async function handleResetPassword(user) {
 function closePasswordModal() {
   temporaryPasswordInfo.value = null
 }
+
+/** При ошибке загрузки img — скрыть img, показать fallback-спан рядом */
+function onAvatarError(e) {
+  const img = e.target
+  img.style.display = 'none'
+  const fallback = img.nextElementSibling
+  if (fallback) fallback.style.display = 'flex'
+}
 </script>
 
 <template>
@@ -362,8 +370,17 @@ function closePasswordModal() {
       <div v-for="u in filteredSortedUsers" :key="u.id" class="user-row" :class="{ inactive: !u.isActive, 'is-system': u.isSystem }">
         <div class="user-cell">
           <div class="user-avatar-wrap">
-            <img v-if="u.avatarUrl" :src="u.avatarUrl" class="user-avatar user-avatar-img" alt="" />
-            <span v-else class="user-avatar" :style="{ background: getAvatarColor(u.name) }">{{ getInitials(u.name) }}</span>
+            <img
+              v-if="u.avatarUrl"
+              :src="avatarSrc(u.avatarUrl)"
+              class="user-avatar user-avatar-img"
+              alt=""
+              @error="onAvatarError"
+            />
+            <span
+              class="user-avatar"
+              :style="{ background: getAvatarColor(u.name), display: u.avatarUrl ? 'none' : 'flex' }"
+            >{{ getInitials(u.name) }}</span>
           </div>
           <div class="user-info">
             <span class="user-name">
@@ -443,35 +460,39 @@ function closePasswordModal() {
 
       <div class="avatar-field">
         <div class="avatar-field-preview">
-          <img v-if="createAvatarPreviewUrl" :src="createAvatarPreviewUrl" class="user-avatar user-avatar-img avatar-lg" alt="" />
-          <span v-else class="user-avatar avatar-lg" :style="{ background: getAvatarColor(newUser.name || newUser.login) }">{{ getInitials(newUser.name || newUser.login) }}</span>
+          <img v-if="createAvatarPreviewUrl" :src="createAvatarPreviewUrl" class="avatar-preview-img" alt="" />
+          <span v-else class="avatar-preview-placeholder">фото</span>
         </div>
         <div class="avatar-field-actions">
-          <input ref="createAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onCreateAvatarFileSelected" />
           <button type="button" class="btn btn-sm btn-ghost" @click="triggerCreateAvatarPick">Выбрать фото</button>
-          <button v-if="createAvatarFile" type="button" class="btn btn-sm btn-ghost" @click="clearCreateAvatarSelection">Убрать выбор</button>
+          <button v-if="createAvatarFile" type="button" class="btn btn-sm btn-ghost" @click="clearCreateAvatarSelection">Убрать</button>
+          <input ref="createAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onCreateAvatarFileSelected" />
         </div>
+        <p v-if="createAvatarError" class="field-error">{{ createAvatarError }}</p>
       </div>
-      <p v-if="createAvatarError" class="error-text">{{ createAvatarError }}</p>
 
       <label class="field">
-        <span>Логин</span>
-        <input v-model="newUser.login" type="text" placeholder="ivanov" />
+        <span>Логин *</span>
+        <input v-model="newUser.login" type="text" autocomplete="off" />
       </label>
       <label class="field">
-        <span>Имя</span>
-        <input v-model="newUser.name" type="text" placeholder="Иван Иванов" />
+        <span>Имя *</span>
+        <input v-model="newUser.name" type="text" />
       </label>
       <label class="field">
-        <span>Email</span>
-        <input v-model="newUser.email" type="email" placeholder="ivanov@example.com" />
+        <span>Email *</span>
+        <input v-model="newUser.email" type="email" />
+      </label>
+      <label class="field">
+        <span>Пароль (оставьте пустым — будет сгенерирован)</span>
+        <input v-model="newUser.password" type="password" autocomplete="new-password" />
       </label>
       <label class="field">
         <span>Должность</span>
-        <input v-model="newUser.position" type="text" placeholder="Менеджер проектов" />
+        <input v-model="newUser.position" type="text" />
       </label>
       <label class="field">
-        <span>Отдел/служба</span>
+        <span>Отдел</span>
         <select v-model="newUser.departmentId">
           <option value="">— не выбран —</option>
           <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
@@ -483,197 +504,115 @@ function closePasswordModal() {
           <option v-for="(label, role) in ROLE_LABEL" :key="role" :value="role">{{ label }}</option>
         </select>
       </label>
-      <label v-if="newUser.globalRole === 'manager'" class="field">
-        <span>Отделы/службы, которыми руководит (можно несколько)</span>
-        <select v-model="newUser.managerDepartmentIds" multiple size="4">
-          <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Пароль (необязательно — иначе сгенерируется)</span>
-        <input v-model="newUser.password" type="text" placeholder="минимум 8 символов" />
-      </label>
-      <p v-if="createError" class="error-text">{{ createError }}</p>
+      <div v-if="newUser.globalRole === 'manager'" class="field">
+        <span>Отделы в управлении</span>
+        <div class="checkbox-list">
+          <label v-for="d in departmentsStore.sortedDepartments" :key="d.id" class="checkbox-item">
+            <input v-model="newUser.managerDepartmentIds" type="checkbox" :value="d.id" />
+            {{ d.name }}
+          </label>
+        </div>
+      </div>
+
+      <p v-if="createError" class="field-error">{{ createError }}</p>
       <div class="modal-actions">
-        <button class="btn btn-sm btn-ghost" @click="closeCreateForm">Отмена</button>
-        <button class="btn btn-sm btn-primary" :disabled="creating" @click="submitCreateUser">
+        <button class="btn btn-ghost btn-sm" @click="closeCreateForm">Отмена</button>
+        <button class="btn btn-primary btn-sm" :disabled="creating" @click="submitCreateUser">
           {{ creating ? 'Создание...' : 'Создать' }}
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Модалка редактирования пользователя -->
+  <!-- Модалка редактирования -->
   <div v-if="editingUser" class="modal-backdrop">
     <div class="modal-card">
-      <h3>Изменить пользователя</h3>
+      <h3>Редактировать пользователя</h3>
 
       <div class="avatar-field">
         <div class="avatar-field-preview">
-          <img v-if="editingUser.avatarUrl" :src="editingUser.avatarUrl" class="user-avatar user-avatar-img avatar-lg" alt="" />
-          <span v-else class="user-avatar avatar-lg" :style="{ background: getAvatarColor(editingUser.name) }">{{ getInitials(editingUser.name) }}</span>
+          <img
+            v-if="editingUser.avatarUrl"
+            :src="avatarSrc(editingUser.avatarUrl)"
+            class="avatar-preview-img"
+            alt=""
+            @error="(e) => { e.target.style.display='none' }"
+          />
+          <span v-if="!editingUser.avatarUrl" class="avatar-preview-placeholder">фото</span>
         </div>
         <div class="avatar-field-actions">
-          <input ref="editAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onEditAvatarFileSelected" />
           <button type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="triggerEditAvatarPick">
-            {{ editAvatarUploading ? 'Загрузка...' : 'Загрузить фото' }}
+            {{ editAvatarUploading ? 'Загрузка...' : 'Изменить фото' }}
           </button>
-          <button v-if="editingUser.avatarUrl" type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="handleRemoveEditAvatar">Сброс фото</button>
+          <button v-if="editingUser.avatarUrl" type="button" class="btn btn-sm btn-ghost" :disabled="editAvatarUploading" @click="handleRemoveEditAvatar">Удалить фото</button>
+          <input ref="editAvatarFileInputEl" type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="file-input-hidden" @change="onEditAvatarFileSelected" />
         </div>
+        <p v-if="editAvatarError" class="field-error">{{ editAvatarError }}</p>
       </div>
-      <p v-if="editAvatarError" class="error-text">{{ editAvatarError }}</p>
 
       <label class="field">
-        <span>Имя</span>
+        <span>Имя *</span>
         <input v-model="editForm.name" type="text" />
       </label>
       <label class="field">
-        <span>Email</span>
+        <span>Email *</span>
         <input v-model="editForm.email" type="email" />
       </label>
       <label class="field">
         <span>Должность</span>
-        <input v-model="editForm.position" type="text" placeholder="Менеджер проектов" />
+        <input v-model="editForm.position" type="text" />
       </label>
       <label class="field">
-        <span>Отдел/служба</span>
+        <span>Отдел</span>
         <select v-model="editForm.departmentId">
           <option value="">— не выбран —</option>
           <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
         </select>
       </label>
-      <label v-if="editingUser.globalRole === 'manager'" class="field">
-        <span>Отделы/службы, которыми руководит (можно несколько)</span>
-        <select v-model="editForm.managerDepartmentIds" multiple size="4">
-          <option v-for="d in departmentsStore.sortedDepartments" :key="d.id" :value="d.id">{{ d.name }}</option>
-        </select>
-      </label>
-      <p v-if="editError" class="error-text">{{ editError }}</p>
+      <div v-if="editingUser.globalRole === 'manager'" class="field">
+        <span>Отделы в управлении</span>
+        <div class="checkbox-list">
+          <label v-for="d in departmentsStore.sortedDepartments" :key="d.id" class="checkbox-item">
+            <input v-model="editForm.managerDepartmentIds" type="checkbox" :value="d.id" />
+            {{ d.name }}
+          </label>
+        </div>
+      </div>
+
+      <p v-if="editError" class="field-error">{{ editError }}</p>
       <div class="modal-actions">
-        <button class="btn btn-sm btn-ghost" @click="closeEditForm">Отмена</button>
-        <button class="btn btn-sm btn-primary" :disabled="savingEdit" @click="submitEditUser">
+        <button class="btn btn-ghost btn-sm" @click="closeEditForm">Отмена</button>
+        <button class="btn btn-primary btn-sm" :disabled="savingEdit" @click="submitEditUser">
           {{ savingEdit ? 'Сохранение...' : 'Сохранить' }}
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Модалка подтверждения удаления -->
-  <div v-if="confirmDeleteUser" class="modal-backdrop" @click.self="confirmDeleteUser = null">
-    <div class="modal-card">
-      <h3>удалить пользователя?</h3>
-      <p class="hint-text">
-        Пользователь «{{ confirmDeleteUser.name }}» будет удалён без возможности восстановления.
-        его задачи, комментарии и участие в списках будут переприсвоены/обезличены согласно правилам системы.
-      </p>
+  <!-- Подтверждение удаления -->
+  <div v-if="confirmDeleteUser" class="modal-backdrop">
+    <div class="modal-card modal-card-sm">
+      <h3>Удалить пользователя?</h3>
+      <p>{{ confirmDeleteUser.name }} ({{ confirmDeleteUser.email }}) будет удалён без возможности восстановления.</p>
       <div class="modal-actions">
-        <button class="btn btn-sm btn-ghost" @click="confirmDeleteUser = null">Отмена</button>
-        <button class="btn btn-sm btn-danger" :disabled="deletingId === confirmDeleteUser.id" @click="confirmDelete">
-          {{ deletingId === confirmDeleteUser.id ? 'удаление...' : 'удалить' }}
+        <button class="btn btn-ghost btn-sm" @click="confirmDeleteUser = null">Отмена</button>
+        <button class="btn btn-danger btn-sm" :disabled="deletingId === confirmDeleteUser.id" @click="confirmDelete">
+          {{ deletingId === confirmDeleteUser.id ? 'Удаление...' : 'Удалить' }}
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Модалка показа временного пароля -->
-  <div v-if="temporaryPasswordInfo" class="modal-backdrop" @click.self="closePasswordModal">
-    <div class="modal-card">
+  <!-- Модалка с временным паролем -->
+  <div v-if="temporaryPasswordInfo" class="modal-backdrop">
+    <div class="modal-card modal-card-sm">
       <h3>Временный пароль</h3>
-      <p class="hint-text">
-        сохраните и передайте пароль пользователю сейчас — повторно он не будет показан.
-      </p>
-      <div class="password-box">
-        <div><strong>Логин:</strong> {{ temporaryPasswordInfo.login }}</div>
-        <div><strong>Пароль:</strong> <code>{{ temporaryPasswordInfo.password }}</code></div>
-      </div>
+      <p>Передайте пользователю:</p>
+      <p><strong>Логин:</strong> {{ temporaryPasswordInfo.login }}</p>
+      <p><strong>Пароль:</strong> <code>{{ temporaryPasswordInfo.password }}</code></p>
       <div class="modal-actions">
-        <button class="btn btn-sm btn-primary" @click="closePasswordModal">Понятно</button>
+        <button class="btn btn-primary btn-sm" @click="closePasswordModal">Закрыть</button>
       </div>
     </div>
   </div>
 </template>
-
-<style scoped>
-.view-header { margin-bottom: 14px; }
-.view-header h2 { margin: 0; font-size: 19px; }
-.users-header { display: flex; align-items: center; justify-content: space-between; }
-.users-section { padding: 16px 18px; }
-.hint-text { font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 14px; }
-.empty-hint { margin: 16px 0 0; text-align: center; }
-.file-input-hidden { display: none; }
-
-.filters-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
-.filter-input {
-  flex: 1 1 220px; border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 10px; font-size: 12.5px;
-}
-.filter-select {
-  border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 9px; font-size: 12.5px;
-}
-.filter-checkbox { display: flex; align-items: center; gap: 5px; font-size: 12.5px; cursor: pointer; user-select: none; }
-.filter-checkbox input { cursor: pointer; }
-
-.users-table { display: flex; flex-direction: column; }
-.users-table-head {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 260px; gap: 10px;
-  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted);
-  padding: 0 8px 8px; border-bottom: 1px solid var(--color-border);
-}
-.sortable { cursor: pointer; user-select: none; }
-.sortable:hover { color: var(--color-text); }
-.user-row {
-  display: grid; grid-template-columns: 1.4fr 1fr 1fr 150px 140px 260px; gap: 10px; align-items: center;
-  padding: 10px 8px; border-bottom: 1px solid var(--color-border);
-}
-.user-row.inactive { opacity: 0.55; }
-.user-row.is-system { background: #f8f6ff; }
-.user-cell { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.text-cell { font-size: 12.5px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
-.user-avatar-wrap { position: relative; flex-shrink: 0; }
-.user-avatar {
-  width: 30px; height: 30px; border-radius: 50%; background: #b7bfd1; color: #fff;
-  display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0;
-}
-.user-avatar-img { object-fit: cover; }
-.avatar-lg { width: 56px; height: 56px; font-size: 18px; }
-.user-info { display: flex; flex-direction: column; min-width: 0; }
-.user-name { font-size: 13.5px; font-weight: 600; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.self-badge {
-  font-size: 10px; font-weight: 700; background: #eef1f7; color: var(--color-text-muted);
-  padding: 1px 6px; border-radius: 10px;
-}
-.system-badge {
-  font-size: 10px; font-weight: 600; background: #ede9fe; color: #6d28d9;
-  padding: 1px 6px; border-radius: 10px; cursor: default;
-}
-.user-email { font-size: 12px; color: var(--color-text-muted); overflow: hidden; text-overflow: ellipsis; }
-.managed-badge { font-size: 11px; color: #4f7cff; overflow: hidden; text-overflow: ellipsis; }
-.role-select { border: 1px solid var(--color-border); border-radius: 6px; padding: 6px 9px; font-size: 12.5px; }
-.role-select:disabled { opacity: 0.6; cursor: not-allowed; }
-.status-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-.row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.btn-warning { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
-.btn-warning:hover:not(:disabled) { background: #fde68a; }
-
-.modal-backdrop {
-  position: fixed; inset: 0; background: rgba(20, 24, 34, 0.45);
-  display: flex; align-items: center; justify-content: center; z-index: 100;
-}
-.modal-card {
-  background: #fff; border-radius: 10px; padding: 20px 22px; width: 380px;
-  display: flex; flex-direction: column; gap: 10px; max-height: 90vh; overflow-y: auto;
-}
-.modal-card h3 { margin: 0 0 4px; font-size: 16px; }
-.field { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
-.field input, .field select {
-  border: 1px solid var(--color-border); border-radius: 6px; padding: 7px 9px; font-size: 13px;
-}
-.avatar-field { display: flex; align-items: center; gap: 12px; }
-.avatar-field-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
-.error-text { color: #d64545; font-size: 12px; margin: 0; }
-.password-box {
-  background: #f5f6fa; border-radius: 8px; padding: 10px 12px; font-size: 13px;
-  display: flex; flex-direction: column; gap: 6px;
-}
-.password-box code { background: #eceef4; padding: 2px 6px; border-radius: 4px; }
-</style>
