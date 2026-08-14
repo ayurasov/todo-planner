@@ -35,6 +35,7 @@ const available = computed(() => {
   const selected = new Set(props.modelValue)
   const q = search.value.trim().toLowerCase()
   return props.users
+    .filter((u) => !u.is_system)          // Скрываем системных пользователей
     .filter((u) => !selected.has(u.id))
     .filter((u) => !q || u.name.toLowerCase().includes(q))
 })
