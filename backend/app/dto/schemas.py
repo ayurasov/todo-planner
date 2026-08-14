@@ -269,6 +269,8 @@ class MeetingResponseDTO(CamelModel):
     created_by: Optional[str] = Field(default=None, alias="createdBy")
     created_at: Optional[str] = Field(default=None, alias="createdAt")
     attendee_ids: List[str] = Field(default_factory=list, alias="attendeeIds")
+    # editor_ids -- пользователи с правом редактирования встречи (таблица meeting_editors).
+    editor_ids: List[str] = Field(default_factory=list, alias="editorIds")
     color: str = "#4f7cff"
     archived: bool = False
     order: int = 0
@@ -287,6 +289,7 @@ class MeetingCreateDTO(CamelModel):
     date: str
     description: str = ""
     attendee_ids: List[str] = Field(default_factory=list, alias="attendeeIds")
+    editor_ids: List[str] = Field(default_factory=list, alias="editorIds")
     color: str = "#4f7cff"
     link: str = ""
     recurrence: Optional[Dict[str, Any]] = None
@@ -297,6 +300,7 @@ class MeetingUpdateDTO(CamelModel):
     date: Optional[str] = None
     description: Optional[str] = None
     attendee_ids: Optional[List[str]] = Field(default=None, alias="attendeeIds")
+    editor_ids: Optional[List[str]] = Field(default=None, alias="editorIds")
     color: Optional[str] = None
     link: Optional[str] = None
     recurrence: Optional[Dict[str, Any]] = None

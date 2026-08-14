@@ -115,6 +115,9 @@ class Meeting:
     created_by: Optional[str] = None
     created_at: Optional[str] = None
     attendee_ids: list = field(default_factory=list)
+    # editor_ids -- пользователи с правом редактирования встречи.
+    # Хранятся в таблице meeting_editors (миграция 022).
+    editor_ids: list = field(default_factory=list)
     color: str = "#4f7cff"
     archived: bool = False
     order: int = 0

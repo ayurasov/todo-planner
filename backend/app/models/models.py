@@ -161,6 +161,17 @@ class MeetingAttendeeORM(db.Model):
     user_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
 
 
+class MeetingEditorORM(db.Model):
+    """Редакторы встречи -- пользователи, которые могут редактировать встречу
+    (добавлять/изменять поля, управлять участниками). Аналог attendees, но
+    с правами на редактирование, а не только на участие."""
+
+    __tablename__ = "meeting_editors"
+
+    meeting_id = db.Column(db.String(ID_LEN), db.ForeignKey("meetings.id", ondelete="CASCADE"), primary_key=True)
+    user_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+
+
 class MeetingOccurrenceORM(db.Model):
     __tablename__ = "meeting_occurrences"
 
@@ -242,10 +253,10 @@ class NoteORM(db.Model):
 
     id = db.Column(db.String(ID_LEN), primary_key=True)
     task_id = db.Column(db.String(ID_LEN), db.ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
-    content = db.Column(JSONVariant(), nullable=False, default=lambda: {"type": "doc", "content": []})
-    updated_by = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="SET NULL"))
+    content = db.Column(db.Text, nullable=False, default="{}")
     created_at = db.Column(TZDateTime(), nullable=False)
     updated_at = db.Column(TZDateTime(), nullable=False)
+    updated_by = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="SET NULL"))
 
 
 class AttachmentORM(db.Model):
@@ -268,8 +279,8 @@ class TaskHistoryEntryORM(db.Model):
     id = db.Column(db.String(ID_LEN), primary_key=True)
     task_id = db.Column(db.String(ID_LEN), db.ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False)
     actor_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="SET NULL"))
-    timestamp = db.Column(TZDateTime(), nullable=False)
     type = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(TZDateTime(), nullable=False)
     field = db.Column(db.Text)
     old_value = db.Column(db.Text)
     new_value = db.Column(db.Text)
@@ -301,7 +312,7 @@ class SavedViewORM(db.Model):
     user_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name = db.Column(db.Text, nullable=False)
     filters = db.Column(JSONVariant(), nullable=False, default=dict)
-    sort = db.Column(JSONVariant(), nullable=False, default=lambda: {"field": "score", "dir": "desc"})
+    sort = db.Column(JSONVariant(), nullable=False, default=dict)
     group_by = db.Column(db.Text)
     pinned = db.Column(db.Boolean, nullable=False, default=False)
 
@@ -312,13 +323,13 @@ class NotificationORM(db.Model):
     id = db.Column(db.String(ID_LEN), primary_key=True)
     user_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     type = db.Column(db.Text, nullable=False)
+    title = db.Column(db.Text, nullable=False)
+    body = db.Column(db.Text, nullable=False, default="")
     task_id = db.Column(db.String(ID_LEN), db.ForeignKey("tasks.id", ondelete="SET NULL"))
     list_id = db.Column(db.String(ID_LEN), db.ForeignKey("lists.id", ondelete="SET NULL"))
     actor_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="SET NULL"))
-    title = db.Column(db.Text, nullable=False)
-    body = db.Column(db.Text, nullable=False, default="")
-    read = db.Column(db.Boolean, nullable=False, default=False)
     created_at = db.Column(TZDateTime(), nullable=False)
+    read = db.Column(db.Boolean, nullable=False, default=False)
 
 
 class ReminderTriggerORM(db.Model):
@@ -336,7 +347,7 @@ class CalendarIntegrationORM(db.Model):
     __tablename__ = "calendar_integrations"
 
     id = db.Column(db.String(ID_LEN), primary_key=True)
-    user_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    user_id = db.Column(db.String(ID_LEN), db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     provider = db.Column(db.Text, nullable=False, default="none")
     status = db.Column(db.Text, nullable=False, default="disconnected")
     sync_settings = db.Column(JSONVariant(), nullable=False, default=dict)

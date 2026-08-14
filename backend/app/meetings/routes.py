@@ -65,6 +65,7 @@ def create_meeting(**kwargs):
         color=payload.get("color", "#4f7cff"),
         recurrence=payload.get("recurrence"),
         attendee_ids=payload.get("attendeeIds", []),
+        editor_ids=payload.get("editorIds", []),
         created_by=payload.get("createdBy", user_id),
         order=payload.get("order", 0),
     )
@@ -87,7 +88,7 @@ def update_meeting(meeting_id, **kwargs):
     field_map = {
         "title": "title", "date": "date", "description": "description", "link": "link",
         "color": "color", "archived": "archived", "order": "order", "recurrence": "recurrence",
-        "attendeeIds": "attendee_ids", "occurrences": "occurrences",
+        "attendeeIds": "attendee_ids", "editorIds": "editor_ids", "occurrences": "occurrences",
     }
     patch = {snake: payload[camel] for camel, snake in field_map.items() if camel in payload}
 

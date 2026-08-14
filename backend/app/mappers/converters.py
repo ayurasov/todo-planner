@@ -135,7 +135,9 @@ class orm_to_domain:
         )
 
     @staticmethod
-    def meeting(row: orm.MeetingORM, attendee_ids: Optional[list] = None, occurrences: Optional[list] = None,
+    def meeting(row: orm.MeetingORM, attendee_ids: Optional[list] = None,
+                editor_ids: Optional[list] = None,
+                occurrences: Optional[list] = None,
                 unfinished_count: int = 0) -> d.Meeting:
         return d.Meeting(
             id=row.id,
@@ -145,6 +147,7 @@ class orm_to_domain:
             created_by=row.created_by,
             created_at=_iso(row.created_at),
             attendee_ids=attendee_ids or [],
+            editor_ids=editor_ids or [],
             color=row.color,
             archived=bool(row.archived),
             order=row.order_index,
@@ -348,7 +351,8 @@ class domain_to_dto:
     def meeting(m: d.Meeting) -> api_dto.MeetingResponseDTO:
         return api_dto.MeetingResponseDTO(
             id=m.id, title=m.title, date=m.date, description=m.description,
-            created_by=m.created_by, created_at=m.created_at, attendee_ids=m.attendee_ids,
+            created_by=m.created_by, created_at=m.created_at,
+            attendee_ids=m.attendee_ids, editor_ids=m.editor_ids,
             color=m.color, archived=m.archived, order=m.order, link=m.link,
             recurrence=m.recurrence,
             occurrences=[domain_to_dto.meeting_occurrence(o) for o in m.occurrences],
@@ -476,6 +480,7 @@ class dto_to_domain:
             date=dto_obj.date,
             description=dto_obj.description,
             attendee_ids=dto_obj.attendee_ids,
+            editor_ids=dto_obj.editor_ids,
             color=dto_obj.color,
             link=dto_obj.link,
             recurrence=dto_obj.recurrence,

@@ -1,6 +1,6 @@
 """
-MeetingRepository -- CRUD встреч (MeetingORM), участники (MeetingAttendeeORM)
-и подвстречи регулярных серий (MeetingOccurrenceORM).
+MeetingRepository -- CRUD встреч (MeetingORM), участники (MeetingAttendeeORM),
+редакторы (MeetingEditorORM) и подвстречи регулярных серий (MeetingOccurrenceORM).
 
 Агрегация "не выполнено в серии" (unfinishedTotalCount) перенесена на backend
 и отдаётся готовым полем в MeetingResponseDTO -- см. решение в backend/README.md,
@@ -14,7 +14,7 @@ MeetingRepository -- CRUD встреч (MeetingORM), участники (Meeting
 
 from app.extensions import db
 from app.mappers import orm_to_domain
-from app.models import MeetingAttendeeORM, MeetingOccurrenceORM, MeetingORM, TaskORM
+from app.models import MeetingAttendeeORM, MeetingEditorORM, MeetingOccurrenceORM, MeetingORM, TaskORM
 from app.repositories.common import new_id, now_iso
 
 
@@ -22,6 +22,10 @@ from app.repositories.common import new_id, now_iso
 class MeetingRepository:
     def _attendee_ids(self, meeting_id: str):
         rows = MeetingAttendeeORM.query.filter_by(meeting_id=meeting_id).all()
+        return [row.user_id for row in rows]
+
+    def _editor_ids(self, meeting_id: str):
+        rows = MeetingEditorORM.query.filter_by(meeting_id=meeting_id).all()
         return [row.user_id for row in rows]
 
     def _occurrences(self, meeting_id: str):
@@ -36,6 +40,7 @@ class MeetingRepository:
         return orm_to_domain.meeting(
             row,
             attendee_ids=self._attendee_ids(row.id),
+            editor_ids=self._editor_ids(row.id),
             occurrences=self._occurrences(row.id),
             unfinished_count=self.unfinished_total_count(row.id),
         )
@@ -49,7 +54,7 @@ class MeetingRepository:
         return self._to_domain(row) if row else None
 
     def create(self, *, title, date, description="", link="", color="#4f7cff", recurrence=None,
-               attendee_ids=None, created_by=None, order=0):
+               attendee_ids=None, editor_ids=None, created_by=None, order=0):
         timestamp = now_iso()
         row = MeetingORM(
             id=new_id(), title=title, date=date, description=description, link=link, color=color,
@@ -57,21 +62,19 @@ class MeetingRepository:
             created_by=created_by, created_at=timestamp,
         )
         db.session.add(row)
-        # MeetingORM <-> MeetingAttendeeORM связаны только через FK-колонку meeting_id,
-        # без SQLAlchemy relationship(). Без relationship unit-of-work не всегда строит
-        # правильный порядок INSERT между родителем и потомком в рамках одной транзакции --
-        # на Postgres это приводило к ForeignKeyViolation на meeting_attendees_meeting_id_fkey
-        # (see incident: создание регулярной встречи с несколькими участниками). Явный
-        # flush() отправляет INSERT meetings в БД до того, как добавляются attendee-строки,
-        # но не завершает транзакцию -- commit() ниже остаётся один, атомарность сохраняется.
+        # MeetingORM <-> MeetingAttendeeORM/MeetingEditorORM связаны только через FK-колонку
+        # meeting_id, без SQLAlchemy relationship(). Явный flush() отправляет INSERT meetings
+        # в БД до того, как добавляются attendee/editor строки -- атомарность сохраняется.
         db.session.flush()
         for user_id in (attendee_ids or []):
             db.session.add(MeetingAttendeeORM(meeting_id=row.id, user_id=user_id))
+        for user_id in (editor_ids or []):
+            db.session.add(MeetingEditorORM(meeting_id=row.id, user_id=user_id))
         db.session.commit()
         return self._to_domain(row)
 
     def update(self, meeting_id: str, patch: dict):
-        """Атомарный partial update. `occurrences` в patch -- списоргнуть подвстречи
+        """Атомарный partial update. `occurrences` в patch -- полная замена подвстреч
         (каждая запись с dict-полями id/date/description/link) -- порт логики
         meetingsStore.ensureOccurrences/updateOccurrence, которые передают весь список occurrences
         целиком через PATCH."""
@@ -92,6 +95,10 @@ class MeetingRepository:
             MeetingAttendeeORM.query.filter_by(meeting_id=meeting_id).delete()
             for user_id in patch["attendee_ids"] or []:
                 db.session.add(MeetingAttendeeORM(meeting_id=meeting_id, user_id=user_id))
+        if "editor_ids" in patch:
+            MeetingEditorORM.query.filter_by(meeting_id=meeting_id).delete()
+            for user_id in patch["editor_ids"] or []:
+                db.session.add(MeetingEditorORM(meeting_id=meeting_id, user_id=user_id))
         if "occurrences" in patch:
             MeetingOccurrenceORM.query.filter_by(meeting_id=meeting_id).delete()
             for occ in patch["occurrences"] or []:
@@ -112,7 +119,7 @@ class MeetingRepository:
         if row is None:
             return False
         TaskORM.query.filter_by(meeting_id=meeting_id).update({"meeting_id": None, "occurrence_id": None})
-        db.session.delete(row)  # ON DELETE CASCADE -- attendees/occurrences удаляются в базе
+        db.session.delete(row)  # ON DELETE CASCADE -- attendees/editors/occurrences удаляются в базе
         db.session.commit()
         return True
 
