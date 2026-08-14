@@ -9,7 +9,7 @@ import { useNotificationsStore } from '../../stores/notificationsStore'
 import { useMeetingsStore } from '../../stores/meetingsStore'
 import { PRIORITY_LABEL } from '../../domain/entities/enums'
 import { relativeDay, isOverdue } from '../../utils/formatters'
-import { getInitials, getAvatarColor } from '../../utils/avatar'
+import { getInitials, getAvatarColor, avatarSrc } from '../../utils/avatar'
 import QuickCreateModal from '../task/QuickCreateModal.vue'
 import NotificationsPanel from '../notifications/NotificationsPanel.vue'
 import ProfileModal from './ProfileModal.vue'
@@ -28,6 +28,7 @@ const search = ref('')
 const searchFocused = ref(false)
 const searchWrapEl = ref(null)
 const notifOpen = ref(false)
+const avatarImgFailed = ref(false)
 
 const STATUS_LABEL = { open: 'Не начато', in_progress: 'В работе', done: 'Выполнено', cancelled: 'Отменено' }
 
@@ -71,6 +72,11 @@ function contextForCreate() {
 
 function openCreate() {
   uiStore.openQuickCreate(contextForCreate())
+}
+
+function onCurrentUserAvatarError(e) {
+  e.target.style.display = 'none'
+  avatarImgFailed.value = true
 }
 </script>
 
@@ -118,8 +124,18 @@ function openCreate() {
       </div>
 
       <button v-if="usersStore.currentUser" class="current-user" title="Открыть профиль" @click="uiStore.openProfile()">
-        <img v-if="usersStore.currentUser.avatarUrl" :src="usersStore.currentUser.avatarUrl" class="current-user-avatar" alt="" />
-        <span v-else class="current-user-avatar current-user-avatar-fallback" :style="{ background: getAvatarColor(usersStore.currentUser.name) }">
+        <img
+          v-if="usersStore.currentUser.avatarUrl && !avatarImgFailed"
+          :src="avatarSrc(usersStore.currentUser.avatarUrl)"
+          class="current-user-avatar"
+          alt=""
+          @error="onCurrentUserAvatarError"
+        />
+        <span
+          v-if="!usersStore.currentUser.avatarUrl || avatarImgFailed"
+          class="current-user-avatar current-user-avatar-fallback"
+          :style="{ background: getAvatarColor(usersStore.currentUser.name) }"
+        >
           {{ getInitials(usersStore.currentUser.name) }}
         </span>
         <span class="current-user-name">{{ usersStore.currentUser.name }}</span>
