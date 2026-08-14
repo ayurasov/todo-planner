@@ -18,10 +18,17 @@ from flask import jsonify, session, request
 # Полные имена Flask-endpoint'ов ("<blueprint>.<view>"), которые доступны без
 # аутентификации: health-check, сам логин и выдача CSRF-токена (он нужен
 # до того, как появится сессия -- фронтенд запрашивает его перед login).
+#
+# uploads.get_avatar -- раздача файлов аватаров (/api/uploads/avatars/<filename>).
+# Браузер загружает <img src="..."> как отдельный resource-запрос, при котором
+# session cookie может не прокидываться, что приводит к 401 и сломанным
+# изображениям. Файлы аватаров не содержат чувствительных данных и доступны
+# только внутри закрытого периметра приложения.
 EXEMPT_ENDPOINTS = {
     "health.health",
     "auth.login",
     "auth.get_csrf_token",
+    "uploads.get_avatar",
 }
 
 
