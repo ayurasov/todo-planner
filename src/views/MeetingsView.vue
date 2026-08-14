@@ -667,7 +667,7 @@ function isRecurringMeeting(meeting) {
 .btn-danger-ghost { color: var(--color-danger); }
 .btn-danger-ghost:hover { background: #fdeceb; }
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal { width: 440px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
+.modal { width: 620px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 10px; }
 .modal-header h3 { margin: 0; font-size: 15px; }
 .modal-body { padding: 4px 18px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
@@ -692,7 +692,7 @@ function isRecurringMeeting(meeting) {
 .assignee-avatar { width: 22px; height: 22px; border-radius: 50%; background: var(--color-primary); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10.5px; font-weight: 700; flex-shrink: 0; }
 .assignee-avatar.empty { background: #d9dde8; color: var(--color-text-muted); }
 .chevron { color: var(--color-text-muted); display: flex; margin-left: auto; }
-.assignee-dropdown { position: relative; margin-top: 6px; width: 100%; z-index: 20; padding: 6px 0 4px; max-height: 260px; overflow-y: auto; box-shadow: var(--shadow-2); }
+.assignee-dropdown { position: absolute; top: 100%; left: 0; margin-top: 6px; width: 100%; z-index: 30; padding: 6px 0 4px; max-height: 260px; overflow-y: auto; box-shadow: var(--shadow-2); background: var(--color-surface); border-radius: 10px; }
 .assignee-search-wrap { padding: 4px 8px 6px; }
 .assignee-search-input { width: 100%; border: 1px solid var(--color-border); border-radius: 7px; padding: 5px 9px; font-size: 12.5px; outline: none; background: #f6f7fb; }
 .assignee-search-input:focus { border-color: var(--color-primary); background: #fff; }
