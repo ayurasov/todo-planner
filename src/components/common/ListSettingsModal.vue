@@ -155,30 +155,9 @@ function toggleView(view) {
         <label class="checkbox-row"><input type="checkbox" v-model="form.requireDueDateOnCreate" /> Требовать срок при создании задачи</label>
         <label class="checkbox-row"><input type="checkbox" v-model="form.showCompletedByDefault" /> Показывать выполненные по умолчанию</label>
 
-        <div class="section-title">Поведение по умолчанию</div>
-        <div class="field-group">
-          <label>Группировка по умолчанию</label>
-          <select v-model="form.defaultGroupBy">
-            <option v-for="g in Object.values(GroupByMode)" :key="g" :value="g">{{ GROUP_LABEL[g] }}</option>
-          </select>
-        </div>
-        <div class="field-group">
-          <label>Сортировка по умолчанию</label>
-          <select v-model="form.defaultSortField">
-            <option v-for="s in Object.values(SortField)" :key="s" :value="s">{{ SORT_LABEL[s] }}</option>
-          </select>
-        </div>
         <div class="field-group">
           <label>Автоархивация выполненных (дней)</label>
           <input v-model.number="form.autoArchiveDoneAfterDays" type="number" min="0" />
-        </div>
-
-        <div class="section-title">Доступные представления</div>
-        <div class="views-toggles">
-          <label v-for="v in ['list', 'tree', 'grouped']" :key="v" class="checkbox-row">
-            <input type="checkbox" :checked="form.allowedViews.includes(v)" @change="toggleView(v)" />
-            {{ v === 'list' ? 'Плоский список' : v === 'tree' ? 'Дерево' : 'Группировка' }}
-          </label>
         </div>
 
         <div class="section-title">Регулярная встреча / звонок</div>
@@ -241,7 +220,7 @@ function toggleView(view) {
 
 <style scoped>
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
-.modal { width: 460px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
+.modal { width: 640px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
 .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 10px; }
 .modal-header h3 { margin: 0; font-size: 15px; }
 .modal-body { padding: 4px 18px 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
