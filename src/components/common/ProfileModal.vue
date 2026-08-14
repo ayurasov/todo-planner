@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { useUsersStore } from '../../stores/usersStore'
 import { useDepartmentsStore } from '../../stores/departmentsStore'
 import { useAuthStore } from '../../stores/authStore'
-import { getInitials, getAvatarColor } from '../../utils/avatar'
+import { getInitials, getAvatarColor, avatarSrc } from '../../utils/avatar'
 import AppIcon from './AppIcon.vue'
 
 const emit = defineEmits(['close'])
@@ -32,6 +32,7 @@ const uploading = ref(false)
 const uploadError = ref('')
 const avatarPreviewOpen = ref(false)
 const loggingOut = ref(false)
+const avatarImgFailed = ref(false)
 
 function triggerFilePicker() {
   uploadError.value = ''
@@ -39,12 +40,17 @@ function triggerFilePicker() {
 }
 
 function openAvatarPreview() {
-  if (!user.value?.avatarUrl) return
+  if (!user.value?.avatarUrl || avatarImgFailed.value) return
   avatarPreviewOpen.value = true
 }
 
 function closeAvatarPreview() {
   avatarPreviewOpen.value = false
+}
+
+function onAvatarImgError(e) {
+  e.target.style.display = 'none'
+  avatarImgFailed.value = true
 }
 
 async function onFileSelected(event) {
@@ -66,6 +72,7 @@ async function onFileSelected(event) {
   uploadError.value = ''
   try {
     await usersStore.uploadAvatar(user.value.id, file)
+    avatarImgFailed.value = false
   } catch (err) {
     uploadError.value = err?.message || 'Не удалось загрузить фото'
   } finally {
@@ -78,6 +85,7 @@ async function removeAvatar() {
   uploadError.value = ''
   try {
     await usersStore.deleteAvatar(user.value.id)
+    avatarImgFailed.value = false
   } catch (err) {
     uploadError.value = err?.message || 'Не удалось удалить фото'
   } finally {
@@ -157,10 +165,25 @@ async function logout() {
       <div v-if="user" class="modal-body">
         <div class="profile-hero">
           <div class="avatar-wrap">
-            <button v-if="user.avatarUrl" class="avatar-preview-btn" type="button" title="Открыть фото" @click="openAvatarPreview">
-              <img :src="user.avatarUrl" class="avatar-img" alt="Фото профиля" />
+            <button
+              v-if="user.avatarUrl && !avatarImgFailed"
+              class="avatar-preview-btn"
+              type="button"
+              title="Открыть фото"
+              @click="openAvatarPreview"
+            >
+              <img
+                :src="avatarSrc(user.avatarUrl)"
+                class="avatar-img"
+                alt="Фото профиля"
+                @error="onAvatarImgError"
+              />
             </button>
-            <span v-else class="avatar-fallback" :style="{ background: getAvatarColor(user.name) }">
+            <span
+              v-if="!user.avatarUrl || avatarImgFailed"
+              class="avatar-fallback"
+              :style="{ background: getAvatarColor(user.name) }"
+            >
               {{ getInitials(user.name) }}
             </span>
             <button class="avatar-edit-btn" title="Изменить фото" :disabled="uploading" @click="triggerFilePicker">
@@ -232,10 +255,10 @@ async function logout() {
     </div>
   </div>
 
-  <div v-if="avatarPreviewOpen && user?.avatarUrl" class="lightbox-overlay" @click.self="closeAvatarPreview">
+  <div v-if="avatarPreviewOpen && user?.avatarUrl && !avatarImgFailed" class="lightbox-overlay" @click.self="closeAvatarPreview">
     <div class="lightbox-card card">
       <button class="btn btn-ghost btn-icon btn-sm lightbox-close" @click="closeAvatarPreview"><AppIcon name="close" :size="13" /></button>
-      <img :src="user.avatarUrl" class="lightbox-image" alt="Фото профиля" />
+      <img :src="avatarSrc(user.avatarUrl)" class="lightbox-image" alt="Фото профиля" />
     </div>
   </div>
 </template>
