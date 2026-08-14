@@ -52,7 +52,7 @@ const isDone = computed(() => props.task.status === 'done')
 const occurrenceInfo = computed(() => (props.task.occurrenceId ? meetingsStore.occurrenceById(props.task.occurrenceId) : null))
 const occurrenceBadgeLabel = computed(() => {
   if (!occurrenceInfo.value) return null
-  return `${occurrenceInfo.value.meeting.title} \xb7 ${formatDateTime(occurrenceInfo.value.occurrence.date)}`
+  return `${occurrenceInfo.value.meeting.title} · ${formatDateTime(occurrenceInfo.value.occurrence.date)}`
 })
 
 function openOccurrenceMeeting() {
@@ -155,10 +155,10 @@ function applyCustomDate() {
 }
 
 const DATE_PRESETS = [
-  { label: '\u0421\u0435\u0433\u043e\u0434\u043d\u044f', days: 0 },
-  { label: '\u0417\u0430\u0432\u0442\u0440\u0430', days: 1 },
-  { label: '\u0427\u0435\u0440\u0435\u0437 3 \u0434\u043d\u044f', days: 3 },
-  { label: '\u0427\u0435\u0440\u0435\u0437 \u043d\u0435\u0434\u0435\u043b\u044e', days: 7 },
+  { label: 'Сегодня', days: 0 },
+  { label: 'Завтра', days: 1 },
+  { label: 'Через 3 дня', days: 3 },
+  { label: 'Через неделю', days: 7 },
 ]
 
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
@@ -298,8 +298,8 @@ function closeContextMenu() { contextMenu.value = null }
           <span v-if="prefs.showCommentsCount && commentsCount" class="mini-count"><AppIcon name="message" :size="11" />{{ commentsCount }}</span>
         </span>
         <div v-if="!editingTitle" class="task-meta">
-          <span v-if="prefs.showCreatedDate && task.createdAt" class="date-meta" :title="`\u0421\u043e\u0437\u0434\u0430\u043d\u043e: ${formatDate(task.createdAt)}`">
-            <AppIcon name="plus" :size="11" /> \u0441\u043e\u0437\u0434\u0430\u043d\u043e {{ relativeTimeAgo(task.createdAt) }}
+          <span v-if="prefs.showCreatedDate && task.createdAt" class="date-meta" :title="`Создано: ${formatDate(task.createdAt)}`">
+            <AppIcon name="plus" :size="11" /> создано {{ relativeTimeAgo(task.createdAt) }}
           </span>
 
           <!-- Срок: кликабельный бейдж. Если задачу можно редактировать — открывает
@@ -308,11 +308,11 @@ function closeContextMenu() { contextMenu.value = null }
             v-if="prefs.showDueDate"
             ref="dueDateBtnEl"
             class="due-date" :class="{ 'due-overdue': overdue, 'due-date-clickable': canEditThisTask }"
-            :title="canEditThisTask ? '\u041d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c \u0441\u0440\u043e\u043a' : '\u041a\u0440\u0430\u0439\u043d\u0438\u0439 \u0441\u0440\u043e\u043a'"
+            :title="canEditThisTask ? 'Нажмите, чтобы изменить срок' : 'Крайний срок'"
             @click.stop="openDatePicker"
           >
             <AppIcon name="calendar" :size="11" />
-            {{ task.dueDate ? relativeDay(task.dueDate) : '\u0441\u0440\u043e\u043a \u043d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d' }}
+            {{ task.dueDate ? relativeDay(task.dueDate) : 'срок не установлен' }}
             <AppIcon v-if="canEditThisTask" name="chevronDown" :size="9" class="due-date-caret" />
           </span>
 
@@ -320,13 +320,13 @@ function closeContextMenu() { contextMenu.value = null }
           <button
             v-if="occurrenceBadgeLabel"
             class="tag occurrence-badge"
-            :title="'\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0432\u0441\u0442\u0440\u0435\u0447\u0443: ' + occurrenceBadgeLabel"
+            :title="'Открыть встречу: ' + occurrenceBadgeLabel"
             @click.stop="openOccurrenceMeeting"
           ><AppIcon name="repeat" :size="11" /> {{ occurrenceBadgeLabel }}</button>
-          <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`\u0412\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u043e: ${formatDate(task.completedAt)}`">
+          <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`">
             <AppIcon name="check" :size="11" /> {{ formatDate(task.completedAt) }}
           </span>
-          <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`\u041f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0435 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u0435: ${formatDate(task.updatedAt)}`">
+          <span v-if="prefs.showLastUpdatedDate && task.updatedAt" class="date-meta" :title="`Последнее изменение: ${formatDate(task.updatedAt)}`">
             <AppIcon name="edit" :size="11" /> {{ relativeTimeAgo(task.updatedAt) }}
           </span>
           <span v-if="prefs.showListBadgeInMyTasks && list" class="tag list-badge" :style="{ background: list.color + '22', color: list.color }">{{ list.title }}</span>
@@ -339,19 +339,19 @@ function closeContextMenu() { contextMenu.value = null }
         <button
           ref="avatarBtnEl"
           class="avatar-btn" :class="{ 'avatar-btn-disabled': !canEditThisTask, 'avatar-btn-detailed': prefs.detailedAssigneeView }"
-          :title="canEditThisTask ? (assignee ? `\u0418\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c: ${assignee.name} \u2014 \u043d\u0430\u0436\u043c\u0438\u0442\u0435, \u0447\u0442\u043e\u0431\u044b \u0438\u0437\u043c\u0435\u043d\u0438\u0442\u044c` : '\u041d\u0430\u0437\u043d\u0430\u0447\u0438\u0442\u044c \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f') : assignee?.name"
+          :title="canEditThisTask ? (assignee ? `Исполнитель: ${assignee.name} — нажмите, чтобы изменить` : 'Назначить исполнителя') : assignee?.name"
           @click.stop="toggleAssignPicker"
         >
           <span v-if="assignee" class="avatar" :class="{ 'avatar-compact': prefs.compactAvatars && !prefs.detailedAssigneeView }" :style="{ background: getAvatarColor(assignee.name) }">{{ getInitials(assignee.name) }}</span>
           <span v-else class="avatar avatar-empty" :class="{ 'avatar-compact': prefs.compactAvatars && !prefs.detailedAssigneeView }">+</span>
-          <span v-if="prefs.detailedAssigneeView" class="assignee-name">{{ assignee ? assignee.name : '\u0411\u0435\u0437 \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f' }}</span>
+          <span v-if="prefs.detailedAssigneeView" class="assignee-name">{{ assignee ? assignee.name : 'Без исполнителя' }}</span>
         </button>
       </div>
 
       <div class="task-quick-actions">
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u043f\u043e\u0434\u0437\u0430\u0434\u0430\u0447\u0443" @click.stop="startAddSubtask"><AppIcon name="plus" :size="13" /></button>
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0447\u0435\u043a-\u043b\u0438\u0441\u0442" @click.stop="toggleChecklistExpand"><AppIcon name="checklist" :size="13" /></button>
-        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="\u041e\u0442\u043b\u043e\u0436\u0438\u0442\u044c \u043d\u0430 \u0434\u0435\u043d\u044c" @click.stop="snooze"><AppIcon name="alarm" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить подзадачу" @click.stop="startAddSubtask"><AppIcon name="plus" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Добавить чек-лист" @click.stop="toggleChecklistExpand"><AppIcon name="checklist" :size="13" /></button>
+        <button v-if="canEditThisTask" class="btn btn-ghost btn-sm" title="Отложить на день" @click.stop="snooze"><AppIcon name="alarm" :size="13" /></button>
       </div>
     </div>
 
@@ -364,7 +364,7 @@ function closeContextMenu() { contextMenu.value = null }
         :style="{ top: `${datePickerPos.top}px`, left: `${datePickerPos.left}px` }"
         @click.stop
       >
-        <div class="date-picker-label">\u0421\u0440\u043e\u043a \u0432\u044b\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u044f</div>
+        <div class="date-picker-label">Срок выполнения</div>
         <div class="date-presets">
           <button
             v-for="p in DATE_PRESETS" :key="p.days"
@@ -381,7 +381,7 @@ function closeContextMenu() { contextMenu.value = null }
           />
         </div>
         <button class="date-clear-btn" @click="clearDueDate">
-          <AppIcon name="close" :size="11" /> \u0411\u0435\u0437 \u0441\u0440\u043e\u043a\u0430
+          <AppIcon name="close" :size="11" /> Без срока
         </button>
       </div>
     </Teleport>
@@ -395,7 +395,7 @@ function closeContextMenu() { contextMenu.value = null }
         :style="{ top: `${dropdownPos.top}px`, left: `${dropdownPos.left}px` }"
         @click.stop
       >
-        <div class="assign-dropdown-label">\u041d\u0430\u0437\u043d\u0430\u0447\u0438\u0442\u044c \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f</div>
+        <div class="assign-dropdown-label">Назначить исполнителя</div>
         <button
           v-for="u in assignableUsers" :key="u.id"
           class="assign-option" :class="{ active: task.assigneeId === u.id }"
@@ -406,7 +406,7 @@ function closeContextMenu() { contextMenu.value = null }
           <span v-if="task.assigneeId === u.id" class="assign-check"><AppIcon name="check" :size="12" /></span>
         </button>
         <button class="assign-option" @click="quickAssign(null)">
-          <span class="assign-avatar assign-avatar-empty">\u2014</span> \u0411\u0435\u0437 \u0438\u0441\u043f\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044f
+          <span class="assign-avatar assign-avatar-empty">—</span> Без исполнителя
         </button>
       </div>
     </Teleport>
@@ -421,10 +421,10 @@ function closeContextMenu() { contextMenu.value = null }
         <input
           ref="inlineChecklistInputEl"
           v-model="newInlineChecklistTitle"
-          placeholder="\u041d\u043e\u0432\u044b\u0439 \u043f\u0443\u043d\u043a\u0442 \u0447\u0435\u043a-\u043b\u0438\u0441\u0442\u0430"
+          placeholder="Новый пункт чек-листа"
           @keyup.enter="addInlineChecklistItem"
         />
-        <button class="btn btn-sm" @click="addInlineChecklistItem">\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c</button>
+        <button class="btn btn-sm" @click="addInlineChecklistItem">Добавить</button>
       </div>
     </div>
 
@@ -436,7 +436,7 @@ function closeContextMenu() { contextMenu.value = null }
           ref="subtaskInputEl"
           v-model="subtaskDraft"
           class="subtask-add-input"
-          placeholder="\u041d\u0430\u0437\u0432\u0430\u043d\u0438\u0435 \u043f\u043e\u0434\u0437\u0430\u0434\u0430\u0447\u0438, Enter \u2014 \u0434\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0438 \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0438\u0442\u044c"
+          placeholder="Название подзадачи, Enter — добавить и продолжить"
           @keyup.enter="commitSubtask(true)"
           @keyup.escape="cancelAddSubtask"
           @blur="commitSubtask(false)"
