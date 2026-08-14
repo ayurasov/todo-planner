@@ -1,16 +1,16 @@
 /**
  * Разбор текстового резюме встречи в кандидаты-задачи.
  *
- * v2 -- улучшенная логика:
- *   1. Перед разбором HTML-текст преобразуется в плоский текст сохраняя
- *      структуру списков (<ol>/<ul>/<li>): каждый <li> становится
- *      отдельной строкой вывода.
- *   2. Текст группируется в блоки: новый блок начинается номером / маркером,
- *      все последующие строки до следующего маркера считаются его частью.
- *   3. Внутри блока ищем метку "Ответственный: Имя" -- если найдено,
- *      сопоставляем имя с известными пользователями.
- *   4. Основной текст задачи -- первая непустая строка блока (без меток
- *      "Ответственный" / "Дата" / "Срок").
+ * v3 -- полная переработка:
+ *   Режим HTML (скопировано из Word/Google Docs/Confluence):
+ *     - Каждый <li> → отдельный блок-кандидат.
+ *     - Внутри <li> ищем Ответственный: <Имя> -- может быть внутри строки,
+ *       в HTML-атрибутах <strong> или за тегом ---.
+ *     - Текст задачи = всё до метки Ответственный.
+ *   Режим plain text:
+ *     - Любой нумерованный маркер ("1.", "1)", ...) или символьный (• - – — *)
+ *       начинает новый блок.
+ *     - Строка Ответственный: До знака препинания/переноса -- имя.
  */
 
 /**
@@ -29,181 +29,253 @@ export class SummaryParser {
   }
 }
 
-// Строка начинает новый пункт-блок
-const BLOCK_START_DASH     = /^\s*[-–—]\s+/
-const BLOCK_START_BULLET   = /^\s*[•●▪]\s+/
-const BLOCK_START_NUMBERED = /^\s*\d+[.)\u0029]\s+/
+// ---------- Константы регекспов ----------
 
-// Метка ответственного внутри блока
-const RESPONSIBLE_PATTERN  = /^Ответственный[: ]*\*{0,2}\s*(.+?)\*{0,2}\s*$/i
+// Маркер начала блока в plain text
+const RX_NUMBERED  = /^\s*\d+[.)\u0029]\s+/
+const RX_DASH      = /^\s*[-–—*]\s+/
+const RX_BULLET    = /^\s*[•●▪]\s+/
 
-// Формат "Имя: задача" в отдельной строке
-const NAMED_PATTERN        = /^\s*([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё .]{1,29}):\s+(.+)$/
+/**
+ * Ответственный: -- внутри строки plain text.
+ * Сразу захватывает имя (до знака препинания, запятой, переноса или конца строки).
+ * Группа 1 -- имя с звёздочками или без, группа 2 -- всё после ":"
+ */
+const RX_RESPONSIBLE_INLINE = /Ответственный[:\s*]*\*{0,2}([^,;.\n*]+)/i
+
+// Формат «Имя: задача» в отдельной строке
+const RX_NAMED = /^([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё .]{1,29}):\s+(.{5,})$/
+
+// ---------- Вспомогательные функции ----------
 
 function isBlockStart(line) {
-  return BLOCK_START_DASH.test(line) || BLOCK_START_BULLET.test(line) || BLOCK_START_NUMBERED.test(line)
+  return RX_NUMBERED.test(line) || RX_DASH.test(line) || RX_BULLET.test(line)
 }
 
 function blockPattern(line) {
-  if (BLOCK_START_DASH.test(line)) return 'dash'
-  if (BLOCK_START_BULLET.test(line)) return 'bullet'
-  if (BLOCK_START_NUMBERED.test(line)) return 'numbered'
+  if (RX_NUMBERED.test(line)) return 'numbered'
+  if (RX_DASH.test(line))    return 'dash'
+  if (RX_BULLET.test(line))  return 'bullet'
   return null
 }
 
 function stripBlockMarker(line) {
   return line
-    .replace(BLOCK_START_NUMBERED, '')
-    .replace(BLOCK_START_DASH, '')
-    .replace(BLOCK_START_BULLET, '')
+    .replace(RX_NUMBERED, '')
+    .replace(RX_DASH, '')
+    .replace(RX_BULLET, '')
     .trim()
 }
 
 /**
- * Удаляет HTML-теги, сохраняя структуру списков.
- * Каждый <li> становится отдельной строкой, чтобы не сливаться.
- * <br> и блочные элементы дают перенос строки.
+ * Извлекает имя ответственного из строки/фрагмента.
+ * Останавливается на первом знаке препинания, запятой, переносе или звёздочке.
+ */
+function extractResponsibleName(text) {
+  const m = text.match(RX_RESPONSIBLE_INLINE)
+  if (!m) return null
+  return m[1].replace(/\*+/g, '').trim()
+}
+
+/**
+ * Извлекает текст задачи -- всё ДО метки Ответственный.
+ * Также убирает хвосты --- (три дефиса -- типичный Pandoc артефакт).
+ */
+function extractTitle(text) {
+  // всё до слова Ответственный (без регистра)
+  const idx = text.search(/Ответственный/i)
+  const raw = idx >= 0 ? text.slice(0, idx) : text
+  return raw
+    .replace(/[-–—]{2,}/g, ' ')  // убираем ---
+    .replace(/\*+/g, '')        // убираем markdown жирный
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Сопоставляет сырое имя с известными пользователями.
+ * 1. Точное совпадение
+ * 2. Полное имя входит в rawName или rawName в полное имя
+ * 3. По фамилии (первое слово rawName)
+ * 4. По имени (второе слово rawName)
+ */
+function matchUser(rawName, knownUsers = []) {
+  if (!rawName) return null
+  const norm = rawName.trim().toLowerCase().replace(/\s+/g, ' ')
+  const parts = norm.split(' ').filter(Boolean)
+
+  // 1. Точно
+  let found = knownUsers.find((u) => u.name.toLowerCase() === norm)
+  if (found) return found.id
+
+  // 2. Взаимное вхождение
+  found = knownUsers.find((u) => {
+    const uNorm = u.name.toLowerCase()
+    return uNorm.includes(norm) || norm.includes(uNorm)
+  })
+  if (found) return found.id
+
+  // 3. По фамилии
+  if (parts[0] && parts[0].length > 2) {
+    found = knownUsers.find((u) =>
+      u.name.toLowerCase().split(' ').some((w) => w === parts[0])
+    )
+    if (found) return found.id
+  }
+
+  // 4. По имени (rawName вида "Фамилия Имя" -- взять второй токен)
+  if (parts[1] && parts[1].length > 1) {
+    found = knownUsers.find((u) =>
+      u.name.toLowerCase().split(' ').some((w) => w === parts[1])
+    )
+    if (found) return found.id
+  }
+
+  return null
+}
+
+// ---------- HTML-парсинг: извлекаем блоки из <li> ----------
+
+/**
+ * Извлекает все <li>...</li> блоки из HTML как плайнтекстовые строки.
+ * Внутри каждого <li> все HTML-теги удаляются, остаётся plain text.
+ * Особо: <br> и блочные элементы внутри <li> заменяются пробелом, чтобы
+ * сохранить весь текст пункта в одну строку (включая Имя из Ответственный).
+ */
+function extractLiBlocks(html) {
+  const blocks = []
+  const liRx = /<li[^>]*>([\s\S]*?)<\/li>/gi
+  let m
+  while ((m = liRx.exec(html)) !== null) {
+    const inner = m[1]
+      .replace(/<br\s*\/?>/gi, ' ')
+      .replace(/<\/(p|div|h[1-6]|blockquote|span|strong|em|b|i)>/gi, ' ')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#\d+;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    if (inner) blocks.push(inner)
+  }
+  return blocks
+}
+
+/**
+ * Fallback: если <li> нет -- весь HTML в плайн строками.
  */
 export function htmlToPlainLines(html) {
   if (!html) return ''
-  // <li> -- новая строка
   let text = html
     .replace(/<li[^>]*>/gi, '\n')
     .replace(/<\/li>/gi, '')
     .replace(/<br\s*\/?>/gi, '\n')
     .replace(/<\/(p|div|h[1-6]|tr|blockquote)>/gi, '\n')
     .replace(/<[^>]+>/g, '')
-
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
   // Декодируем HTML-энтити
-  const ta = document.createElement('textarea')
-  ta.innerHTML = text
-  return ta.value
+  if (typeof document !== 'undefined') {
+    const ta = document.createElement('textarea')
+    ta.innerHTML = text
+    text = ta.value
+  }
+  return text
 }
 
-/**
- * Сопоставляет сырое имя с известными пользователями.
- * Сначала пробует полное совпадение, затем вхождение по фамилии или имени.
- */
-function matchUser(rawName, knownUsers = []) {
-  if (!rawName) return null
-  const norm = rawName.trim().toLowerCase().replace(/\s+/g, ' ')
-  // 1. Точное совпадение
-  let found = knownUsers.find((u) => u.name.toLowerCase() === norm)
-  if (found) return found.id
-  // 2. Полное имя входит в rawName ("Юрасов Александр" → matches "Юрасов Александр")
-  found = knownUsers.find((u) => norm.includes(u.name.toLowerCase()))
-  if (found) return found.id
-  // 3. rawName входит в полное имя пользователя (только если длиннее 1 слова)
-  const parts = norm.split(' ').filter(Boolean)
-  if (parts.length > 1) {
-    found = knownUsers.find((u) => u.name.toLowerCase().includes(norm))
-    if (found) return found.id
-  }
-  // 4. Совпадение по фамилии (первое слово rawName)
-  const firstToken = parts[0]
-  if (firstToken && firstToken.length > 2) {
-    found = knownUsers.find((u) => u.name.toLowerCase().split(' ').some((w) => w === firstToken))
-    if (found) return found.id
-  }
-  return null
-}
+// ---------- Основной парсер ----------
 
 export class MockRegexSummaryParser extends SummaryParser {
   parse(rawInput, { knownUsers = [] } = {}) {
     if (!rawInput) return []
 
-    // Если на входе HTML (есть теги) -- преобразуем с сохранением структуры списков
-    const text = /<[a-z]/i.test(rawInput) ? htmlToPlainLines(rawInput) : rawInput
+    const isHtml = /<[a-z]/i.test(rawInput)
 
+    if (isHtml) {
+      return this._parseHtml(rawInput, knownUsers)
+    }
+    return this._parsePlain(rawInput, knownUsers)
+  }
+
+  // ---- HTML-режим ----
+  _parseHtml(html, knownUsers) {
+    const liBlocks = extractLiBlocks(html)
+
+    if (liBlocks.length > 0) {
+      // Есть <li> -- каждый блок это одна задача
+      return liBlocks
+        .map((block) => this._candidateFromText(block, 'list_item', knownUsers))
+        .filter(Boolean)
+    }
+
+    // Fallback: HTML без <li> -- сводим к plain text
+    const plain = htmlToPlainLines(html)
+    return this._parsePlain(plain, knownUsers)
+  }
+
+  // ---- Plain text режим ----
+  _parsePlain(text, knownUsers) {
     const lines = text.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
-    const candidates = []
-
-    // --- Группировка строк в блоки ---
-    // Блок = первая строка (start-marker) + все следующие до следующего start-marker'а
-    const blocks = [] // [{ pattern, lines: string[] }]
-    let currentBlock = null
+    const blocks = []
+    let cur = null
 
     for (const line of lines) {
       if (isBlockStart(line)) {
-        if (currentBlock) blocks.push(currentBlock)
-        currentBlock = { pattern: blockPattern(line), lines: [line] }
-      } else if (currentBlock) {
-        // продолжение текущего блока
-        currentBlock.lines.push(line)
+        if (cur) blocks.push(cur)
+        cur = { pattern: blockPattern(line), lines: [stripBlockMarker(line)] }
+      } else if (cur) {
+        // если строка сама содержит Ответственный -- добавляем к блоку
+        cur.lines.push(line)
       } else {
-        // строка до первого маркера -- проверяем на формат "Имя: задача"
-        const namedMatch = line.match(NAMED_PATTERN)
-        if (namedMatch) {
-          blocks.push({ pattern: 'named', lines: [line] })
-        }
-        // остальные строки без маркера -- пропускаем
+        // строка до первого маркера -- проверяем формат "Имя: задача"
+        const nm = line.match(RX_NAMED)
+        if (nm) blocks.push({ pattern: 'named', lines: [line] })
       }
     }
-    if (currentBlock) blocks.push(currentBlock)
+    if (cur) blocks.push(cur)
 
-    // --- Извлекаем задачу из каждого блока ---
-    for (const block of blocks) {
-      if (block.pattern === 'named') {
-        const namedMatch = block.lines[0].match(NAMED_PATTERN)
-        if (!namedMatch) continue
-        const rawName = namedMatch[1].trim()
-        const body = namedMatch[2].trim()
-        candidates.push({
-          rawLine: block.lines[0],
-          title: body,
+    return blocks.map((b) => {
+      if (b.pattern === 'named') {
+        const nm = b.lines[0].match(RX_NAMED)
+        if (!nm) return null
+        const rawName = nm[1].trim()
+        return {
+          rawLine: b.lines[0],
+          title: nm[2].trim(),
           assigneeNameRaw: rawName,
           assigneeGuess: matchUser(rawName, knownUsers),
           matchedPattern: 'named',
           accepted: true,
-        })
-        continue
-      }
-
-      // Для dash/bullet/numbered:
-      // Основной текст -- первая строка без маркера +
-      // последующие строки блока, которые НЕ являются метками (Ответственный/Дата/Срок)
-      // Ищем метку "Ответственный:"
-      let assigneeNameRaw = null
-      let assigneeGuess = null
-
-      const titleParts = []
-      for (let i = 0; i < block.lines.length; i++) {
-        const ln = i === 0 ? stripBlockMarker(block.lines[i]) : block.lines[i]
-        const respMatch = ln.match(RESPONSIBLE_PATTERN)
-        if (respMatch) {
-          // Строка -- метка ответственного
-          assigneeNameRaw = respMatch[1].trim()
-          assigneeGuess = matchUser(assigneeNameRaw, knownUsers)
-          // не добавляем в title
-        } else if (/^(Дата|Deadline|Срок)[:\s]/i.test(ln)) {
-          // метка даты/срока -- тоже не в title
-        } else if (ln) {
-          titleParts.push(ln)
         }
       }
+      // Собираем весь текст блока в одну строку и извлекаем
+      const fullText = b.lines.join(' ')
+      return this._candidateFromText(fullText, b.pattern, knownUsers)
+    }).filter(Boolean)
+  }
 
-      const title = titleParts.join(' ').trim()
-      if (!title) continue
-
-      candidates.push({
-        rawLine: block.lines[0],
-        title,
-        assigneeNameRaw,
-        assigneeGuess,
-        matchedPattern: block.pattern,
-        accepted: true,
-      })
+  /**
+   * Извлекает кандидата из плайн-текстового фрагмента одного пункта.
+   * Ищет Ответственный внутри строки, остальное -- текст задачи.
+   */
+  _candidateFromText(text, pattern, knownUsers) {
+    const assigneeNameRaw = extractResponsibleName(text)
+    const title = extractTitle(text)
+    if (!title) return null
+    return {
+      rawLine: text.slice(0, 120),
+      title,
+      assigneeNameRaw,
+      assigneeGuess: matchUser(assigneeNameRaw, knownUsers),
+      matchedPattern: pattern,
+      accepted: true,
     }
-
-    return candidates
   }
 }
 
 export const meetingSummaryParser = new MockRegexSummaryParser()
 
 export const MATCHED_PATTERN_LABEL = {
-  dash: 'Маркер "–"',
-  bullet: 'Маркер "•"',
-  numbered: 'Нумерованный пункт',
-  named: 'Формат "Имя: задача"',
+  numbered:  'Нумерованный пункт',
+  dash:      'Маркер «–»',
+  bullet:    'Маркер «•»',
+  list_item: 'Пункт списка',
+  named:     'Формат «Имя: задача»',
 }
