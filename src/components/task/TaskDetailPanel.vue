@@ -35,12 +35,32 @@ const assigneeSearch = ref('')
 const assigneeSearchInput = ref(null)
 const confirmDeleteOpen = ref(false)
 
+// Сортировка списков комментариев/истории по давности.
+// История по умолчанию — от новых к старым (desc). Комментарии по умолчанию — от старых к новым (desc = false),
+// чтобы вести диалог сверху вниз как обычно принято, но пользователь может переключить порядок иконкой.
+const commentsSortDesc = ref(false)
+const historySortDesc = ref(true)
+
 const liveTask = computed(() => tasksStore.byId(props.task.id) || props.task)
 const { canEditThisTask, canToggleStatus, canDeleteThisTask, reason: permissionReason } = useTaskPermissions(liveTask)
 const checklist = computed(() => tasksStore.checklistByTask[props.task.id] || [])
 const notes = computed(() => tasksStore.notesByTask[props.task.id] || [])
 const timeline = computed(() => historyStore.timelineByTask[props.task.id] || [])
 const comments = computed(() => tasksStore.commentsByTask[props.task.id] || [])
+
+const sortedComments = computed(() => {
+  const arr = [...comments.value].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+  return commentsSortDesc.value ? arr.reverse() : arr
+})
+
+const sortedTimeline = computed(() => {
+  const arr = [...timeline.value].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))
+  return historySortDesc.value ? arr.reverse() : arr
+})
+
+function toggleCommentsSort() { commentsSortDesc.value = !commentsSortDesc.value }
+function toggleHistorySort() { historySortDesc.value = !historySortDesc.value }
+
 const parentList = computed(() => listsStore.byId(liveTask.value.listId))
 const commentsAllowed = computed(() => parentList.value?.settings?.allowComments !== false)
 const isSubtask = computed(() => !!liveTask.value.parentTaskId)
@@ -250,6 +270,7 @@ const HISTORY_ICON = {
                     :model-value="liveTask.description"
                     :editable="canEditThisTask"
                     placeholder="Добавьте описание задачи..."
+                    class="description-editor"
                     @update:model-value="updateDescription"
                   />
                 </section>
@@ -373,18 +394,36 @@ const HISTORY_ICON = {
             </div>
 
             <section class="activity-section">
-              <div class="tabs">
-                <button :class="{ active: activityTab === 'comments' }" @click="activityTab = 'comments'" v-if="commentsAllowed">
-                  Комментарии <span v-if="comments.length" class="tab-badge">{{ comments.length }}</span>
+              <div class="tabs-row">
+                <div class="tabs">
+                  <button :class="{ active: activityTab === 'comments' }" @click="activityTab = 'comments'" v-if="commentsAllowed">
+                    Комментарии <span v-if="comments.length" class="tab-badge">{{ comments.length }}</span>
+                  </button>
+                  <button :class="{ active: activityTab === 'notes' }" @click="activityTab = 'notes'">Заметки</button>
+                  <button :class="{ active: activityTab === 'history' }" @click="activityTab = 'history'">История</button>
+                </div>
+                <button
+                  v-if="activityTab === 'comments' && commentsAllowed && comments.length > 1"
+                  class="sort-toggle-btn"
+                  :title="commentsSortDesc ? 'Сначала новые' : 'Сначала старые'"
+                  @click="toggleCommentsSort"
+                >
+                  <AppIcon name="sort" :size="14" />
                 </button>
-                <button :class="{ active: activityTab === 'notes' }" @click="activityTab = 'notes'">Заметки</button>
-                <button :class="{ active: activityTab === 'history' }" @click="activityTab = 'history'">История</button>
+                <button
+                  v-if="activityTab === 'history' && timeline.length > 1"
+                  class="sort-toggle-btn"
+                  :title="historySortDesc ? 'Сначала новые' : 'Сначала старые'"
+                  @click="toggleHistorySort"
+                >
+                  <AppIcon name="sort" :size="14" />
+                </button>
               </div>
 
               <div class="activity-content">
                 <Transition name="fade-tab" mode="out-in">
                 <div v-if="activityTab === 'comments' && commentsAllowed" key="comments" class="comments-tab">
-                  <div v-for="c in comments" :key="c.id" class="comment-row">
+                  <div v-for="c in sortedComments" :key="c.id" class="comment-row">
                     <span class="comment-avatar">{{ (usersStore.byId(c.authorId)?.name || '?').charAt(0) }}</span>
                     <div class="comment-body">
                       <div class="comment-header">
@@ -397,7 +436,7 @@ const HISTORY_ICON = {
                   <div v-if="!comments.length" class="hint-text">Пока нет комментариев</div>
                   <div class="comment-box">
                     <textarea v-model="newCommentTab" placeholder="Написать комментарий..." rows="2" />
-                    <button class="btn btn-primary btn-sm" @click="submitComment">Отправить</button>
+                    <button class="btn btn-primary btn-sm comment-submit-btn" @click="submitComment">Отправить</button>
                   </div>
                 </div>
 
@@ -406,7 +445,7 @@ const HISTORY_ICON = {
                 </div>
 
                 <div v-else-if="activityTab === 'history'" key="history" class="history-tab">
-                  <div v-for="entry in timeline" :key="entry.id" class="history-entry">
+                  <div v-for="entry in sortedTimeline" :key="entry.id" class="history-entry">
                     <span class="history-icon"><AppIcon :name="HISTORY_ICON[entry.type] || 'more'" :size="12" /></span>
                     <div class="history-body">
                       <span class="history-type">{{ HISTORY_LABEL[entry.type] || entry.type }}</span>
@@ -420,6 +459,10 @@ const HISTORY_ICON = {
                 </Transition>
               </div>
             </section>
+          </div>
+
+          <div class="panel-footer">
+            <button class="btn btn-sm" @click="emit('close')">Закрыть</button>
           </div>
         </div>
       </Transition>
@@ -470,6 +513,9 @@ const HISTORY_ICON = {
   display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.03em; color: var(--color-text-muted); margin: 0 0 10px;
 }
+
+/* Пункт 1: увеличенная стандартная высота поля описания задачи */
+.description-editor :deep(.rich-content) { min-height: 260px; }
 
 .side-column { display: flex; flex-direction: column; gap: 18px; background: #fafbfd; border: 1px solid var(--color-border); border-radius: 12px; padding: 14px; }
 .field-block { display: flex; flex-direction: column; gap: 6px; }
@@ -546,6 +592,7 @@ const HISTORY_ICON = {
 .checklist-add input:focus { border-style: solid; border-color: var(--color-primary); }
 
 .activity-section { margin-top: 26px; border-top: 1px solid var(--color-border); padding-top: 6px; }
+.tabs-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .tabs { display: flex; gap: 2px; }
 .tabs button {
   border: none; background: none; padding: 10px 12px; font-size: 13px; color: var(--color-text-muted);
@@ -555,6 +602,14 @@ const HISTORY_ICON = {
 .tabs button.active { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
 .tab-badge { background: #eef1f7; border-radius: 10px; padding: 1px 6px; font-size: 10.5px; font-weight: 700; color: var(--color-text-muted); }
 .tabs button.active .tab-badge { background: #e6ecff; color: var(--color-primary-dark); }
+
+/* Пункт 4: маленькая иконка сортировки комментариев/истории по давности справа от вкладок */
+.sort-toggle-btn {
+  border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 7px;
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  color: var(--color-text-muted); cursor: pointer; flex-shrink: 0; transition: all 0.12s ease;
+}
+.sort-toggle-btn:hover { background: #f1f3f9; color: var(--color-text); }
 
 .activity-content { padding: 14px 2px 4px; }
 .fade-tab-enter-active, .fade-tab-leave-active { transition: opacity 0.12s ease; }
@@ -581,6 +636,8 @@ const HISTORY_ICON = {
 .comment-box { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .comment-box textarea { border: 1px solid var(--color-border); border-radius: 10px; padding: 10px; resize: vertical; font-size: 13px; outline: none; }
 .comment-box textarea:focus { border-color: var(--color-primary); }
+/* Пункт 2: кнопка отправки комментария по размеру текста, прижата к левому краю */
+.comment-submit-btn { align-self: flex-start; width: auto; }
 .pin-icon { display: flex; color: #c67d16; }
 .meeting-crumb,
 .list-crumb {
@@ -593,6 +650,12 @@ const HISTORY_ICON = {
 .occurrence-picker {
   font-size: 12px; border: 1px solid var(--color-border); border-radius: 6px;
   padding: 2px 6px; background: #fff; color: var(--color-text); margin-left: 4px;
+}
+
+/* Пункт 3: подвал окна с кнопкой «Закрыть», дублирующей закрытие окна */
+.panel-footer {
+  flex-shrink: 0; display: flex; justify-content: flex-end; align-items: center;
+  padding: 12px 24px; border-top: 1px solid var(--color-border); background: var(--color-surface);
 }
 
 @media (max-width: 720px) {
