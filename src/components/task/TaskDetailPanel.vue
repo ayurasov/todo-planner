@@ -462,7 +462,7 @@ const HISTORY_ICON = {
           </div>
 
           <div class="panel-footer">
-            <button class="btn btn-secondary btn-sm" @click="emit('close')">Закрыть</button>
+            <button class="btn btn-sm" @click="emit('close')">Закрыть</button>
           </div>
         </div>
       </Transition>
