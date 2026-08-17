@@ -77,7 +77,16 @@ class MeetingRepository:
         """Атомарный partial update. `occurrences` в patch -- полная замена подвстреч
         (каждая запись с dict-полями id/date/description/link) -- порт логики
         meetingsStore.ensureOccurrences/updateOccurrence, которые передают весь список occurrences
-        целиком через PATCH."""
+        целиком через PATCH.
+
+        Важно: существующие occurrences обновляются НА МЕСТЕ (UPDATE), а не через
+        delete-all + insert-all. Полная пересборка через delete приводила к тому, что
+        FK tasks.occurrence_id (ondelete=SET NULL) срабатывал даже для occurrences,
+        которые фактически не менялись (просто удалялись и создавались заново с тем же
+        id) -- в результате ВСЕ задачи серии отрывались от подвстреч при любой правке
+        (описания одной подвстречи, добавлении новой, удалении другой). Теперь
+        удаляются (и, соответственно, отвязывают задачи через FK) только те occurrences,
+        которых нет в новом списке -- т.е. только реально удалённые пользователем."""
         row = MeetingORM.query.get(meeting_id)
         if row is None:
             return None
@@ -100,16 +109,35 @@ class MeetingRepository:
             for user_id in patch["editor_ids"] or []:
                 db.session.add(MeetingEditorORM(meeting_id=meeting_id, user_id=user_id))
         if "occurrences" in patch:
-            MeetingOccurrenceORM.query.filter_by(meeting_id=meeting_id).delete()
+            existing_rows = {
+                occ_row.id: occ_row
+                for occ_row in MeetingOccurrenceORM.query.filter_by(meeting_id=meeting_id).all()
+            }
+            kept_ids = set()
             for occ in patch["occurrences"] or []:
-                db.session.add(MeetingOccurrenceORM(
-                    id=occ.get("id") or new_id(),
-                    meeting_id=meeting_id,
-                    date=occ["date"],
-                    description=occ.get("description", ""),
-                    link=occ.get("link", ""),
-                    generated_at=occ.get("generated_at") or now_iso(),
-                ))
+                occ_id = occ.get("id")
+                existing_row = existing_rows.get(occ_id) if occ_id else None
+                if existing_row is not None:
+                    existing_row.date = occ["date"]
+                    existing_row.description = occ.get("description", "")
+                    existing_row.link = occ.get("link", "")
+                    if occ.get("generated_at"):
+                        existing_row.generated_at = occ["generated_at"]
+                    kept_ids.add(existing_row.id)
+                else:
+                    new_row_id = occ_id or new_id()
+                    db.session.add(MeetingOccurrenceORM(
+                        id=new_row_id,
+                        meeting_id=meeting_id,
+                        date=occ["date"],
+                        description=occ.get("description", ""),
+                        link=occ.get("link", ""),
+                        generated_at=occ.get("generated_at") or now_iso(),
+                    ))
+                    kept_ids.add(new_row_id)
+            for existing_id, existing_row in existing_rows.items():
+                if existing_id not in kept_ids:
+                    db.session.delete(existing_row)
 
         db.session.commit()
         return self._to_domain(row)
