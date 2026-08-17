@@ -43,8 +43,9 @@ const RX_BULLET    = /^\s*[•●▪]\s+/
  */
 const RX_RESPONSIBLE_INLINE = /Ответственный[:\s*]*\*{0,2}([^,;.\n*]+)/i
 
-// Формат «Имя: задача» в отдельной строке
-const RX_NAMED = /^([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё .]{1,29}):\s+(.{5,})$/
+// Форматы «Имя: задача» и «Имя - задача» в отдельной строке/пункте списка
+const RX_NAMED = /^([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё .]{1,29}):\s+(.{3,})$/
+const RX_NAMED_DASH = /^([A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё .]{1,29})\s*[-–—]\s+(.{3,})$/
 
 // ---------- Вспомогательные функции ----------
 
@@ -90,6 +91,22 @@ function extractTitle(text) {
     .replace(/\*+/g, '')        // убираем markdown жирный
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+/**
+ * Ищет в начале пункта формат назначения через имя: 
+ * - «Имя: задача»
+ * - «Имя - задача» / «Имя – задача» / «Имя — задача»
+ *
+ * Возвращает rawName и title без префикса, если совпадение найдено.
+ */
+function extractLeadingAssignee(text) {
+  const cleaned = (text || '').trim()
+  let m = cleaned.match(RX_NAMED)
+  if (m) return { rawName: m[1].trim(), title: m[2].trim(), pattern: 'named' }
+  m = cleaned.match(RX_NAMED_DASH)
+  if (m) return { rawName: m[1].trim(), title: m[2].trim(), pattern: 'named_dash' }
+  return null
 }
 
 /**
@@ -224,24 +241,23 @@ export class MockRegexSummaryParser extends SummaryParser {
         // если строка сама содержит Ответственный -- добавляем к блоку
         cur.lines.push(line)
       } else {
-        // строка до первого маркера -- проверяем формат "Имя: задача"
-        const nm = line.match(RX_NAMED)
-        if (nm) blocks.push({ pattern: 'named', lines: [line] })
+        // строка до первого маркера -- проверяем форматы «Имя: задача» и «Имя - задача»
+        if (RX_NAMED.test(line)) blocks.push({ pattern: 'named', lines: [line] })
+        else if (RX_NAMED_DASH.test(line)) blocks.push({ pattern: 'named_dash', lines: [line] })
       }
     }
     if (cur) blocks.push(cur)
 
     return blocks.map((b) => {
-      if (b.pattern === 'named') {
-        const nm = b.lines[0].match(RX_NAMED)
-        if (!nm) return null
-        const rawName = nm[1].trim()
+      if (b.pattern === 'named' || b.pattern === 'named_dash') {
+        const named = extractLeadingAssignee(b.lines[0])
+        if (!named) return null
         return {
           rawLine: b.lines[0],
-          title: nm[2].trim(),
-          assigneeNameRaw: rawName,
-          assigneeGuess: matchUser(rawName, knownUsers),
-          matchedPattern: 'named',
+          title: named.title,
+          assigneeNameRaw: named.rawName,
+          assigneeGuess: matchUser(named.rawName, knownUsers),
+          matchedPattern: named.pattern,
           accepted: true,
         }
       }
@@ -256,6 +272,18 @@ export class MockRegexSummaryParser extends SummaryParser {
    * Ищет Ответственный внутри строки, остальное -- текст задачи.
    */
   _candidateFromText(text, pattern, knownUsers) {
+    const leading = extractLeadingAssignee(text)
+    if (leading) {
+      return {
+        rawLine: text.slice(0, 120),
+        title: leading.title,
+        assigneeNameRaw: leading.rawName,
+        assigneeGuess: matchUser(leading.rawName, knownUsers),
+        matchedPattern: leading.pattern,
+        accepted: true,
+      }
+    }
+
     const assigneeNameRaw = extractResponsibleName(text)
     const title = extractTitle(text)
     if (!title) return null
@@ -277,5 +305,6 @@ export const MATCHED_PATTERN_LABEL = {
   dash:      'Маркер «–»',
   bullet:    'Маркер «•»',
   list_item: 'Пункт списка',
-  named:     'Формат «Имя: задача»',
+  named:      'Формат «Имя: задача»',
+  named_dash: 'Формат «Имя - задача»',
 }
