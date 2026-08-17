@@ -4,7 +4,7 @@ import { useHistoryStore } from '../stores/historyStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
 import { useUiStore } from '../stores/uiStore'
-import { formatDateTime } from '../utils/formatters'
+import { formatDateTime, stripHtml, truncateText } from '../utils/formatters'
 import { PRIORITY_LABEL } from '../domain/entities/enums'
 import ActivityChart from '../components/charts/ActivityChart.vue'
 import AppIcon from '../components/common/AppIcon.vue'
@@ -49,7 +49,16 @@ function userName(id) {
   return usersStore.byId(id)?.name || historyStore.actorName(id)
 }
 
+// Поля, хранящие rich-text (HTML из редактора) — в истории их нужно
+// показывать как обычный текст без тегов, иначе в диффе видны <div>, <br>
+// и прочая разметка редактора.
+const RICH_TEXT_FIELDS = new Set(['description'])
+
 function formatValue(field, value) {
+  if (RICH_TEXT_FIELDS.has(field)) {
+    const plain = stripHtml(value)
+    return plain ? truncateText(plain, 80) : '—'
+  }
   if (value === null || value === undefined || value === '') return '—'
   if (field === 'dueDate' || field === 'startDate') return formatDateTime(value)
   if (field === 'priority') return PRIORITY_LABEL[value] || value

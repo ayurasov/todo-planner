@@ -83,3 +83,27 @@ export function formatMeetingRecurrence(recurrence) {
       return 'Регулярная'
   }
 }
+
+/**
+ * Убирает HTML-теги, декодирует сущности и нормализует пробелы/переводы
+ * строк. Используется везде, где rich-text поле (например description)
+ * нужно показать как обычный текст — карточки встреч, история изменений.
+ */
+export function stripHtml(html) {
+  if (!html) return ''
+  const div = document.createElement('div')
+  div.innerHTML = html
+  const text = div.textContent || div.innerText || ''
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Обрезает текст до maxLength символов, добавляя многоточие. Используется
+ * для отображения диффов истории по крупным rich-text полям, чтобы не
+ * выводить в UI полотно текста.
+ */
+export function truncateText(text, maxLength = 80) {
+  if (!text) return ''
+  if (text.length <= maxLength) return text
+  return `${text.slice(0, maxLength).trimEnd()}…`
+}
