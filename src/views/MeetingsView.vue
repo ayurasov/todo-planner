@@ -21,6 +21,7 @@ const dateFrom = ref('')
 const dateTo = ref('')
 const showCreateForm = ref(false)
 const showArchived = ref(false)
+const groupByAuthor = ref(false)
 const draft = ref({
   title: '', date: '', time: '', description: '', link: '', attendeeIds: [], editorIds: [], color: '#4f7cff',
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
@@ -89,6 +90,26 @@ const { draggingId, displayItems: displayMeetings, startDrag, dragOver, dragOver
   filteredMeetings,
   (orderedIds) => meetingsStore.reorderMeetings(orderedIds),
 )
+
+/**
+ * Группировка встреч по автору (createdBy) — включается/выключается кнопкой
+ * в заголовке. При включённой группировке drag-n-drop сортировка отключается
+ * (порядок внутри группы сохраняется как есть), так как переупорядочивание
+ * между группами по разным авторам не имеет однозначного смысла.
+ */
+const groupedMeetings = computed(() => {
+  const groups = new Map()
+  for (const m of displayMeetings.value) {
+    const key = m.createdBy || '__unknown__'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key).push(m)
+  }
+  return [...groups.entries()].map(([userId, meetings]) => ({
+    userId,
+    author: userId === '__unknown__' ? null : usersStore.byId(userId),
+    meetings,
+  }))
+})
 
 function resetFilters() {
   searchQuery.value = ''
@@ -240,6 +261,9 @@ function isRecurringMeeting(meeting) {
       <h2>Встречи</h2>
     </div>
     <div class="header-actions">
+      <button class="btn btn-ghost btn-icon" :class="{ active: groupByAuthor }" :title="groupByAuthor ? 'Отключить группировку по авторам' : 'Группировать по авторам'" @click="groupByAuthor = !groupByAuthor">
+        <AppIcon name="users" :size="14" />
+      </button>
       <button class="btn btn-ghost btn-icon" :class="{ active: showArchived }" :title="showArchived ? 'К активным' : 'Архив'" @click="showArchived = !showArchived">
         <AppIcon name="folder" :size="14" />
       </button>
@@ -261,7 +285,47 @@ function isRecurringMeeting(meeting) {
     {{ showArchived ? 'В архиве пока пусто.' : 'Встреч пока нет — создайте первую с помощью кнопки выше.' }}
   </div>
 
-  <TransitionGroup tag="div" name="fade" class="meetings-list" @dragleave.self="dragOverEnd" @dragover.prevent @drop="endDrag">
+  <template v-else-if="groupByAuthor">
+    <div v-for="group in groupedMeetings" :key="group.userId" class="meetings-group">
+      <div class="meetings-group-header">
+        <AppIcon name="users" :size="13" />
+        <span>{{ group.author ? group.author.name : 'Неизвестный автор' }}</span>
+        <span class="meetings-group-count">{{ group.meetings.length }}</span>
+      </div>
+      <div class="meetings-list">
+        <div
+          v-for="m in group.meetings" :key="m.id" class="meeting-card card"
+          @click="openMeeting(m.id)"
+        >
+          <span class="meeting-color-dot" :style="{ background: m.color || '#4f7cff' }" />
+          <AppIcon class="meeting-type-icon" :name="isRecurringMeeting(m) ? 'repeat' : 'calendar'" :size="14" :title="isRecurringMeeting(m) ? 'Регулярная встреча' : 'Разовая встреча'" />
+          <div class="meeting-card-main">
+            <div class="meeting-card-title-row">
+              <h3 class="meeting-card-title">{{ m.title }}</h3>
+              <span class="tag recurrence-badge" :class="{ 'recurrence-badge-recurring': isRecurringMeeting(m) }">
+                <AppIcon v-if="isRecurringMeeting(m)" name="repeat" :size="11" /><span v-else><AppIcon name="calendar" :size="11" /></span> {{ formatMeetingRecurrence(m.recurrence) }}
+              </span>
+            </div>
+            <p v-if="m.description" class="meeting-card-desc">{{ stripHtml(m.description) }}</p>
+          </div>
+          <div class="meeting-card-meta">
+            <span class="meeting-card-date"><AppIcon name="alarm" :size="11" /> {{ isRecurringMeeting(m) ? formatTime(m.date) : formatDateTime(m.date) }}</span>
+            <a v-if="m.link" :href="m.link" target="_blank" class="tag link-tag" @click.stop><AppIcon name="link" :size="11" /> Звонок</a>
+            <span v-if="m.attendeeIds?.length" class="tag attendees-tag"><AppIcon name="users" :size="11" /> {{ m.attendeeIds.length }}</span>
+            <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag"><AppIcon name="check" :size="11" /> {{ taskCountByMeeting[m.id] }} задач</span>
+            <button class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
+            <button
+              class="btn btn-ghost btn-icon btn-sm" :title="m.archived ? 'Вернуть из архива' : 'Архивировать'"
+              @click.stop="m.archived ? meetingsStore.unarchiveMeeting(m.id) : meetingsStore.archiveMeeting(m.id)"
+            ><AppIcon :name="m.archived ? 'undo' : 'copy'" :size="12" /></button>
+            <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click.stop="requestRemoveMeeting(m)"><AppIcon name="trash" :size="12" /></button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <TransitionGroup v-else tag="div" name="fade" class="meetings-list" @dragleave.self="dragOverEnd" @dragover.prevent @drop="endDrag">
     <div
       v-for="m in displayMeetings" :key="m.id" class="meeting-card card fade-move"
       :class="{ dragging: draggingId === m.id }"
@@ -500,6 +564,9 @@ function isRecurringMeeting(meeting) {
 .date-range input { border: 1px solid var(--color-border); border-radius: 6px; padding: 4px 6px; font-size: 12.5px; }
 .date-sep { color: var(--color-text-muted); font-size: 12px; }
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
+.meetings-group { margin-bottom: 18px; }
+.meetings-group-header { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--color-text-muted); margin-bottom: 8px; padding: 0 2px; }
+.meetings-group-count { background: #eef1f7; color: var(--color-text-muted); border-radius: 10px; padding: 1px 7px; font-size: 11.5px; font-weight: 600; }
 .meetings-list { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
 .meeting-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; cursor: pointer; transition: box-shadow 0.12s ease, border-color 0.12s ease; }
 .meeting-card:hover { border-color: var(--color-primary); box-shadow: 0 2px 8px rgba(79,124,255,0.08); }
