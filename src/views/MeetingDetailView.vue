@@ -8,6 +8,7 @@ import { useListsStore } from '../stores/listsStore'
 import { usePreferencesStore } from '../stores/preferencesStore'
 import { useFiltersStore } from '../stores/filtersStore'
 import { useIsAdmin } from '../composables/usePermissions'
+import { useAssignableUsers } from '../composables/useAssignableUsers'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickAddTaskRow from '../components/task/QuickAddTaskRow.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
@@ -28,6 +29,12 @@ const listsStore = useListsStore()
 const prefs = usePreferencesStore()
 const filtersStore = useFiltersStore()
 const isAdmin = useIsAdmin()
+
+// Список пользователей, доступных для назначения исполнителем задач этой встречи
+// (учитывает attendeeIds встречи, если они заданы) — используется в разборе резюме
+// в задачи как для модалки "Разбор резюме", так и для инлайн-разбора внутри формы
+// добавления подвстречи.
+const assignableUsers = useAssignableUsers(() => ({ meetingId: props.id }))
 
 const editing = ref(false)
 const editDraft = ref({
@@ -50,6 +57,12 @@ const expandedOccurrenceIds = ref([])
 
 const addingOccurrence = ref(false)
 const newOccurrenceDraft = ref({ date: '', time: '', description: '', link: '' })
+
+// Инлайн-разбор описания добавляемой подвстречи в задачи — заполняется прямо
+// в форме "Добавить подвстречу серии", без необходимости открывать отдельную
+// модалку "Разбор резюме встречи в задачи" после сохранения подвстречи.
+const newOccurrenceParsedCandidates = ref([])
+const newOccurrenceParseAttempted = ref(false)
 
 // Все подтверждения удаления на странице встречи теперь через единый ConfirmModal.
 const occurrencePendingRemoval = ref(null)
@@ -223,21 +236,52 @@ function openAddOccurrenceForm() {
     description: '',
     link: '',
   }
+  newOccurrenceParsedCandidates.value = []
+  newOccurrenceParseAttempted.value = false
   addingOccurrence.value = true
 }
 
 function closeAddOccurrenceForm() {
   addingOccurrence.value = false
+  newOccurrenceParsedCandidates.value = []
+  newOccurrenceParseAttempted.value = false
 }
+
+// Разбор описания добавляемой подвстречи в задачи прямо в форме, без
+// отдельного шага после сохранения. У каждого кандидата сразу подставляется
+// определённый эвристикой исполнитель, если он найден — иначе "Без исполнителя".
+function runNewOccurrenceParse() {
+  newOccurrenceParsedCandidates.value = meetingSummaryParser
+    .parse(newOccurrenceDraft.value.description, { knownUsers: usersStore.users })
+    .map((c) => ({ ...c, assigneeId: c.assigneeGuess || null }))
+  newOccurrenceParseAttempted.value = true
+}
+
+function removeNewOccurrenceCandidate(idx) {
+  newOccurrenceParsedCandidates.value.splice(idx, 1)
+}
+
+const hasNewOccurrenceTasksToCreate = computed(() => (
+  newOccurrenceParsedCandidates.value.some((c) => c.accepted && c.title.trim())
+))
 
 async function submitAddOccurrence() {
   if (!newOccurrenceDraft.value.date) return
   const isoDate = new Date(`${newOccurrenceDraft.value.date}T${newOccurrenceDraft.value.time || '00:00'}`).toISOString()
-  await meetingsStore.addOccurrence(props.id, {
+  const occurrence = await meetingsStore.addOccurrence(props.id, {
     date: isoDate,
     description: newOccurrenceDraft.value.description,
     link: newOccurrenceDraft.value.link.trim(),
   })
+  const toCreate = newOccurrenceParsedCandidates.value.filter((c) => c.accepted && c.title.trim())
+  for (const c of toCreate) {
+    await tasksStore.createTask({
+      meetingId: props.id,
+      occurrenceId: occurrence?.id || null,
+      title: c.title.trim(),
+      assigneeId: c.assigneeId || null,
+    })
+  }
   addingOccurrence.value = false
 }
 
@@ -279,7 +323,9 @@ function openSummaryParser(occurrence = null) {
 function runParse() {
   // summaryText может быть HTML (из RichTextEditor) или plain text —
   // парсер автоматически определяет формат и обрабатывает оба варианта
-  parsedCandidates.value = meetingSummaryParser.parse(summaryText.value, { knownUsers: usersStore.users })
+  parsedCandidates.value = meetingSummaryParser
+    .parse(summaryText.value, { knownUsers: usersStore.users })
+    .map((c) => ({ ...c, assigneeId: c.assigneeGuess || null }))
   parseAttempted.value = true
 }
 
@@ -294,7 +340,7 @@ async function confirmCreateTasks() {
       meetingId: props.id,
       occurrenceId: selectedSummaryOccurrenceId.value !== 'all' ? selectedSummaryOccurrenceId.value : null,
       title: c.title.trim(),
-      assigneeId: c.assigneeGuess || null,
+      assigneeId: c.assigneeId || null,
     })
   }
   showSummaryParser.value = false
@@ -539,7 +585,7 @@ function toggleArchived() {
     </template>
 
     <div v-if="addingOccurrence" class="modal-overlay">
-      <div class="modal card scroll-thin">
+      <div class="modal modal-occurrence card scroll-thin">
         <div class="modal-header">
           <h3>Добавить подвстречу серии</h3>
           <button class="btn btn-ghost btn-sm" @click="closeAddOccurrenceForm"><AppIcon name="close" :size="13" /></button>
@@ -567,10 +613,43 @@ function toggleArchived() {
             <label>Описание (опционально)</label>
             <RichTextEditor v-model="newOccurrenceDraft.description" placeholder="Что обсуждалось / повестка..." />
           </div>
+
+          <button
+            class="btn btn-ghost btn-sm"
+            :disabled="!newOccurrenceDraft.description || !newOccurrenceDraft.description.trim()"
+            @click="runNewOccurrenceParse"
+          >
+            <AppIcon name="layers" :size="13" /> Разобрать описание на задачи
+          </button>
+
+          <div v-if="newOccurrenceParseAttempted" class="parse-results">
+            <div v-if="!newOccurrenceParsedCandidates.length" class="empty-state-inline">
+              Не найдено ни одной строки, соответствующей эвристикам разбора.
+            </div>
+            <template v-else>
+              <div class="section-title">Найдено кандидатов: {{ newOccurrenceParsedCandidates.length }} — подтвердите перед сохранением</div>
+              <div v-for="(c, idx) in newOccurrenceParsedCandidates" :key="idx" class="candidate-row">
+                <input type="checkbox" v-model="c.accepted" />
+                <div class="candidate-main">
+                  <input v-model="c.title" class="candidate-title-input" />
+                  <div class="candidate-meta">
+                    <span class="tag">{{ MATCHED_PATTERN_LABEL[c.matchedPattern] }}</span>
+                  </div>
+                </div>
+                <select v-model="c.assigneeId" class="candidate-assignee-select">
+                  <option :value="null">Без исполнителя</option>
+                  <option v-for="u in assignableUsers" :key="u.id" :value="u.id">{{ u.name }}</option>
+                </select>
+                <button class="btn btn-ghost btn-sm" @click="removeNewOccurrenceCandidate(idx)"><AppIcon name="close" :size="11" /></button>
+              </div>
+            </template>
+          </div>
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" @click="closeAddOccurrenceForm">Отмена</button>
-          <button class="btn btn-primary" @click="submitAddOccurrence">Добавить</button>
+          <button class="btn btn-primary" @click="submitAddOccurrence">
+            {{ hasNewOccurrenceTasksToCreate ? 'Добавить и создать задачи' : 'Добавить' }}
+          </button>
         </div>
       </div>
     </div>
@@ -612,7 +691,7 @@ function toggleArchived() {
     </div>
 
     <div v-if="showSummaryParser" class="modal-overlay">
-      <div class="modal modal-wide card scroll-thin">
+      <div class="modal modal-occurrence card scroll-thin">
         <div class="modal-header">
           <h3>Разбор резюме встречи в задачи</h3>
           <button class="btn btn-ghost btn-sm" @click="showSummaryParser = false"><AppIcon name="close" :size="13" /></button>
@@ -656,6 +735,10 @@ function toggleArchived() {
                     </span>
                   </div>
                 </div>
+                <select v-model="c.assigneeId" class="candidate-assignee-select">
+                  <option :value="null">Без исполнителя</option>
+                  <option v-for="u in assignableUsers" :key="u.id" :value="u.id">{{ u.name }}</option>
+                </select>
                 <button class="btn btn-ghost btn-sm" @click="removeCandidate(idx)"><AppIcon name="close" :size="11" /></button>
               </div>
             </template>
@@ -885,6 +968,10 @@ function toggleArchived() {
 .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted); border-top: 1px solid var(--color-border); padding-top: 10px; }
 .candidate-row { display: flex; align-items: flex-start; gap: 8px; padding: 6px 4px; border-bottom: 1px solid var(--color-border); }
 .candidate-main { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.candidate-assignee-select {
+  margin-left: auto; flex-shrink: 0; align-self: center; border: 1px solid var(--color-border);
+  border-radius: 6px; padding: 5px 8px; font-size: 12.5px; max-width: 160px;
+}
 .candidate-title-input { border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 13px; width: 100%; }
 .candidate-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; }
 .fade-tab-enter-active, .fade-tab-leave-active { transition: opacity 0.12s ease; }
