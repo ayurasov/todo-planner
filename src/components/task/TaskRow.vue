@@ -565,17 +565,20 @@ function closeContextMenu() { contextMenu.value = null }
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; padding: 2px 8px; border-radius: 999px;
 }
 .occurrence-badge:hover { background: #dfe6ff; }
+
+/* Колонка исполнителя: фиксированная ширина, выравнивание по левому краю,
+   чтобы имена начинались в одной и той же позиции независимо от их длины. */
 .task-assignee { width: 26px; flex-shrink: 0; position: relative; }
-.task-assignee-detailed { width: auto; max-width: 180px; flex-shrink: 0; }
+.task-assignee-detailed { width: 180px; flex-shrink: 0; }
 .avatar-btn { border: none; background: none; padding: 0; cursor: pointer; display: flex; border-radius: 50%; }
 .avatar-btn-disabled { cursor: default; }
 .avatar-btn-detailed {
   border-radius: 999px; align-items: center; gap: 6px; padding: 3px 10px 3px 3px;
-  background: #eef1f7; max-width: 100%;
+  background: #eef1f7; width: 100%; justify-content: flex-start; box-sizing: border-box;
 }
 .avatar-btn-detailed:hover { background: #e4e8f2; }
 .avatar-btn-detailed.avatar-btn-disabled:hover { background: #eef1f7; }
-.assignee-name { font-size: 12px; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.assignee-name { font-size: 12px; font-weight: 600; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; flex: 1; min-width: 0; }
 .avatar {
   width: 24px; height: 24px; border-radius: 50%; background: var(--color-primary);
   color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0;
