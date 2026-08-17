@@ -7,7 +7,7 @@ import { useListsStore } from '../../stores/listsStore'
 import { useMeetingsStore } from '../../stores/meetingsStore'
 import { usePreferencesStore } from '../../stores/preferencesStore'
 import { TaskPriority, TaskStatus, PRIORITY_LABEL } from '../../domain/entities/enums'
-import { formatDateTime, formatDate } from '../../utils/formatters'
+import { formatDateTime, formatDate, stripHtml, truncateText } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
 import AppIcon from '../common/AppIcon.vue'
 import RichTextEditor from '../common/RichTextEditor.vue'
@@ -214,6 +214,21 @@ const HISTORY_LABEL = {
 const HISTORY_ICON = {
   created: 'plus', field_changed: 'edit', commented: 'message', assignee_changed: 'team',
   rescheduled: 'calendar', completed: 'check', reopened: 'undo',
+}
+const HISTORY_FIELD_LABEL = {
+  title: 'название', description: 'описание', status: 'статус', priority: 'приоритет',
+  dueDate: 'срок', startDate: 'дату начала', tags: 'теги', pinned: 'закрепление',
+}
+// Поля, хранящие HTML из RichTextEditor — в истории показываем как обычный
+// текст без тегов, иначе видна разметка вида <div><br></div>.
+const HISTORY_RICH_TEXT_FIELDS = new Set(['description'])
+function historyFieldValue(value, field) {
+  if (HISTORY_RICH_TEXT_FIELDS.has(field)) {
+    const plain = stripHtml(value)
+    return plain ? truncateText(plain, 80) : '—'
+  }
+  if (value === null || value === undefined || value === '') return '—'
+  return String(value)
 }
 </script>
 
@@ -449,7 +464,9 @@ const HISTORY_ICON = {
                     <span class="history-icon"><AppIcon :name="HISTORY_ICON[entry.type] || 'more'" :size="12" /></span>
                     <div class="history-body">
                       <span class="history-type">{{ HISTORY_LABEL[entry.type] || entry.type }}</span>
-                      <span class="history-detail" v-if="entry.field">{{ entry.field }}: {{ entry.oldValue }} → {{ entry.newValue }}</span>
+                      <span class="history-detail" v-if="entry.field">
+                        {{ HISTORY_FIELD_LABEL[entry.field] || entry.field }}: {{ historyFieldValue(entry.oldValue, entry.field) }} → {{ historyFieldValue(entry.newValue, entry.field) }}
+                      </span>
                       <span class="history-detail" v-if="entry.comment">"{{ entry.comment }}"</span>
                       <span class="history-meta">{{ historyStore.actorName(entry.actorId) }} · {{ formatDateTime(entry.timestamp) }}</span>
                     </div>

@@ -5,7 +5,7 @@ import { useMeetingsStore } from '../stores/meetingsStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
 import { useDragReorder } from '../composables/useDragReorder'
-import { formatDateTime, formatTime, formatMeetingRecurrence } from '../utils/formatters'
+import { formatDateTime, formatTime, formatMeetingRecurrence, stripHtml } from '../utils/formatters'
 import AppIcon from '../components/common/AppIcon.vue'
 import RichTextEditor from '../components/common/RichTextEditor.vue'
 import ConfirmModal from '../components/common/ConfirmModal.vue'
@@ -241,12 +241,6 @@ async function confirmRemoveMeeting() {
   }
   await meetingsStore.removeMeeting(meeting.id)
   meetingPendingRemoval.value = null
-}
-
-function stripHtml(html) {
-  const div = document.createElement('div')
-  div.innerHTML = html || ''
-  return div.textContent || div.innerText || ''
 }
 
 function isRecurringMeeting(meeting) {
