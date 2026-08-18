@@ -230,6 +230,19 @@ function startEditOccurrence() {
   occurrenceEditing.value = true
 }
 
+// Если у подвстречи ещё не было описания, окно сразу открывается в режиме
+// редактирования (см. openOccurrence). В этом случае "Отмена" должна
+// закрывать всё окно, а не возвращать в режим просмотра — иначе там снова
+// показывается пустое состояние с кнопкой "Заполнить", и пользователю
+// пришлось бы делать лишний клик "Закрыть" после "Отмена".
+function cancelEditOccurrence() {
+  if (!activeOccurrence.value?.description) {
+    closeOccurrence()
+    return
+  }
+  occurrenceEditing.value = false
+}
+
 function openAddOccurrenceForm() {
   const suggested = meetingOccurrenceService.computeNextSuggestedDate(meeting.value)
   const d = suggested ? new Date(suggested) : new Date()
@@ -682,7 +695,7 @@ function toggleArchived() {
         </div>
         <div class="modal-actions">
           <template v-if="occurrenceEditing">
-            <button class="btn btn-ghost" @click="occurrenceEditing = false">Отмена</button>
+            <button class="btn btn-ghost" @click="cancelEditOccurrence">Отмена</button>
             <button class="btn btn-primary" @click="saveOccurrence">Сохранить</button>
           </template>
           <template v-else>
