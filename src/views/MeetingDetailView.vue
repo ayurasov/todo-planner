@@ -215,7 +215,10 @@ const summaryOccurrenceOptions = computed(() => occurrences.value.map((o) => ({ 
 function openOccurrence(occ) {
   activeOccurrence.value = occ
   occurrenceDraft.value = { description: occ.description || '', link: occ.link || '' }
-  occurrenceEditing.value = false
+  // Если описание ещё не заполнено, сразу открываем режим редактирования —
+  // пользователь и так намеревался его заполнить (кнопка "Заполнить описание"),
+  // не нужно заставлять его делать лишний клик "Изменить".
+  occurrenceEditing.value = !occ.description
 }
 
 function closeOccurrence() {
