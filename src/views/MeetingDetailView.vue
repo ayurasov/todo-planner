@@ -175,6 +175,13 @@ const unfinishedTotalCount = computed(() => (
   + unfinishedSeriesTasksWithoutOccurrence.value.length
 ))
 
+// При большом количестве невыполненных задач нижняя кнопка добавления
+// подвстречи уезжает далеко вниз. Дублируем её наверху, но только когда
+// блок действительно длинный и в серии больше 4 невыполненных задач.
+const shouldShowTopAddOccurrenceButton = computed(() => (
+  canManageMeeting.value && unfinishedTotalCount.value > 4
+))
+
 const filteredMeetingTasks = computed(() => filtersStore.apply(meetingTasks.value))
 const recurringVisibleTasks = computed(() => {
   if (!isRecurring.value) return []
@@ -486,8 +493,17 @@ function toggleArchived() {
     </div>
 
     <template v-if="isRecurring">
-      <div v-if="unfinishedTotalCount" class="series-alert-bubble">НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ ({{ unfinishedTotalCount }})</div>
-      <div v-else class="series-alert-subtitle">По серии нет невыполненных задач</div>
+      <div class="series-alert-top-row">
+        <div v-if="unfinishedTotalCount" class="series-alert-bubble">НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ ({{ unfinishedTotalCount }})</div>
+        <div v-else class="series-alert-subtitle">По серии нет невыполненных задач</div>
+        <button
+          v-if="shouldShowTopAddOccurrenceButton"
+          class="btn btn-primary btn-sm series-add-occurrence-top-btn"
+          @click="openAddOccurrenceForm"
+        >
+          <AppIcon name="plus" :size="13" /> Добавить подвстречу серии
+        </button>
+      </div>
 
       <div v-if="unfinishedGroupsByOccurrence.length || unfinishedSeriesTasksWithoutOccurrence.length || standaloneUnfinishedTasks.length" class="series-occ-list">
         <!-- Сквозные задачи серии (meetingId задан, occurrenceId пустой) -->
@@ -908,11 +924,13 @@ function toggleArchived() {
 .empty-state { color: var(--color-text-muted); font-size: 13px; text-align: center; padding: 40px 0; }
 .empty-state-inline { font-size: 12.5px; color: var(--color-text-muted); padding: 10px; text-align: center; }
 
+.series-alert-top-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .series-alert-bubble {
-  display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px;
+  display: inline-flex; align-items: center; gap: 6px;
   color: var(--color-danger); font-size: 13.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
 }
-.series-alert-subtitle { font-size: 12.5px; color: var(--color-text-muted); margin-bottom: 12px; }
+.series-add-occurrence-top-btn { margin-left: auto; }
+.series-alert-subtitle { font-size: 12.5px; color: var(--color-text-muted); }
 .series-occ-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
 .series-occ-row { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 14px; }
 .series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 6px; text-align: center; }
