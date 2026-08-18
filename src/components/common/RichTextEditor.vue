@@ -165,7 +165,12 @@ onMounted(() => {
 })
 
 watch(() => props.modelValue, (val) => {
-  if (editorEl.value && val !== editorEl.value.innerHTML) {
+  // Не перезаписываем innerHTML пока редактор в фокусе — это сбрасывало бы
+  // позицию каретки в начало при каждом emit во время быстрого набора текста.
+  // Синхронизацию делаем только если фокус сейчас не внутри editorEl.
+  if (!editorEl.value) return
+  if (editorEl.value.contains(document.activeElement)) return
+  if (val !== editorEl.value.innerHTML) {
     editorEl.value.innerHTML = val || ''
   }
 })
