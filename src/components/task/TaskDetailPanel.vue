@@ -146,10 +146,25 @@ function updateField(field, value) {
   tasksStore.updateTaskField(props.task.id, field, value)
 }
 
+// Раньше поле редактирования названия было однострочным <input>, из-за чего
+// многострочный заголовок из режима просмотра «схлопывался» в одну строку при
+// клике. Теперь используем <textarea> с автоматической подгонкой высоты под
+// содержимое (resizeTitleInput), чтобы число визуальных строк совпадало с тем,
+// что было в <h2> до перехода в режим редактирования.
+function resizeTitleInput() {
+  const el = titleInputEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
 function startEditTitle() {
   titleDraft.value = liveTask.value.title
   editingTitle.value = true
-  nextTick(() => titleInputEl.value?.focus())
+  nextTick(() => {
+    titleInputEl.value?.focus()
+    resizeTitleInput()
+  })
 }
 
 function commitTitle() {
@@ -261,13 +276,15 @@ function historyFieldValue(value, field) {
                 <button class="btn btn-ghost close-btn" @click="emit('close')"><AppIcon name="close" :size="15" /></button>
               </div>
             </div>
-            <input
+            <textarea
               v-if="editingTitle"
               ref="titleInputEl"
               v-model="titleDraft"
               class="title-edit-input"
+              rows="1"
+              @input="resizeTitleInput"
               @blur="commitTitle"
-              @keyup.enter="commitTitle"
+              @keydown.enter.prevent="commitTitle"
               @keyup.escape="cancelEditTitle"
             />
             <h2 v-else class="title-display" :class="{ 'title-readonly': !canEditThisTask }" @click="canEditThisTask && startEditTitle()">
@@ -519,7 +536,14 @@ function historyFieldValue(value, field) {
 .title-readonly { cursor: default; }
 .title-readonly:hover { background: none; }
 .readonly-banner { font-size: 12px; color: var(--color-text-muted); background: #f1f3f9; border-radius: 8px; padding: 6px 10px; margin: 8px 0 0; display: flex; align-items: center; gap: 6px; width: fit-content; }
-.title-edit-input { width: 100%; font-size: 20px; font-weight: 650; border: 1.5px solid var(--color-primary); border-radius: 8px; padding: 6px 8px; margin: 4px 0 0; outline: none; }
+/* Пункт: textarea вместо однострочного input, чтобы при переходе в редактирование
+   заголовок не «схлопывался» в одну строку — resize отключён (высота считается
+   программно в resizeTitleInput), line-height/font совпадают с .title-display. */
+.title-edit-input {
+  width: 100%; font-size: 20px; font-weight: 650; font-family: inherit; line-height: 1.3;
+  border: 1.5px solid var(--color-primary); border-radius: 8px; padding: 6px 8px; margin: 4px 0 0;
+  outline: none; resize: none; overflow: hidden; display: block;
+}
 
 .panel-body { flex: 1; overflow-y: auto; padding: 20px 24px 24px; }
 .body-columns { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 28px; align-items: start; }
