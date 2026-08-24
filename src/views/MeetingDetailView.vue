@@ -49,7 +49,6 @@ const selectedSummaryOccurrenceId = ref('all')
 const activeOccurrence = ref(null)
 const occurrenceDraft = ref({ description: '', link: '' })
 const occurrenceEditing = ref(false)
-const expandedOccurrenceIds = ref([])
 
 const addingOccurrence = ref(false)
 const newOccurrenceDraft = ref({ date: '', time: '', description: '', link: '' })
@@ -108,18 +107,6 @@ const activeOccurrenceTasks = computed(() => {
 
 function occurrenceTitle(occ) {
   return `${meeting.value?.title || ''} · ${formatDateTime(occ.date)}`
-}
-
-function isOccurrenceExpanded(occurrenceId) {
-  return expandedOccurrenceIds.value.includes(occurrenceId)
-}
-
-function toggleOccurrenceDescription(occurrenceId) {
-  if (isOccurrenceExpanded(occurrenceId)) {
-    expandedOccurrenceIds.value = expandedOccurrenceIds.value.filter((id) => id !== occurrenceId)
-  } else {
-    expandedOccurrenceIds.value = [...expandedOccurrenceIds.value, occurrenceId]
-  }
 }
 
 const seriesTasksWithoutOccurrence = computed(() => {
@@ -541,14 +528,6 @@ function toggleArchived() {
               <span class="occurrence-date"><AppIcon name="calendar" :size="13" /> {{ occurrenceTitle(group.occurrence) }}</span>
               <span v-if="group.occurrence.description" class="occurrence-has-desc"><AppIcon name="edit" :size="11" /> описание заполнено</span>
             </button>
-            <button
-              v-if="group.occurrence.description"
-              class="occurrence-expand-btn"
-              @click="toggleOccurrenceDescription(group.occurrence.id)"
-            >
-              <AppIcon :name="isOccurrenceExpanded(group.occurrence.id) ? 'chevronUp' : 'chevronDown'" :size="12" />
-              {{ isOccurrenceExpanded(group.occurrence.id) ? 'Свернуть описание' : 'Развернуть описание' }}
-            </button>
             <button v-if="canManageMeeting" class="btn btn-ghost btn-sm" @click="openSummaryParser(group.occurrence)">
               <AppIcon name="layers" :size="13" /> Разбор резюме встречи в задачи
             </button>
@@ -556,8 +535,6 @@ function toggleArchived() {
               <AppIcon name="trash" :size="13" />
             </button>
           </div>
-
-          <div v-if="group.occurrence.description && isOccurrenceExpanded(group.occurrence.id)" class="occurrence-inline-description rte-render" v-html="group.occurrence.description" />
 
           <div v-if="!group.tasks.length" class="empty-state-inline">Задач на встрече нет</div>
           <TaskListPanel v-else :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
@@ -929,15 +906,6 @@ function toggleArchived() {
 .occurrence-header--static { cursor: default; padding: 0; }
 .occurrence-date { font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .occurrence-has-desc { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
-.occurrence-expand-btn {
-  border: none; background: none; padding: 0; color: var(--color-primary); font-size: 12px; font-weight: 600;
-  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
-}
-.occurrence-expand-btn:hover { text-decoration: underline; }
-.occurrence-inline-description {
-  margin: -2px 0 10px; padding: 10px 12px; background: #f8faff; border: 1px solid #dfe7ff; border-radius: 10px;
-  font-size: 13px; line-height: 1.55;
-}
 .occurrence-description-text { font-size: 13px; line-height: 1.55; margin: 0 0 10px; }
 .occurrence-modal-tasks-block {
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border);
