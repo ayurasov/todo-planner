@@ -25,18 +25,8 @@ const menuEl = ref(null)
 const mounted = ref(false)
 const measuredSize = ref({ w: 264, h: 0 })
 
-// Подтверждение удаления вынесено в отдельное состояние — пока confirmDeleteOpen
-// открыт, контекстное меню уже скрыто (close() вызван раньше), а клик вне области
-// самого ConfirmModal (через @click.self) закрывает его без удаления.
 const confirmDeleteOpen = ref(false)
 
-// ConfirmModal рендерится через свой собственный Teleport в body, т.е. физически
-// находится ВНЕ menuEl в DOM. useClickOutside слушает mousedown на document —
-// без этой проверки нажатие на кнопку "Удалить"/"Отмена" внутри ConfirmModal
-// считалось "кликом снаружи" контекстного меню, emit('close') срабатывал на
-// mousedown раньше, чем click-хендлер самой кнопки модалки, весь TaskContextMenu
-// (а вместе с ним и ConfirmModal) размонтировался — из-за этого подтверждение
-// удаления через контекстное меню визуально "не работало".
 useClickOutside(menuEl, () => { if (!confirmDeleteOpen.value) emit('close') })
 onMounted(() => {
   mounted.value = true
@@ -125,17 +115,20 @@ function toggleStandalone() {
   close()
 }
 
+// Раньше дубликат создавался без meetingId/occurrenceId, поэтому копия задачи,
+// сделанная внутри подвстречи, «пропадала» — она не попадала в список задач
+// именно этой подвстречи (occurrenceId у копии был пустым). Теперь копия
+// сохраняет привязку к встрече/подвстрече исходной задачи.
 function duplicate() {
   tasksStore.createTask({
     listId: props.task.listId, parentTaskId: props.task.parentTaskId,
     title: `${props.task.title} (копия)`, priority: props.task.priority,
     assigneeId: props.task.assigneeId, dueDate: props.task.dueDate,
+    meetingId: props.task.meetingId || null, occurrenceId: props.task.occurrenceId || null,
   })
   close()
 }
 
-// Раньше подтверждение шло через window.confirm() — теперь открываем
-// ConfirmModal и держим меню видимым до явного решения пользователя.
 function askRemove() {
   confirmDeleteOpen.value = true
 }
