@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useMeetingsStore } from '../stores/meetingsStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
@@ -16,12 +16,14 @@ import AppIcon from '../components/common/AppIcon.vue'
 import RichTextEditor from '../components/common/RichTextEditor.vue'
 import ConfirmModal from '../components/common/ConfirmModal.vue'
 import UserMultiSelect from '../components/common/UserMultiSelect.vue'
+import OccurrenceTaskGlance from '../components/task/OccurrenceTaskGlance.vue'
 import { formatDateTime, formatTime, formatMeetingRecurrence } from '../utils/formatters'
 import { meetingSummaryParser, MATCHED_PATTERN_LABEL } from '../services/MeetingSummaryParser'
 import { meetingOccurrenceService } from '../services/MeetingOccurrenceService'
 
 const props = defineProps({ id: { type: String, required: true } })
 const router = useRouter()
+const route = useRoute()
 const meetingsStore = useMeetingsStore()
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
@@ -30,10 +32,6 @@ const prefs = usePreferencesStore()
 const filtersStore = useFiltersStore()
 const isAdmin = useIsAdmin()
 
-// Список пользователей, доступных для назначения исполнителем задач этой встречи
-// (учитывает attendeeIds встречи, если они заданы) — используется в разборе резюме
-// в задачи как для модалки "Разбор резюме", так и для инлайн-разбора внутри формы
-// добавления подвстречи.
 const assignableUsers = useAssignableUsers(() => ({ meetingId: props.id }))
 
 const editing = ref(false)
@@ -41,8 +39,6 @@ const editDraft = ref({
   title: '', date: '', time: '', description: '', link: '', attendeeIds: [], editorIds: [], color: '#4f7cff',
   recurrenceEnabled: false, recurrenceFreq: 'weekly', recurrenceWeekdays: [],
 })
-
-
 
 const showSummaryParser = ref(false)
 const summaryText = ref('')
@@ -57,14 +53,9 @@ const expandedOccurrenceIds = ref([])
 
 const addingOccurrence = ref(false)
 const newOccurrenceDraft = ref({ date: '', time: '', description: '', link: '' })
-
-// Инлайн-разбор описания добавляемой подвстречи в задачи — заполняется прямо
-// в форме "Добавить подвстречу серии", без необходимости открывать отдельную
-// модалку "Разбор резюме встречи в задачи" после сохранения подвстречи.
 const newOccurrenceParsedCandidates = ref([])
 const newOccurrenceParseAttempted = ref(false)
 
-// Все подтверждения удаления на странице встречи теперь через единый ConfirmModal.
 const occurrencePendingRemoval = ref(null)
 const meetingPendingRemoval = ref(false)
 
@@ -78,18 +69,28 @@ const WEEKDAY_OPTIONS = [
   { value: 0, label: 'Вс' },
 ]
 
+function scrollToOccurrenceHash() {
+  const hash = route.hash || ''
+  if (!hash.startsWith('#occurrence-')) return
+  nextTick(() => {
+    const el = document.querySelector(hash)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
+}
+
 onMounted(async () => {
   if (!meetingsStore.loaded) await meetingsStore.load()
   if (!tasksStore.loaded) await tasksStore.load()
   if (!listsStore.loaded) await listsStore.load()
   if (!usersStore.loaded) await usersStore.load()
-  // Группировка по исполнителю внутри подвстреч больше не форсируется —
-  // задачи каждой подвстречи показываются простым списком без лишней
-  // иерархии; пользователь может сам включить нужную группировку в
-  // QuickFiltersBar/QuickToolbar, если это понадобится.
   if (isRecurring.value) {
     filtersStore.setStatus('all')
   }
+  scrollToOccurrenceHash()
+})
+
+watch(() => route.hash, () => {
+  scrollToOccurrenceHash()
 })
 
 const meeting = computed(() => meetingsStore.meetingById(props.id))
@@ -101,6 +102,10 @@ const meetingTasks = computed(() => tasksStore.tasks.filter((t) => t.meetingId =
 const attendees = computed(() => (meeting.value?.attendeeIds || []).map((id) => usersStore.byId(id)).filter(Boolean))
 const recurrenceLabel = computed(() => formatMeetingRecurrence(meeting.value?.recurrence))
 const occurrences = computed(() => meetingsStore.occurrencesOf(props.id))
+const activeOccurrenceTasks = computed(() => {
+  if (!activeOccurrence.value) return []
+  return meetingTasks.value.filter((t) => t.occurrenceId === activeOccurrence.value.id)
+})
 
 function occurrenceTitle(occ) {
   return `${meeting.value?.title || ''} · ${formatDateTime(occ.date)}`
@@ -123,13 +128,6 @@ const seriesTasksWithoutOccurrence = computed(() => {
   return recurringVisibleTasks.value.filter((t) => !t.occurrenceId)
 })
 
-/**
- * Задачи, вообще не привязанные ни к какой встрече (t.meetingId пусто), но
- * находящиеся в тех же списках, где есть задачи этой серии встреч. Требование:
- * бейдж "НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ" должен также учитывать такие задачи —
- * то есть незавершённые задачи без привязки к встрече в списках, связанных с
- * этой серией, а не только задачи с meetingId === props.id.
- */
 const relatedListIds = computed(() => new Set(meetingTasks.value.map((t) => t.listId).filter(Boolean)))
 
 const standaloneUnfinishedTasks = computed(() => {
@@ -143,11 +141,6 @@ const standaloneUnfinishedTasks = computed(() => {
   )).sort((a, b) => new Date(a.updatedAt || a.createdAt || 0) - new Date(b.updatedAt || b.createdAt || 0))
 })
 
-/**
- * Невыполненные «сквозные» задачи серии — привязаны к встрече (meetingId === id),
- * но без привязки к конкретной подвстрече (occurrenceId пустой).
- * Раньше в блоке «НЕ ВЫПОЛНЕНО В СЕРИИ ВСТРЕЧ» они не отображались совсем.
- */
 const unfinishedSeriesTasksWithoutOccurrence = computed(() => {
   if (!isRecurring.value) return []
   return meetingTasks.value
@@ -175,9 +168,6 @@ const unfinishedTotalCount = computed(() => (
   + unfinishedSeriesTasksWithoutOccurrence.value.length
 ))
 
-// При большом количестве невыполненных задач нижняя кнопка добавления
-// подвстречи уезжает далеко вниз. Дублируем её наверху, но только когда
-// блок действительно длинный и в серии больше 4 невыполненных задач.
 const shouldShowTopAddOccurrenceButton = computed(() => (
   canManageMeeting.value && unfinishedTotalCount.value > 4
 ))
@@ -222,9 +212,6 @@ const summaryOccurrenceOptions = computed(() => occurrences.value.map((o) => ({ 
 function openOccurrence(occ) {
   activeOccurrence.value = occ
   occurrenceDraft.value = { description: occ.description || '', link: occ.link || '' }
-  // Если описание ещё не заполнено, сразу открываем режим редактирования —
-  // пользователь и так намеревался его заполнить (кнопка "Заполнить описание"),
-  // не нужно заставлять его делать лишний клик "Изменить".
   occurrenceEditing.value = !occ.description
 }
 
@@ -237,11 +224,6 @@ function startEditOccurrence() {
   occurrenceEditing.value = true
 }
 
-// Если у подвстречи ещё не было описания, окно сразу открывается в режиме
-// редактирования (см. openOccurrence). В этом случае "Отмена" должна
-// закрывать всё окно, а не возвращать в режим просмотра — иначе там снова
-// показывается пустое состояние с кнопкой "Заполнить", и пользователю
-// пришлось бы делать лишний клик "Закрыть" после "Отмена".
 function cancelEditOccurrence() {
   if (!activeOccurrence.value?.description) {
     closeOccurrence()
@@ -270,9 +252,6 @@ function closeAddOccurrenceForm() {
   newOccurrenceParseAttempted.value = false
 }
 
-// Разбор описания добавляемой подвстречи в задачи прямо в форме, без
-// отдельного шага после сохранения. У каждого кандидата сразу подставляется
-// определённый эвристикой исполнитель, если он найден — иначе "Без исполнителя".
 function runNewOccurrenceParse() {
   newOccurrenceParsedCandidates.value = meetingSummaryParser
     .parse(newOccurrenceDraft.value.description, { knownUsers: usersStore.users })
@@ -336,7 +315,6 @@ async function saveOccurrence() {
 
 function openSummaryParser(occurrence = null) {
   selectedSummaryOccurrenceId.value = occurrence?.id || 'all'
-  // Передаём raw HTML — парсер сам распознаёт теги и сохраняет структуру списков
   summaryText.value = occurrence ? (occurrence.description || '') : (meeting.value?.description || '')
   parsedCandidates.value = []
   parseAttempted.value = false
@@ -344,8 +322,6 @@ function openSummaryParser(occurrence = null) {
 }
 
 function runParse() {
-  // summaryText может быть HTML (из RichTextEditor) или plain text —
-  // парсер автоматически определяет формат и обрабатывает оба варианта
   parsedCandidates.value = meetingSummaryParser
     .parse(summaryText.value, { knownUsers: usersStore.users })
     .map((c) => ({ ...c, assigneeId: c.assigneeGuess || null }))
@@ -404,8 +380,6 @@ function toggleWeekday(day) {
 async function saveEdit() {
   if (!editDraft.value.title.trim()) return
   if (!isRecurring.value && !editDraft.value.date) return
-  // Для регулярной встречи дата серии (meeting.date) не редактируется — это дата
-  // создания встречи, меняется только время суток по умолчанию для серии.
   const isoDate = isRecurring.value
     ? withTimeOfDay(meeting.value.date, editDraft.value.time || '00:00')
     : new Date(`${editDraft.value.date}T${editDraft.value.time || '00:00'}`).toISOString()
@@ -506,7 +480,6 @@ function toggleArchived() {
       </div>
 
       <div v-if="unfinishedGroupsByOccurrence.length || unfinishedSeriesTasksWithoutOccurrence.length || standaloneUnfinishedTasks.length" class="series-occ-list">
-        <!-- Сквозные задачи серии (meetingId задан, occurrenceId пустой) -->
         <div v-if="unfinishedSeriesTasksWithoutOccurrence.length" class="series-occ-row card">
           <div class="series-occ-marker">
             <span class="series-occ-date series-occ-date--through">Сквозные задачи</span>
@@ -516,7 +489,6 @@ function toggleArchived() {
             <TaskListPanel :tasks="unfinishedSeriesTasksWithoutOccurrence" :show-toolbar="false" :meeting-mode="true" :flat="true" />
           </div>
         </div>
-        <!-- Задачи по конкретным подвстречам -->
         <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
           <div class="series-occ-marker">
             <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
@@ -526,7 +498,6 @@ function toggleArchived() {
             <TaskListPanel :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" :flat="true" />
           </div>
         </div>
-        <!-- Задачи, не привязанные ни к какой встрече (по связанным спискам) -->
         <div v-if="standaloneUnfinishedTasks.length" class="series-occ-row card">
           <div class="series-occ-marker">
             <span class="series-occ-date">Без встречи</span>
@@ -564,7 +535,7 @@ function toggleArchived() {
         Подвстреч пока нет — добавьте первую кнопкой «Добавить подвстречу серии».
       </div>
       <div class="occurrence-list">
-        <div v-for="group in occurrenceGroups" :key="group.occurrence.id" class="occurrence-card card">
+        <div v-for="group in occurrenceGroups" :id="`occurrence-${group.occurrence.id}`" :key="group.occurrence.id" class="occurrence-card card">
           <div class="occurrence-header-wrap">
             <button class="occurrence-header" @click="openOccurrence(group.occurrence)">
               <span class="occurrence-date"><AppIcon name="calendar" :size="13" /> {{ occurrenceTitle(group.occurrence) }}</span>
@@ -708,6 +679,15 @@ function toggleArchived() {
             <p v-else class="empty-state-inline">Описание пока не заполнено</p>
             <a v-if="activeOccurrence.link" :href="activeOccurrence.link" target="_blank" rel="noopener" class="meta-item meeting-link"><AppIcon name="link" :size="12" /> Дополнительные материалы</a>
           </template>
+
+          <div class="occurrence-modal-tasks-block">
+            <div class="occurrence-modal-tasks-title">Все задачи подвстречи (выполненные и невыполненные)</div>
+            <div v-if="!activeOccurrenceTasks.length" class="empty-state-inline">Для этой подвстречи пока нет задач</div>
+            <div v-else class="occurrence-modal-tasks-list card">
+              <OccurrenceTaskGlance v-for="task in activeOccurrenceTasks" :key="task.id" :task="task" />
+            </div>
+            <p class="hint-text occurrence-modal-tasks-hint">Открытие деталей задачи здесь отключено — доступны только быстрые действия в строке.</p>
+          </div>
         </div>
         <div class="modal-actions">
           <template v-if="occurrenceEditing">
@@ -940,7 +920,7 @@ function toggleArchived() {
 .series-occ-tasks { min-width: 0; }
 
 .occurrence-list { display: flex; flex-direction: column; gap: 12px; }
-.occurrence-card { padding: 12px 14px; }
+.occurrence-card { padding: 12px 14px; scroll-margin-top: 18px; }
 .standalone-series-card { margin-bottom: 12px; }
 .occurrence-header-wrap { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; }
 .occurrence-header-wrap--static { margin-bottom: 10px; }
@@ -964,6 +944,15 @@ function toggleArchived() {
 }
 .occurrence-inline-link { margin-top: 10px; }
 .occurrence-description-text { font-size: 13px; line-height: 1.55; margin: 0 0 10px; }
+.occurrence-modal-tasks-block {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.occurrence-modal-tasks-title {
+  font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: var(--color-text-muted);
+}
+.occurrence-modal-tasks-list { overflow: hidden; }
+.occurrence-modal-tasks-hint { margin-top: 0; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(20,25,40,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal { width: 620px; max-height: 85vh; padding: 0; display: flex; flex-direction: column; }
