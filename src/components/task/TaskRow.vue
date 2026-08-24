@@ -55,9 +55,24 @@ const occurrenceBadgeLabel = computed(() => {
   return `${occurrenceInfo.value.meeting.title} · ${formatDateTime(occurrenceInfo.value.occurrence.date)}`
 })
 
+// Раньше клик по тегу/дате подвстречи просто открывал страницу встречи заново
+// (router.push на /meetings/:id), из-за чего пользователь терял место — нужно было
+// самостоятельно искать нужную подвстречу в списке. Теперь переходим с hash-якорем
+// #occurrence-<id>, который расставлен на каждой карточке подвстречи в
+// MeetingDetailView.vue, — vue-router сам проскроллит к элементу с этим id. Если
+// пользователь уже находится на странице этой встречи, роутер не перезагружает
+// компонент — поэтому дополнительно скроллим вручную через scrollIntoView.
 function openOccurrenceMeeting() {
   if (!occurrenceInfo.value) return
-  router.push(`/meetings/${occurrenceInfo.value.meeting.id}`)
+  const meetingId = occurrenceInfo.value.meeting.id
+  const occurrenceId = occurrenceInfo.value.occurrence.id
+  const anchor = `occurrence-${occurrenceId}`
+  const alreadyOnMeeting = router.currentRoute.value.path === `/meetings/${meetingId}`
+  if (alreadyOnMeeting) {
+    document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  } else {
+    router.push({ path: `/meetings/${meetingId}`, hash: `#${anchor}` })
+  }
 }
 
 const checklistItems = computed(() => tasksStore.checklistByTask[props.task.id])
@@ -282,8 +297,8 @@ function closeContextMenu() { contextMenu.value = null }
   <div class="task-row-wrapper">
     <div
       class="task-row"
-      :class="[`density-${prefs.density}`, { done: isDone, overdue: overdue && prefs.highlightOverdue, 'bubble-overdue': bubbleMode && overdue, 'bubble-no-due': bubbleMode && !task.dueDate && !isDone }]"
-      :style="{ paddingLeft: `${8 + depth * 22}px`, borderLeftColor: rowAccentColor, borderLeftWidth: rowAccentColor !== 'transparent' ? '3px' : '0' }"
+      :class="[`density-${prefs.density}`, { done: isDone, overdue: overdue && prefs.highlightOverdue, 'bubble-overdue': bubbleMode && overdue }]"
+      :style="{ paddingLeft: `${8 + depth * 22}px`, borderLeftColor: rowAccentColor, borderLeftWidth: rowAccentColor !== 'transparent' ? '9px' : '0' }"
       @contextmenu="openContextMenu"
     >
       <button v-if="children.length" class="expand-btn" @click="expanded = !expanded">
@@ -352,7 +367,7 @@ function closeContextMenu() { contextMenu.value = null }
           <button
             v-if="occurrenceBadgeLabel"
             class="tag occurrence-badge"
-            :title="'Открыть встречу: ' + occurrenceBadgeLabel"
+            :title="'Перейти к подвстрече: ' + occurrenceBadgeLabel"
             @click.stop="openOccurrenceMeeting"
           ><AppIcon name="repeat" :size="11" /> {{ occurrenceBadgeLabel }}</button>
           <span v-if="prefs.showCompletedDate && task.completedAt" class="date-meta date-meta-done" :title="`Выполнено: ${formatDate(task.completedAt)}`">
@@ -527,7 +542,6 @@ function closeContextMenu() { contextMenu.value = null }
 .task-row.done .task-title { color: var(--color-text-muted); text-decoration: line-through; }
 .task-row.overdue .due-date { color: var(--color-danger); font-weight: 600; }
 .task-row.bubble-overdue { background: rgba(229, 72, 77, 0.07); }
-.task-row.bubble-no-due { box-shadow: inset 3px 0 0 var(--color-text-muted); }
 .expand-btn { border: none; background: none; cursor: pointer; width: 16px; color: var(--color-text-muted); display: flex; align-items: center; justify-content: center; }
 .expand-spacer { width: 16px; display: inline-block; }
 .task-checkbox { accent-color: var(--color-primary); cursor: pointer; }
