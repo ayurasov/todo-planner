@@ -95,10 +95,10 @@ services:
       while true; do
         NOW_HOUR=$$(date -u +%H);
         NOW_MIN=$$(date -u +%M);
-        if [ "$$NOW_HOUR" = '03' ] && [ "$$NOW_MIN" = '00' ]; then
+        if [ \"$$NOW_HOUR\" = '03' ] && [ \"$$NOW_MIN\" = '00' ]; then
           FILE=/backups/todo_planner_$$(date -u +%Y%m%dT%H%M%SZ).dump;
-          echo "[backup] running pg_dump -> $$FILE";
-          pg_dump -Fc -f "$$FILE" && echo '[backup] done' || echo '[backup] FAILED';
+          echo \"[backup] running pg_dump -> $$FILE\";
+          pg_dump -Fc -f \"$$FILE\" && echo '[backup] done' || echo '[backup] FAILED';
           find /backups -name '*.dump' -mtime +$$BACKUP_RETENTION_DAYS -delete;
         fi;
         sleep 60;
