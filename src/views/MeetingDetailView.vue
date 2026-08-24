@@ -49,7 +49,6 @@ const selectedSummaryOccurrenceId = ref('all')
 const activeOccurrence = ref(null)
 const occurrenceDraft = ref({ description: '', link: '' })
 const occurrenceEditing = ref(false)
-const expandedOccurrenceIds = ref([])
 
 const addingOccurrence = ref(false)
 const newOccurrenceDraft = ref({ date: '', time: '', description: '', link: '' })
@@ -97,7 +96,6 @@ const meeting = computed(() => meetingsStore.meetingById(props.id))
 const author = computed(() => (meeting.value ? usersStore.byId(meeting.value.createdBy) : null))
 const isRecurring = computed(() => !!meeting.value?.recurrence?.freq)
 const meetingTypeIcon = computed(() => (isRecurring.value ? 'repeat' : 'calendar'))
-const meetingTypeTitle = computed(() => (isRecurring.value ? 'Регулярная встреча' : 'Разовая встреча'))
 const meetingTasks = computed(() => tasksStore.tasks.filter((t) => t.meetingId === props.id && !t.parentTaskId))
 const attendees = computed(() => (meeting.value?.attendeeIds || []).map((id) => usersStore.byId(id)).filter(Boolean))
 const recurrenceLabel = computed(() => formatMeetingRecurrence(meeting.value?.recurrence))
@@ -109,18 +107,6 @@ const activeOccurrenceTasks = computed(() => {
 
 function occurrenceTitle(occ) {
   return `${meeting.value?.title || ''} · ${formatDateTime(occ.date)}`
-}
-
-function isOccurrenceExpanded(occId) {
-  return expandedOccurrenceIds.value.includes(occId)
-}
-
-function toggleOccurrenceExpanded(occId) {
-  if (isOccurrenceExpanded(occId)) {
-    expandedOccurrenceIds.value = expandedOccurrenceIds.value.filter((id) => id !== occId)
-  } else {
-    expandedOccurrenceIds.value = [...expandedOccurrenceIds.value, occId]
-  }
 }
 
 const seriesTasksWithoutOccurrence = computed(() => {
@@ -300,7 +286,6 @@ async function confirmRemoveOccurrence() {
   if (!occ) return
   await meetingsStore.removeOccurrence(props.id, occ.id, { tasksStore })
   if (activeOccurrence.value?.id === occ.id) closeOccurrence()
-  expandedOccurrenceIds.value = expandedOccurrenceIds.value.filter((id) => id !== occ.id)
   occurrencePendingRemoval.value = null
 }
 
@@ -542,14 +527,6 @@ function toggleArchived() {
               <span v-if="group.occurrence.description" class="occurrence-has-desc"><AppIcon name="edit" :size="11" /> описание заполнено</span>
               <span class="occurrence-open-hint">{{ group.occurrence.description ? 'Открыть подробно' : 'Заполнить описание' }} →</span>
             </button>
-            <button
-              v-if="group.occurrence.description"
-              class="btn btn-ghost btn-sm occurrence-inline-toggle"
-              @click="toggleOccurrenceExpanded(group.occurrence.id)"
-            >
-              <AppIcon :name="isOccurrenceExpanded(group.occurrence.id) ? 'chevronUp' : 'chevronDown'" :size="13" />
-              {{ isOccurrenceExpanded(group.occurrence.id) ? 'Свернуть описание' : 'Развернуть описание' }}
-            </button>
             <button v-if="canManageMeeting" class="btn btn-ghost btn-sm" @click="openSummaryParser(group.occurrence)">
               <AppIcon name="layers" :size="13" /> Разбор резюме встречи в задачи
             </button>
@@ -557,13 +534,6 @@ function toggleArchived() {
               <AppIcon name="trash" :size="13" />
             </button>
           </div>
-
-          <Transition name="fade-tab">
-            <div v-if="isOccurrenceExpanded(group.occurrence.id) && group.occurrence.description" class="occurrence-inline-description rte-render">
-              <div v-html="group.occurrence.description" />
-              <a v-if="group.occurrence.link" :href="group.occurrence.link" target="_blank" rel="noopener" class="meta-item meeting-link occurrence-inline-link"><AppIcon name="link" :size="12" /> Дополнительные материалы</a>
-            </div>
-          </Transition>
 
           <div v-if="!group.tasks.length" class="empty-state-inline">Задач на встрече нет</div>
           <TaskListPanel v-else :tasks="group.tasks" :show-toolbar="false" :meeting-mode="true" />
@@ -932,17 +902,6 @@ function toggleArchived() {
 .occurrence-date { font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .occurrence-has-desc { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
 .occurrence-open-hint { margin-left: auto; font-size: 12px; color: var(--color-primary); font-weight: 600; }
-.occurrence-inline-toggle { display: inline-flex; align-items: center; gap: 6px; }
-.occurrence-inline-description {
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  background: #fafbfe;
-  font-size: 13px;
-  line-height: 1.55;
-}
-.occurrence-inline-link { margin-top: 10px; }
 .occurrence-description-text { font-size: 13px; line-height: 1.55; margin: 0 0 10px; }
 .occurrence-modal-tasks-block {
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border);
@@ -997,6 +956,4 @@ function toggleArchived() {
 }
 .candidate-title-input { border: 1px solid var(--color-border); border-radius: 6px; padding: 5px 8px; font-size: 13px; width: 100%; }
 .candidate-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 11px; }
-.fade-tab-enter-active, .fade-tab-leave-active { transition: opacity 0.12s ease; }
-.fade-tab-enter-from, .fade-tab-leave-to { opacity: 0; }
 </style>
