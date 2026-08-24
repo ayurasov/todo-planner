@@ -3,13 +3,21 @@
 // внутри модалки подвстречи (MeetingDetailView). В отличие от TaskRow, клик по
 // названию НЕ открывает TaskDetailPanel — открыть детали задачи здесь нельзя,
 // доступны только быстрые кнопки: чекбокс выполнения, срок и приоритет.
-import { computed } from 'vue'
+//
+// Правый клик — контекстное меню (TaskContextMenu). Раньше здесь не было
+// обработчика @contextmenu вовсе, поэтому по правой кнопке мыши показывалось
+// системное меню браузера, а пункт "Дублировать" был недоступен для задач
+// внутри подвстречи — это и есть fix ниже. "Открыть детали" в этом меню
+// намеренно не действует (см. hint в шаблоне ниже) — открытие деталей задачи
+// отключено для строк подвстречи по дизайну.
+import { ref, computed } from 'vue'
 import { useTasksStore } from '../../stores/tasksStore'
 import { useUsersStore } from '../../stores/usersStore'
 import { relativeDay, isOverdue } from '../../utils/formatters'
 import { useTaskPermissions } from '../../composables/usePermissions'
 import { getInitials, getAvatarColor } from '../../utils/avatar'
 import AppIcon from '../common/AppIcon.vue'
+import TaskContextMenu from './TaskContextMenu.vue'
 
 const props = defineProps({ task: { type: Object, required: true } })
 
@@ -44,10 +52,23 @@ function snooze() {
   d.setDate(d.getDate() + 1)
   tasksStore.rescheduleTask(props.task.id, d.toISOString())
 }
+
+const contextMenu = ref(null)
+
+function openContextMenu(e) {
+  e.preventDefault()
+  contextMenu.value = { x: e.clientX, y: e.clientY }
+}
+
+function closeContextMenu() { contextMenu.value = null }
 </script>
 
 <template>
-  <div class="occ-glance-row" :class="{ done: isDone }" :style="{ borderLeftColor: PRIORITY_COLOR[task.priority], borderLeftWidth: '9px' }">
+  <div
+    class="occ-glance-row" :class="{ done: isDone }"
+    :style="{ borderLeftColor: PRIORITY_COLOR[task.priority], borderLeftWidth: '9px' }"
+    @contextmenu="openContextMenu"
+  >
     <input
       type="checkbox" :checked="isDone" class="occ-glance-checkbox"
       :disabled="!canToggleStatus"
@@ -63,6 +84,14 @@ function snooze() {
     >{{ PRIORITY_LABEL[task.priority] }}</button>
     <button v-if="canEditThisTask && !isDone" class="btn btn-ghost btn-sm occ-glance-snooze" title="Отложить на день" @click.stop="snooze"><AppIcon name="alarm" :size="12" /></button>
     <span v-if="assignee" class="occ-glance-avatar" :style="{ background: getAvatarColor(assignee.name) }" :title="assignee.name">{{ getInitials(assignee.name) }}</span>
+
+    <TaskContextMenu
+      v-if="contextMenu"
+      :task="task"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      @close="closeContextMenu"
+    />
   </div>
 </template>
 
