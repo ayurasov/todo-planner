@@ -21,6 +21,23 @@ function isVisibleStandalone(task, prefs) {
   return prefs.showSubtasksStandalone || task.displayStandalone
 }
 
+/**
+ * Стабильная сортировка по очерёдности создания (createdAt по возрастанию,
+ * при равенстве — по id как детерминированному тай-брейкеру). Используется
+ * для подзадач (childrenOf) на любом уровне вложенности: дерево задачи
+ * (TaskRow -> TaskRow child) не должно применять ранжирование/«пузырьки» —
+ * порядок должен всегда соответствовать порядку добавления подзадач, вне
+ * зависимости от порядка, в котором элементы лежат в state.tasks (например,
+ * после обновления полей через findIndex-замену это не меняет позицию, но
+ * на всякий случай сортировка делается явно, а не полагается на порядок массива).
+ */
+function byCreationOrder(a, b) {
+  const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
+  const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
+  if (da !== db) return da - db
+  return String(a.id).localeCompare(String(b.id))
+}
+
 export const useTasksStore = defineStore('tasks', {
   state: () => ({
     tasks: [],
@@ -31,7 +48,9 @@ export const useTasksStore = defineStore('tasks', {
   }),
   getters: {
     byId: (state) => (id) => state.tasks.find((t) => t.id === id) || null,
-    childrenOf: (state) => (parentId) => state.tasks.filter((t) => t.parentTaskId === parentId),
+    // Подзадачи и более глубокие подзадачи всегда возвращаются в порядке создания —
+    // никакой сортировки/ранжирования/«пузырькового» алгоритма здесь не применяется.
+    childrenOf: (state) => (parentId) => state.tasks.filter((t) => t.parentTaskId === parentId).sort(byCreationOrder),
     rootTasksOfList: (state) => (listId) => state.tasks.filter((t) => t.listId === listId && !t.parentTaskId),
 
     myTasksRanked: (state) => {
