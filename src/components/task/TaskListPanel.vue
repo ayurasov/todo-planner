@@ -38,7 +38,17 @@ const uiStore = useUiStore()
 const router = useRouter()
 
 function openTask(task) { uiStore.openTask(task.id) }
-function goToMeeting(meetingId) { router.push(`/meetings/${meetingId}`) }
+
+function openMeetingOccurrence(meetingId, occurrenceId = null) {
+  const anchor = occurrenceId ? `occurrence-${occurrenceId}` : ''
+  if (router.currentRoute.value.path === `/meetings/${meetingId}`) {
+    if (anchor) {
+      document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    return
+  }
+  router.push(anchor ? { path: `/meetings/${meetingId}`, hash: `#${anchor}` } : `/meetings/${meetingId}`)
+}
 
 const visibleTasks = computed(() => {
   let list = filtersStore.apply(props.tasks)
@@ -179,6 +189,7 @@ const meetingTopGroups = computed(() => {
           key: `occurrence_${occurrenceId}`,
           label: `${meeting.title} · ${formatDateTime(effectiveDate)}`,
           meetingId,
+          occurrenceId,
           tasks: subgroups ? null : sortTasks(occTasks),
           subgroups,
           bubble: false,
@@ -193,6 +204,7 @@ const meetingTopGroups = computed(() => {
           key: `meeting_${meetingId}_general`,
           label: `${meeting.title} (общие задачи серии)`,
           meetingId,
+          occurrenceId: null,
           tasks: subgroups ? null : sortTasks(noOccurrence),
           subgroups,
           bubble: false,
@@ -206,6 +218,7 @@ const meetingTopGroups = computed(() => {
         key: `meeting_${meetingId}`,
         label: meeting ? `Встреча: ${meeting.title}, ${formatDateTime(meeting.date)}` : `Встреча (${meetingId})`,
         meetingId,
+        occurrenceId: null,
         tasks: subgroups ? null : sortTasks(tasks),
         subgroups,
         bubble: false,
@@ -245,7 +258,7 @@ const groups = computed(() => {
     <div v-if="group.label" class="group-header" :class="{ 'bubble-header': group.bubble, 'meeting-group-header': group.isMeetingGroup }">
       <span class="group-header-text">{{ group.label }}</span>
       <span v-if="!group.bubble" class="group-count">{{ (group.tasks || group.subgroups.flatMap(s => s.tasks)).length }}</span>
-      <button v-if="group.isMeetingGroup && group.meetingId" class="btn btn-ghost btn-sm meeting-link-btn" @click="goToMeeting(group.meetingId)">Перейти к встрече →</button>
+      <button v-if="group.isMeetingGroup && group.meetingId" class="btn btn-ghost btn-sm meeting-link-btn" @click="openMeetingOccurrence(group.meetingId, group.occurrenceId)">Перейти к встрече →</button>
     </div>
 
     <template v-if="group.subgroups">

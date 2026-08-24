@@ -476,7 +476,9 @@ function toggleArchived() {
         </div>
         <div v-for="group in unfinishedGroupsByOccurrence" :key="group.occurrence.id" class="series-occ-row card">
           <div class="series-occ-marker">
-            <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
+            <button class="series-occ-date-btn" @click="router.push({ path: `/meetings/${props.id}`, hash: `#occurrence-${group.occurrence.id}` })">
+              <span class="series-occ-date">{{ formatDateTime(group.occurrence.date) }}</span>
+            </button>
             <span class="series-occ-count">({{ group.count }})</span>
           </div>
           <div class="series-occ-tasks">
@@ -525,13 +527,18 @@ function toggleArchived() {
             <button class="occurrence-header" @click="openOccurrence(group.occurrence)">
               <span class="occurrence-date"><AppIcon name="calendar" :size="13" /> {{ occurrenceTitle(group.occurrence) }}</span>
               <span v-if="group.occurrence.description" class="occurrence-has-desc"><AppIcon name="edit" :size="11" /> описание заполнено</span>
-              <span class="occurrence-open-hint">{{ group.occurrence.description ? 'Открыть подробно' : 'Заполнить описание' }} →</span>
             </button>
             <button v-if="canManageMeeting" class="btn btn-ghost btn-sm" @click="openSummaryParser(group.occurrence)">
               <AppIcon name="layers" :size="13" /> Разбор резюме встречи в задачи
             </button>
             <button v-if="canManageMeeting" class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить подвстречу" @click="requestRemoveOccurrence(group.occurrence)">
               <AppIcon name="trash" :size="13" />
+            </button>
+          </div>
+
+          <div v-if="group.occurrence.description" class="occurrence-inline-description">
+            <button class="occurrence-inline-toggle" @click="openOccurrence(group.occurrence)">
+              <AppIcon name="edit" :size="12" /> Открыть описание
             </button>
           </div>
 
@@ -884,6 +891,10 @@ function toggleArchived() {
 .series-occ-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
 .series-occ-row { display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 14px; }
 .series-occ-marker { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 6px; text-align: center; }
+.series-occ-date-btn {
+  border: none; background: none; padding: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.series-occ-date-btn:hover .series-occ-date { text-decoration: underline; }
 .series-occ-date { font-size: 13px; font-weight: 700; color: #2f6fed; line-height: 1.3; }
 .series-occ-date--through { color: #7c5cd6; }
 .series-occ-count { font-size: 15px; font-weight: 700; color: var(--color-danger); }
@@ -901,7 +912,12 @@ function toggleArchived() {
 .occurrence-header--static { cursor: default; padding: 0; }
 .occurrence-date { font-size: 13.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
 .occurrence-has-desc { font-size: 11.5px; color: var(--color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
-.occurrence-open-hint { margin-left: auto; font-size: 12px; color: var(--color-primary); font-weight: 600; }
+.occurrence-inline-description { margin: -2px 0 8px; }
+.occurrence-inline-toggle {
+  border: none; background: none; padding: 0; color: var(--color-primary); font-size: 12px; font-weight: 600;
+  display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+}
+.occurrence-inline-toggle:hover { text-decoration: underline; }
 .occurrence-description-text { font-size: 13px; line-height: 1.55; margin: 0 0 10px; }
 .occurrence-modal-tasks-block {
   margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--color-border);
