@@ -6,6 +6,7 @@ import { useUsersStore } from '../../stores/usersStore'
 import { useMeetingsStore } from '../../stores/meetingsStore'
 import { useAssignableUsers } from '../../composables/useAssignableUsers'
 import { TaskPriority, PRIORITY_LABEL } from '../../domain/entities/enums'
+import { formatDateTime } from '../../utils/formatters'
 
 const props = defineProps({
   context: { type: Object, default: () => ({}) },
@@ -21,6 +22,7 @@ const title = ref('')
 const listId = ref(props.context.listId || null)
 const parentTaskId = ref(props.context.parentTaskId || null)
 const meetingId = ref(props.context.meetingId || null)
+const occurrenceId = ref(props.context.occurrenceId || null)
 const priority = ref(props.context.priority || TaskPriority.MEDIUM)
 const assigneeId = ref(props.context.assigneeId || usersStore.currentUser?.id || null)
 const dueDate = ref(props.context.dueDate ? props.context.dueDate.slice(0, 10) : '')
@@ -30,6 +32,34 @@ const contextList = computed(() => listsStore.byId(listId.value))
 const parentTask = computed(() => parentTaskId.value ? tasksStore.byId(parentTaskId.value) : null)
 const contextMeeting = computed(() => meetingId.value ? meetingsStore.meetingById(meetingId.value) : null)
 const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
+
+// Список подвстреч серии для выбранной регулярной встречи, от последней к первой
+// (см. meetingsStore.occurrencesOf) — используется, только если встреча регулярная
+// и у неё уже есть хотя бы одна подвстреча.
+const meetingOccurrences = computed(() => (
+  meetingId.value ? meetingsStore.occurrencesOf(meetingId.value) : []
+))
+
+function occurrenceLabel(occ) {
+  return formatDateTime(occ.date)
+}
+
+// Если выбранная встреча — регулярная и у неё есть подвстречи, по умолчанию
+// подставляем самую последнюю (первую в отсортированном по дате списке).
+// Если подвстреч нет — стандартно без привязки к подвстрече.
+function applyDefaultOccurrence() {
+  occurrenceId.value = meetingOccurrences.value.length ? meetingOccurrences.value[0].id : null
+}
+
+if (!props.context.occurrenceId) {
+  applyDefaultOccurrence()
+}
+
+// Если пользователь вручную сменил встречу — пересчитываем дефолтную подвстречу
+// (последнюю по дате, либо «без подвстречи», если у новой встречи их ещё нет).
+watch(meetingId, () => {
+  applyDefaultOccurrence()
+})
 
 // Список исполнителей ограничивается участниками встречи (attendeeIds), если
 // задача привязана к встрече и участники для неё настроены владельцем —
@@ -56,6 +86,7 @@ async function submit() {
     assigneeId: assigneeId.value || null,
     dueDate: dueDate.value ? new Date(dueDate.value).toISOString() : null,
     meetingId: meetingId.value || null,
+    occurrenceId: meetingId.value ? (occurrenceId.value || null) : null,
   })
   if (createMore.value) {
     title.value = ''
@@ -103,6 +134,15 @@ function quickDue(days) {
           <span v-if="contextMeeting" class="field-hint">
             Исполнитель ограничен участниками этой встречи{{ contextMeeting.attendeeIds?.length ? '' : ' (участники не заданы — доступны все)' }}
           </span>
+        </div>
+
+        <div v-if="contextMeeting?.recurrence" class="field-block">
+          <span class="field-caption">Подвстреча (необязательно)</span>
+          <select v-model="occurrenceId" class="field-select">
+            <option :value="null">Без привязки к подвстрече</option>
+            <option v-for="occ in meetingOccurrences" :key="occ.id" :value="occ.id">{{ occurrenceLabel(occ) }}</option>
+          </select>
+          <span v-if="!meetingOccurrences.length" class="field-hint">У этой серии пока нет подвстреч</span>
         </div>
 
         <div class="field-block">
