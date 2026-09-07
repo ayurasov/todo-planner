@@ -1,13 +1,6 @@
 """
 Domain-сущности backend v2 -- простые dataclass'ы без зависимости от
-SQLAlchemy/Flask/Pydantic. Прямой аналог `src/domain/entities/factories.js`
-на фронтенде: те же имена сущностей и полей (здесь используется snake_case,
-как принято в Python; camelCase появляется позже, на уровне DTO/JSON,
-см. app/dto и app/mappers).
-
-Смысл слоя: services (следующий шаг, здесь не реализуется) должны работать
-только с этими объектами, а не с ORM-моделями напрямую -- это даёт
-возможность заменить SQLAlchemy на что угодно без переписывания бизнес-логики.
+SQLAlchemy/Flask/Pydantic.
 """
 
 from dataclasses import dataclass, field
@@ -16,8 +9,6 @@ from typing import Optional
 
 @dataclass
 class Department:
-    """Отдел/служба -- плоский справочник (без иерархии)."""
-
     id: str
     name: str
     created_at: Optional[str] = None
@@ -33,20 +24,12 @@ class User:
     avatar_url: Optional[str] = None
     global_role: str = "user"
     is_active: bool = True
-    # is_system -- служебная учётная запись (например, дефолтный admin или
-    # тестовый аккаунт), помеченная администратором. Скрывается из всех
-    # списков выбора исполнителя/участника встречи/доступных пользователей
-    # списка (см. usersStore.assignable / useAssignableUsers на фронте), но
-    # остаётся видимым и управляемым в UsersView.vue для администратора.
     is_system: bool = False
     login: Optional[str] = None
     password_hash: Optional[str] = None
     position: Optional[str] = None
     department: Optional[str] = None
     department_id: Optional[str] = None
-    # список отделов, которыми руководит данный пользователь (если он
-    # manager) -- может содержать несколько элементов (один руководитель --
-    # несколько отделов/служб одновременно), см. ManagerDepartmentORM.
     managed_department_ids: list = field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -54,8 +37,6 @@ class User:
 
 @dataclass
 class TodoList:
-    """Имя TodoList (а не List) -- чтобы не конфликтовать со встроенным list."""
-
     id: str
     title: str
     description: str = ""
@@ -104,6 +85,8 @@ class Task:
     display_standalone: bool = False
     meeting_id: Optional[str] = None
     occurrence_id: Optional[str] = None
+    meeting_title: Optional[str] = None
+    occurrence_date: Optional[str] = None
 
 
 @dataclass
@@ -115,8 +98,6 @@ class Meeting:
     created_by: Optional[str] = None
     created_at: Optional[str] = None
     attendee_ids: list = field(default_factory=list)
-    # editor_ids -- пользователи с правом редактирования встречи.
-    # Хранятся в таблице meeting_editors (миграция 022).
     editor_ids: list = field(default_factory=list)
     color: str = "#4f7cff"
     archived: bool = False
@@ -124,8 +105,6 @@ class Meeting:
     link: str = ""
     recurrence: Optional[dict] = None
     occurrences: list = field(default_factory=list)
-    # Агрегат "не выполнено в серии" -- считается backend'ом в
-    # MeetingRepository.unfinished_total_count, перенесен с фронта (см. backend/README.md).
     unfinished_count: int = 0
 
 
