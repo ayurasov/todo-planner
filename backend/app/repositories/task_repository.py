@@ -20,9 +20,10 @@ class TaskRepository:
 
     def _to_domain(self, row: TaskORM):
         task = orm_to_domain.task(row, watcher_ids=self._watcher_ids(row.id), tags=self._tags(row.id))
-        meeting = MeetingORM.query.get(row.meeting_id) if row.meeting_id else None
         occurrence = MeetingOccurrenceORM.query.get(row.occurrence_id) if row.occurrence_id else None
-        task.meeting_title = meeting.title if meeting else None
+        # Meeting title is intentionally not included in task metadata. A user may
+        # see an assigned task without having access to the parent meeting.
+        task.meeting_title = None
         task.occurrence_date = occurrence.date.isoformat() if occurrence and occurrence.date else None
         task.occurrence_title = f"Подвстреча · {occurrence.date.isoformat()}" if occurrence and occurrence.date else None
         return task
