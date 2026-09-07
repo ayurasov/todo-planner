@@ -118,7 +118,7 @@ class domain_to_dto:
 
     @staticmethod
     def task(t: d.Task) -> api_dto.TaskResponseDTO:
-        return api_dto.TaskResponseDTO(id=t.id, list_id=t.list_id, parent_task_id=t.parent_task_id, title=t.title, description=t.description, status=t.status, priority=t.priority, assignee_id=t.assignee_id, watcher_ids=t.watcher_ids, due_date=t.due_date, start_date=t.start_date, recurrence_template_id=t.recurrence_template_id, tags=t.tags, pinned=t.pinned, created_at=t.created_at, created_by=t.created_by, updated_at=t.updated_at, updated_by=t.updated_by, last_activity_at=t.last_activity_at, completed_at=t.completed_at, display_standalone=t.display_standalone, meeting_id=t.meeting_id, occurrence_id=t.occurrence_id, meeting_title=t.meeting_title, occurrence_date=t.occurrence_date)
+        return api_dto.TaskResponseDTO(id=t.id, list_id=t.list_id, parent_task_id=t.parent_task_id, title=t.title, description=t.description, status=t.status, priority=t.priority, assignee_id=t.assignee_id, watcher_ids=t.watcher_ids, due_date=t.due_date, start_date=t.start_date, recurrence_template_id=t.recurrence_template_id, tags=t.tags, pinned=t.pinned, created_at=t.created_at, created_by=t.created_by, updated_at=t.updated_at, updated_by=t.updated_by, last_activity_at=t.last_activity_at, completed_at=t.completed_at, display_standalone=t.display_standalone, meeting_id=t.meeting_id, occurrence_id=t.occurrence_id, meeting_title=t.meeting_title, occurrence_date=t.occurrence_date, occurrence_title=t.occurrence_title)
 
     @staticmethod
     def meeting_occurrence(o: d.MeetingOccurrence) -> api_dto.MeetingOccurrenceResponseDTO:
@@ -174,20 +174,4 @@ class dto_to_domain:
 
     @staticmethod
     def list_from_create(dto_obj: api_dto.ListCreateDTO) -> d.TodoList:
-        return d.TodoList(id=None, title=dto_obj.title, description=dto_obj.description, color=dto_obj.color, is_shared=dto_obj.is_shared, default_view=dto_obj.default_view, settings=dto_obj.settings)
-
-    @staticmethod
-    def meeting_from_create(dto_obj: api_dto.MeetingCreateDTO) -> d.Meeting:
-        return d.Meeting(id=None, title=dto_obj.title, date=dto_obj.date, description=dto_obj.description, attendee_ids=dto_obj.attendee_ids, editor_ids=dto_obj.editor_ids, color=dto_obj.color, link=dto_obj.link, recurrence=dto_obj.recurrence)
-
-    @staticmethod
-    def recurrence_template_from_create(dto_obj: api_dto.RecurrenceTemplateCreateDTO) -> d.RecurrenceTemplate:
-        return d.RecurrenceTemplate(id=None, list_id=dto_obj.list_id, title_template=dto_obj.title_template, type=dto_obj.type, rule=dto_obj.rule, timezone=dto_obj.timezone, generate_ahead_count=dto_obj.generate_ahead_count, checklist_template=dto_obj.checklist_template)
-
-    @staticmethod
-    def saved_view_from_create(dto_obj: api_dto.SavedViewCreateDTO) -> d.SavedView:
-        return d.SavedView(id=None, user_id=None, name=dto_obj.name, filters=dto_obj.filters, sort=dto_obj.sort, group_by=dto_obj.group_by, pinned=dto_obj.pinned)
-
-    @staticmethod
-    def notification_from_create(dto_obj: api_dto.NotificationCreateDTO) -> d.Notification:
-        return d.Notification(id=None, user_id=dto_obj.user_id, type=dto_obj.type, title=dto_obj.title, body=dto_obj.body, task_id=dto_obj.task_id, list_id=dto_obj.list_id, actor_id=dto_obj.actor_id)
+        return d.TodoList(id=None, list_id=dto_obj.list_id, parent_task_id=dto_obj.parent_task_id, title=dto_obj.title, description=dto_obj.description, color=dto_obj.color, is_shared=dto_obj.is_shared, default_view=dto_obj.default_view, settings=dto_obj.settings)
