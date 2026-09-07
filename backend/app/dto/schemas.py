@@ -1,13 +1,5 @@
 """
 Pydantic DTO -- request/response-схемы HTTP-слоя backend v2.
-
-Поля здесь в camelCase (через `alias`), чтобы 1:1 совпадать с тем, что уже
-ожидает/отдаёт frontend apiClient и mock-репозитории
-(см. src/repositories/http/apiClient.js, src/domain/entities/factories.js).
-`populate_by_name=True` позволяет создавать DTO как из camelCase JSON
-(входящие запросы), так и из python-объектов по snake_case-именам (мапперы).
-
-здесь нет бизнес-логики и нет импортов SQLAlchemy -- только форма данных.
 """
 
 from typing import Optional, List, Dict, Any
@@ -18,24 +10,17 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-# --- Departments ---
-
 class DepartmentResponseDTO(CamelModel):
     id: str
     name: str
     created_at: Optional[str] = Field(default=None, alias="createdAt")
     updated_at: Optional[str] = Field(default=None, alias="updatedAt")
 
-
 class DepartmentCreateDTO(CamelModel):
     name: str
 
-
 class DepartmentUpdateDTO(CamelModel):
     name: Optional[str] = None
-
-
-# --- Users / Auth ---
 
 class UserResponseDTO(CamelModel):
     id: str
@@ -46,38 +31,22 @@ class UserResponseDTO(CamelModel):
     avatar_url: Optional[str] = Field(default=None, alias="avatarUrl")
     global_role: str = Field(default="user", alias="globalRole")
     is_active: bool = Field(default=True, alias="isActive")
-    # Служебная учётная запись (системные уведомления, автоматические назначения и т.п.).
-    # Такие пользователи не появляются в выпадающих списках назначения исполнителей.
     is_system: bool = Field(default=False, alias="isSystem")
     position: Optional[str] = None
     department: Optional[str] = None
-    # ссылка на справочник Department (плоский список) -- отдел, в котором работает сотрудник.
     department_id: Optional[str] = Field(default=None, alias="departmentId")
-    # отделы, которыми руководит данный руководитель (global_role == 'manager');
-    # могут быть несколько -- руководитель может ответственно за несколькие отделов/служб.
     managed_department_ids: List[str] = Field(default_factory=list, alias="managedDepartmentIds")
-
 
 class LoginRequestDTO(CamelModel):
     login: str
     password: str
 
-
 class LoginResponseDTO(CamelModel):
     user: UserResponseDTO
 
-
 class ChangePasswordRequestDTO(CamelModel):
-    """POST /api/auth/change-password -- смена пароля залогиненным пользователем.
-    `current_password` обязателен, чтобы захват чужой активной сессии (XSS/CSRF
-    через браузер жертвы) не мог молциа сменить пароль без знания текущего.
-    """
-
     current_password: str = Field(alias="currentPassword")
     new_password: str = Field(alias="newPassword", min_length=8)
-
-
-# --- Lists ---
 
 class ListResponseDTO(CamelModel):
     id: str
@@ -92,7 +61,6 @@ class ListResponseDTO(CamelModel):
     archived: bool = False
     order: int = 0
 
-
 class ListCreateDTO(CamelModel):
     title: str
     description: str = ""
@@ -100,7 +68,6 @@ class ListCreateDTO(CamelModel):
     is_shared: bool = Field(default=False, alias="isShared")
     default_view: str = Field(default="list", alias="defaultView")
     settings: Dict[str, Any] = Field(default_factory=dict)
-
 
 class ListUpdateDTO(CamelModel):
     title: Optional[str] = None
@@ -112,16 +79,12 @@ class ListUpdateDTO(CamelModel):
     archived: Optional[bool] = None
     order: Optional[int] = None
 
-
 class ListMembershipResponseDTO(CamelModel):
     id: str
     list_id: str = Field(alias="listId")
     user_id: str = Field(alias="userId")
     role: str
     added_at: Optional[str] = Field(default=None, alias="addedAt")
-
-
-# --- Tasks ---
 
 class ChecklistItemResponseDTO(CamelModel):
     id: str
@@ -131,13 +94,11 @@ class ChecklistItemResponseDTO(CamelModel):
     order: int = 0
     recurrence_scope: str = Field(default="instance_only", alias="recurrenceScope")
 
-
 class ChecklistItemCreateDTO(CamelModel):
     title: str
     done: bool = False
     order: int = 0
     recurrence_scope: str = Field(default="instance_only", alias="recurrenceScope")
-
 
 class CommentResponseDTO(CamelModel):
     id: str
@@ -148,11 +109,9 @@ class CommentResponseDTO(CamelModel):
     edited_at: Optional[str] = Field(default=None, alias="editedAt")
     mentions: List[str] = Field(default_factory=list)
 
-
 class CommentCreateDTO(CamelModel):
     text: str
     mentions: List[str] = Field(default_factory=list)
-
 
 class NoteResponseDTO(CamelModel):
     id: str
@@ -162,10 +121,8 @@ class NoteResponseDTO(CamelModel):
     updated_at: Optional[str] = Field(default=None, alias="updatedAt")
     updated_by: Optional[str] = Field(default=None, alias="updatedBy")
 
-
 class NoteUpdateDTO(CamelModel):
     content_json: Dict[str, Any] = Field(alias="contentJSON")
-
 
 class AttachmentResponseDTO(CamelModel):
     id: str
@@ -178,7 +135,6 @@ class AttachmentResponseDTO(CamelModel):
     uploaded_by: Optional[str] = Field(default=None, alias="uploadedBy")
     uploaded_at: Optional[str] = Field(default=None, alias="uploadedAt")
 
-
 class HistoryEntryResponseDTO(CamelModel):
     id: str
     task_id: str = Field(alias="taskId")
@@ -189,7 +145,6 @@ class HistoryEntryResponseDTO(CamelModel):
     old_value: Optional[str] = Field(default=None, alias="oldValue")
     new_value: Optional[str] = Field(default=None, alias="newValue")
     comment: Optional[str] = None
-
 
 class TaskResponseDTO(CamelModel):
     id: str
@@ -215,7 +170,8 @@ class TaskResponseDTO(CamelModel):
     display_standalone: bool = Field(default=False, alias="displayStandalone")
     meeting_id: Optional[str] = Field(default=None, alias="meetingId")
     occurrence_id: Optional[str] = Field(default=None, alias="occurrenceId")
-
+    meeting_title: Optional[str] = Field(default=None, alias="meetingTitle")
+    occurrence_date: Optional[str] = Field(default=None, alias="occurrenceDate")
 
 class TaskCreateDTO(CamelModel):
     list_id: Optional[str] = Field(default=None, alias="listId")
@@ -234,7 +190,6 @@ class TaskCreateDTO(CamelModel):
     meeting_id: Optional[str] = Field(default=None, alias="meetingId")
     occurrence_id: Optional[str] = Field(default=None, alias="occurrenceId")
 
-
 class TaskUpdateDTO(CamelModel):
     title: Optional[str] = None
     description: Optional[str] = None
@@ -249,9 +204,6 @@ class TaskUpdateDTO(CamelModel):
     display_standalone: Optional[bool] = Field(default=None, alias="displayStandalone")
     completed_at: Optional[str] = Field(default=None, alias="completedAt")
 
-
-# --- Meetings ---
-
 class MeetingOccurrenceResponseDTO(CamelModel):
     id: str
     meeting_id: str = Field(alias="meetingId")
@@ -259,7 +211,6 @@ class MeetingOccurrenceResponseDTO(CamelModel):
     description: str = ""
     link: str = ""
     generated_at: Optional[str] = Field(default=None, alias="generatedAt")
-
 
 class MeetingResponseDTO(CamelModel):
     id: str
@@ -269,7 +220,6 @@ class MeetingResponseDTO(CamelModel):
     created_by: Optional[str] = Field(default=None, alias="createdBy")
     created_at: Optional[str] = Field(default=None, alias="createdAt")
     attendee_ids: List[str] = Field(default_factory=list, alias="attendeeIds")
-    # editor_ids -- пользователи с правом редактирования встречи (таблица meeting_editors).
     editor_ids: List[str] = Field(default_factory=list, alias="editorIds")
     color: str = "#4f7cff"
     archived: bool = False
@@ -277,12 +227,7 @@ class MeetingResponseDTO(CamelModel):
     link: str = ""
     recurrence: Optional[Dict[str, Any]] = None
     occurrences: List[MeetingOccurrenceResponseDTO] = Field(default_factory=list)
-    # Готовая агрегация "не выполнено в серии" -- перенесено с фронта
-    # (MeetingDetailView.vue unfinishedTotalCount) на backend, считается на
-    # MeetingRepository.unfinished_total_count и отдаётся всегда готовым полем
-    # (см. backend/README.md).
     unfinished_count: int = Field(default=0, alias="unfinishedCount")
-
 
 class MeetingCreateDTO(CamelModel):
     title: str
@@ -293,7 +238,6 @@ class MeetingCreateDTO(CamelModel):
     color: str = "#4f7cff"
     link: str = ""
     recurrence: Optional[Dict[str, Any]] = None
-
 
 class MeetingUpdateDTO(CamelModel):
     title: Optional[str] = None
@@ -308,9 +252,6 @@ class MeetingUpdateDTO(CamelModel):
     order: Optional[int] = None
     occurrences: Optional[List[Dict[str, Any]]] = None
 
-
-# --- Recurrence templates ---
-
 class RecurrenceTemplateResponseDTO(CamelModel):
     id: str
     list_id: str = Field(alias="listId")
@@ -322,7 +263,6 @@ class RecurrenceTemplateResponseDTO(CamelModel):
     last_generated_instance_date: Optional[str] = Field(default=None, alias="lastGeneratedInstanceDate")
     checklist_template: List[Dict[str, Any]] = Field(default_factory=list, alias="checklistTemplate")
 
-
 class RecurrenceTemplateCreateDTO(CamelModel):
     list_id: str = Field(alias="listId")
     title_template: str = Field(alias="titleTemplate")
@@ -332,26 +272,21 @@ class RecurrenceTemplateCreateDTO(CamelModel):
     generate_ahead_count: int = Field(default=1, alias="generateAheadCount")
     checklist_template: List[Dict[str, Any]] = Field(default_factory=list, alias="checklistTemplate")
 
-
 class RecurrenceTemplateUpdateDTO(CamelModel):
     title_template: Optional[str] = Field(default=None, alias="titleTemplate")
     rule: Optional[Dict[str, Any]] = None
     timezone: Optional[str] = None
     generate_ahead_count: Optional[int] = Field(default=None, alias="generateAheadCount")
-    checklist_template: Optional[List[Dict[str, Any]]] = Field(default=None, alias="checklistTemplate")
-
-
-# --- Saved views ---
+    checklist_template: Optional[List[Dict[str, Any]]] = Field(default_factory=list, alias="checklistTemplate")
 
 class SavedViewResponseDTO(CamelModel):
     id: str
     user_id: str = Field(alias="userId")
     name: str
     filters: Dict[str, Any] = Field(default_factory=dict)
-    sort: Dict[str, Any] = Field(default_factory=lambda: {"field": "score", "dir": "desc"})
+    sort: Dict[str, Any] = Field(default_factory=dict)
     group_by: Optional[str] = Field(default=None, alias="groupBy")
     pinned: bool = False
-
 
 class SavedViewCreateDTO(CamelModel):
     name: str
@@ -360,16 +295,12 @@ class SavedViewCreateDTO(CamelModel):
     group_by: Optional[str] = Field(default=None, alias="groupBy")
     pinned: bool = False
 
-
 class SavedViewUpdateDTO(CamelModel):
     name: Optional[str] = None
     filters: Optional[Dict[str, Any]] = None
     sort: Optional[Dict[str, Any]] = None
     group_by: Optional[str] = Field(default=None, alias="groupBy")
     pinned: Optional[bool] = None
-
-
-# --- Notifications ---
 
 class NotificationResponseDTO(CamelModel):
     id: str
@@ -383,7 +314,6 @@ class NotificationResponseDTO(CamelModel):
     created_at: Optional[str] = Field(default=None, alias="createdAt")
     read: bool = False
 
-
 class NotificationCreateDTO(CamelModel):
     type: str
     title: str
@@ -392,7 +322,6 @@ class NotificationCreateDTO(CamelModel):
     list_id: Optional[str] = Field(default=None, alias="listId")
     actor_id: Optional[str] = Field(default=None, alias="actorId")
     user_id: Optional[str] = Field(default=None, alias="userId")
-
 
 class NotificationUpdateDTO(CamelModel):
     read: Optional[bool] = None
