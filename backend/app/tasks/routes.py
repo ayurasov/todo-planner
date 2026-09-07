@@ -1,5 +1,14 @@
 """
-Task API routes.
+Реализация blueprint 'tasks' поверх TaskRepository/ChecklistItemRepository/
+NoteRepository/CommentRepository (app.repositories) и HistoryService (app.services).
+
+Доступконтроль:
+  - GET /tasks -- видимые текущему пользователю задачи (server-side через
+    TaskRepository.get_visible_for_user, а не "всё и фильтр на фронте").
+  - POST /tasks -- если есть listId, требует can_create_task; без listId --
+    "приватная" задача, доступна любому авторизованному.
+  - GET /tasks/:id -- доступен любому, кто видит задачу (_can_view_task, включая
+    назначенного исполнителя, даже если он не участник встречи).
 """
 
 import json
@@ -37,7 +46,6 @@ def _split_csv(value):
 def _can_view_task(task, user_id):
     if permission_service.is_global_admin(user_id):
         return True
-    # Assignment is an explicit task-level grant and does not grant meeting access.
     if task.assignee_id == user_id:
         return True
     if permission_service.can_view_task_via_meeting(task, user_id):
@@ -88,12 +96,10 @@ def create_task(**kwargs):
     if list_id and not permission_service.can_create_task(list_id, user_id):
         return permission_denied_response("Недостаточно прав для создания задачи в этом списке")
     task = task_repository.create(list_id=list_id, parent_task_id=payload.get("parentTaskId"), title=title,
-        description=payload.get("description", ""), status=payload.get("status", "open"),
-        priority=payload.get("priority", "medium"), assignee_id=payload.get("assigneeId"),
-        watcher_ids=payload.get("watcherIds", []), due_date=payload.get("dueDate"), start_date=payload.get("startDate"),
-        recurrence_template_id=payload.get("recurrenceTemplateId"), tags=payload.get("tags", []),
-        pinned=payload.get("pinned", False), created_by=user_id, meeting_id=payload.get("meetingId"),
-        occurrence_id=payload.get("occurrenceId"))
+        description=payload.get("description", ""), status=payload.get("status", "open"), priority=payload.get("priority", "medium"),
+        assignee_id=payload.get("assigneeId"), watcher_ids=payload.get("watcherIds", []), due_date=payload.get("dueDate"), start_date=payload.get("startDate"),
+        recurrence_template_id=payload.get("recurrenceTemplateId"), tags=payload.get("tags", []), pinned=payload.get("pinned", False), created_by=user_id,
+        meeting_id=payload.get("meetingId"), occurrence_id=payload.get("occurrenceId"))
     history_service.record_created(task.id, user_id)
     if task.parent_task_id:
         task_repository.touch_activity(task.parent_task_id)
@@ -118,10 +124,7 @@ def update_task(task_id, **kwargs):
     if task is None:
         return _not_found()
     payload = request.get_json(silent=True) or {}
-    field_map = {"title":"title", "description":"description", "status":"status", "priority":"priority",
-        "assigneeId":"assignee_id", "watcherIds":"watcher_ids", "dueDate":"due_date", "startDate":"start_date",
-        "tags":"tags", "pinned":"pinned", "displayStandalone":"display_standalone", "completedAt":"completed_at",
-        "meetingId":"meeting_id", "occurrenceId":"occurrence_id"}
+    field_map = {"title":"title", "description":"description", "status":"status", "priority":"priority", "assigneeId":"assignee_id", "watcherIds":"watcher_ids", "dueDate":"due_date", "startDate":"start_date", "tags":"tags", "pinned":"pinned", "displayStandalone":"display_standalone", "completedAt":"completed_at", "meetingId":"meeting_id", "occurrenceId":"occurrence_id"}
     patch = {snake: payload[camel] for camel, snake in field_map.items() if camel in payload}
     old_values = {snake: getattr(task, snake) for snake in patch}
     if not patch:
@@ -156,4 +159,35 @@ def delete_task(task_id, **kwargs):
     return "", 204
 
 
-# Keep nested-resource handlers from the existing implementation below unchanged.
+# --- Checklist items (nested task resource) ---
+@tasks_bp.route("/<string:task_id>/checklist-items", methods=["GET"])
+def list_task_checklist_items(task_id, **kwargs):
+    task = task_repository.get_by_id(task_id)
+    if task is None or not _can_view_task(task, current_user_id()):
+        return _not_found() if task is None else permission_denied_response("Недостаточно прав для доступа к задаче")
+    return jsonify([domain_to_dto.checklist_item(i).model_dump(by_alias=True) for i in checklist_repository.get_by_task_id(task_id)])
+
+@tasks_bp.route("/<string:task_id>/notes", methods=["GET"])
+def get_task_note(task_id, **kwargs):
+    task = task_repository.get_by_id(task_id)
+    if task is None or not _can_view_task(task, current_user_id()):
+        return _not_found() if task is None else permission_denied_response("Недостаточно прав для доступа к задаче")
+    return jsonify([domain_to_dto.note(n).model_dump(by_alias=True) for n in note_repository.get_by_task_id(task_id)])
+
+@tasks_bp.route("/<string:task_id>/comments", methods=["GET"])
+def list_task_comments(task_id, **kwargs):
+    task = task_repository.get_by_id(task_id)
+    if task is None or not _can_view_task(task, current_user_id()):
+        return _not_found() if task is None else permission_denied_response("Недостаточно прав для доступа к задаче")
+    return jsonify([domain_to_dto.comment(c).model_dump(by_alias=True) for c in comment_repository.get_by_task_id(task_id)])
+
+@tasks_bp.route("/<string:task_id>/history", methods=["GET"])
+def get_task_history(task_id, **kwargs):
+    task = task_repository.get_by_id(task_id)
+    if task is None or not _can_view_task(task, current_user_id()):
+        return _not_found() if task is None else permission_denied_response("Недостаточно прав для доступа к задаче")
+    return jsonify([domain_to_dto.history_entry(e).model_dump(by_alias=True) for e in history_service.get_task_timeline(task_id)])
+
+@tasks_bp.route("/<string:task_id>/attachments", methods=["GET", "POST"])
+def task_attachments(**kwargs):
+    return jsonify({"message": "task attachments not implemented"}), 501
