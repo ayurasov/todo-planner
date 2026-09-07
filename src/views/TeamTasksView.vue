@@ -1,20 +1,30 @@
 <script setup>
 import { computed } from 'vue'
 import { useTasksStore } from '../stores/tasksStore'
+import { useUsersStore } from '../stores/usersStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import WorkloadChart from '../components/charts/WorkloadChart.vue'
 
 const tasksStore = useTasksStore()
+const usersStore = useUsersStore()
 
 const filteredTasks = computed(() => tasksStore.teamTasksRanked)
+const visibleAssigneeUsers = computed(() => {
+  const ids = new Set(filteredTasks.value.map((task) => task.assigneeId).filter(Boolean))
+  return usersStore.users.filter((user) => ids.has(user.id))
+})
 </script>
 
 <template>
   <div class="view-header">
     <h2>Задачи команды</h2>
   </div>
-  <QuickFiltersBar :task-count="filteredTasks.length" />
+  <QuickFiltersBar
+    :task-count="filteredTasks.length"
+    :show-search="true"
+    :assignee-users="visibleAssigneeUsers"
+  />
   <WorkloadChart />
   <TaskListPanel :tasks="filteredTasks" empty-text="Нет задач у команды по текущим фильтрам" />
 </template>
