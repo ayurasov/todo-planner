@@ -68,7 +68,7 @@ class orm_to_domain:
 
     @staticmethod
     def note(row: orm.NoteORM) -> d.Note:
-        return d.Note(id=row.id, task_id=row.task_id, content_json=_loads(row.content, {"type":"doc","content":[]}), created_at=_iso(row.created_at), updated_at=_iso(row.updated_at), updated_by=row.updated_by)
+        return d.Note(id=row.id, task_id=row.task_id, content_json=_loads(row.content, {"type": "doc", "content": []}), created_at=_iso(row.created_at), updated_at=_iso(row.updated_at), updated_by=row.updated_by)
 
     @staticmethod
     def attachment(row: orm.AttachmentORM) -> d.Attachment:
@@ -84,7 +84,7 @@ class orm_to_domain:
 
     @staticmethod
     def saved_view(row: orm.SavedViewORM) -> d.SavedView:
-        return d.SavedView(id=row.id, user_id=row.user_id, name=row.name, filters=_loads(row.filters, {}), sort=_loads(row.sort, {"field":"score","dir":"desc"}), group_by=row.group_by, pinned=bool(row.pinned))
+        return d.SavedView(id=row.id, user_id=row.user_id, name=row.name, filters=_loads(row.filters, {}), sort=_loads(row.sort, {"field": "score", "dir": "desc"}), group_by=row.group_by, pinned=bool(row.pinned))
 
     @staticmethod
     def notification(row: orm.NotificationORM) -> d.Notification:
@@ -174,4 +174,20 @@ class dto_to_domain:
 
     @staticmethod
     def list_from_create(dto_obj: api_dto.ListCreateDTO) -> d.TodoList:
-        return d.TodoList(id=None, list_id=dto_obj.list_id, parent_task_id=dto_obj.parent_task_id, title=dto_obj.title, description=dto_obj.description, color=dto_obj.color, is_shared=dto_obj.is_shared, default_view=dto_obj.default_view, settings=dto_obj.settings)
+        return d.TodoList(id=None, title=dto_obj.title, description=dto_obj.description, color=dto_obj.color, is_shared=dto_obj.is_shared, default_view=dto_obj.default_view, settings=dto_obj.settings)
+
+    @staticmethod
+    def meeting_from_create(dto_obj: api_dto.MeetingCreateDTO) -> d.Meeting:
+        return d.Meeting(id=None, title=dto_obj.title, date=dto_obj.date, description=dto_obj.description, attendee_ids=dto_obj.attendee_ids, editor_ids=getattr(dto_obj, "editor_ids", []), color=dto_obj.color, link=dto_obj.link, recurrence=dto_obj.recurrence)
+
+    @staticmethod
+    def recurrence_template_from_create(dto_obj: api_dto.RecurrenceTemplateCreateDTO) -> d.RecurrenceTemplate:
+        return d.RecurrenceTemplate(id=None, list_id=dto_obj.list_id, title_template=dto_obj.title_template, type=dto_obj.type, rule=dto_obj.rule, timezone=dto_obj.timezone, generate_ahead_count=dto_obj.generate_ahead_count, checklist_template=dto_obj.checklist_template)
+
+    @staticmethod
+    def saved_view_from_create(dto_obj: api_dto.SavedViewCreateDTO) -> d.SavedView:
+        return d.SavedView(id=None, user_id=None, name=dto_obj.name, filters=dto_obj.filters, sort=dto_obj.sort, group_by=dto_obj.group_by, pinned=dto_obj.pinned)
+
+    @staticmethod
+    def notification_from_create(dto_obj: api_dto.NotificationCreateDTO) -> d.Notification:
+        return d.Notification(id=None, user_id=dto_obj.user_id, type=dto_obj.type, title=dto_obj.title, body=dto_obj.body, task_id=dto_obj.task_id, list_id=dto_obj.list_id, actor_id=dto_obj.actor_id)
