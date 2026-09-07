@@ -66,35 +66,68 @@ class TaskRepository:
                 result.append(task)
         return result
 
-    def create(self, *, list_id=None, parent_task_id=None, title, description="", status="open", priority="medium", assignee_id=None, watcher_ids=None, due_date=None, start_date=None, recurrence_template_id=None, tags=None, pinned=False, created_by=None, meeting_id=None, occurrence_id=None):
+    def create(self, *, list_id=None, parent_task_id=None, title, description="", status="open",
+               priority="medium", assignee_id=None, watcher_ids=None, due_date=None, start_date=None,
+               recurrence_template_id=None, tags=None, pinned=False, created_by=None,
+               meeting_id=None, occurrence_id=None):
         timestamp = now_iso()
-        row = TaskORM(id=new_id(), list_id=list_id, parent_task_id=parent_task_id, meeting_id=meeting_id, occurrence_id=occurrence_id, recurrence_template_id=recurrence_template_id, title=title, description=description, status=status, priority=priority, assignee_id=assignee_id, created_by=created_by, updated_by=created_by, due_date=due_date, start_date=start_date, pinned=pinned, display_standalone=False, created_at=timestamp, updated_at=timestamp, last_activity_at=timestamp, completed_at=None)
+        row = TaskORM(id=new_id(), list_id=list_id, parent_task_id=parent_task_id,
+                      meeting_id=meeting_id, occurrence_id=occurrence_id,
+                      recurrence_template_id=recurrence_template_id, title=title,
+                      description=description, status=status, priority=priority,
+                      assignee_id=assignee_id, created_by=created_by, updated_by=created_by,
+                      due_date=due_date, start_date=start_date, pinned=pinned,
+                      display_standalone=False, created_at=timestamp, updated_at=timestamp,
+                      last_activity_at=timestamp, completed_at=None)
         db.session.add(row)
-        for tag in (tags or []): db.session.add(TaskTagORM(task_id=row.id, tag=tag))
-        for watcher_id in (watcher_ids or []): db.session.add(TaskWatcherORM(task_id=row.id, user_id=watcher_id))
+        for tag in (tags or []):
+            db.session.add(TaskTagORM(task_id=row.id, tag=tag))
+        for watcher_id in (watcher_ids or []):
+            db.session.add(TaskWatcherORM(task_id=row.id, user_id=watcher_id))
         db.session.commit()
         return self._to_domain(row)
 
     def update(self, task_id: str, patch: dict, *, updated_by=None, touch_only=False):
         row = TaskORM.query.get(task_id)
-        if row is None: return None
-        simple_fields = {"title": "title", "description": "description", "status": "status", "priority": "priority", "assignee_id": "assignee_id", "due_date": "due_date", "start_date": "start_date", "pinned": "pinned", "display_standalone": "display_standalone", "completed_at": "completed_at", "meeting_id": "meeting_id", "occurrence_id": "occurrence_id"}
+        if row is None:
+            return None
+        simple_fields = {
+            "title": "title", "description": "description", "status": "status",
+            "priority": "priority", "assignee_id": "assignee_id", "due_date": "due_date",
+            "start_date": "start_date", "pinned": "pinned", "display_standalone": "display_standalone",
+            "completed_at": "completed_at", "meeting_id": "meeting_id", "occurrence_id": "occurrence_id",
+        }
         if not touch_only:
             for key, attr in simple_fields.items():
-                if key in patch: setattr(row, attr, patch[key])
+                if key in patch:
+                    setattr(row, attr, patch[key])
             if "tags" in patch:
                 TaskTagORM.query.filter_by(task_id=task_id).delete()
-                for tag in patch["tags"] or []: db.session.add(TaskTagORM(task_id=task_id, tag=tag))
+                for tag in patch["tags"] or []:
+                    db.session.add(TaskTagORM(task_id=task_id, tag=tag))
             if "watcher_ids" in patch:
                 TaskWatcherORM.query.filter_by(task_id=task_id).delete()
-                for watcher_id in patch["watcher_ids"] or []: db.session.add(TaskWatcherORM(task_id=task_id, user_id=watcher_id))
-        row.updated_by = updated_by; row.updated_at = now_iso(); row.last_activity_at = now_iso(); db.session.commit()
+                for watcher_id in patch["watcher_ids"] or []:
+                    db.session.add(TaskWatcherORM(task_id=task_id, user_id=watcher_id))
+        row.updated_by = updated_by
+        row.updated_at = now_iso()
+        row.last_activity_at = now_iso()
+        db.session.commit()
         return self._to_domain(row)
 
-    def complete(self, task_id: str, *, updated_by=None): return self.update(task_id, {"status": "done", "completed_at": now_iso()}, updated_by=updated_by)
-    def reopen(self, task_id: str, *, updated_by=None): return self.update(task_id, {"status": "open", "completed_at": None}, updated_by=updated_by)
+    def complete(self, task_id: str, *, updated_by=None):
+        return self.update(task_id, {"status": "done", "completed_at": now_iso()}, updated_by=updated_by)
+
+    def reopen(self, task_id: str, *, updated_by=None):
+        return self.update(task_id, {"status": "open", "completed_at": None}, updated_by=updated_by)
+
     def delete(self, task_id: str) -> bool:
         row = TaskORM.query.get(task_id)
-        if row is None: return False
-        db.session.delete(row); db.session.commit(); return True
-    def touch_activity(self, task_id: str): return self.update(task_id, {}, touch_only=True)
+        if row is None:
+            return False
+        db.session.delete(row)
+        db.session.commit()
+        return True
+
+    def touch_activity(self, task_id: str):
+        return self.update(task_id, {}, touch_only=True)
