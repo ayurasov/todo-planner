@@ -1,7 +1,5 @@
 """
-TaskRepository -- слой доступа к данным для ресурса `tasks`. Содержит
-только SQLAlchemy-запросы, возвращает domain-объекты через
-`app.mappers.orm_to_domain`. Фильтрация видимых задач делается на сервере.
+TaskRepository -- слой доступа к данным для ресурса `tasks`.
 """
 
 from app.extensions import db
@@ -22,14 +20,10 @@ class TaskRepository:
 
     def _to_domain(self, row: TaskORM):
         task = orm_to_domain.task(row, watcher_ids=self._watcher_ids(row.id), tags=self._tags(row.id))
-        # These are task metadata, not an authorization grant. They let an
-        # assignee render the task without exposing the meeting resource.
         meeting = MeetingORM.query.get(row.meeting_id) if row.meeting_id else None
         occurrence = MeetingOccurrenceORM.query.get(row.occurrence_id) if row.occurrence_id else None
         task.meeting_title = meeting.title if meeting else None
-        task.occurrence_date = (
-            occurrence.date.isoformat() if occurrence and occurrence.date else None
-        )
+        task.occurrence_date = occurrence.date.isoformat() if occurrence and occurrence.date else None
         return task
 
     def get_by_id(self, task_id: str):
@@ -38,11 +32,6 @@ class TaskRepository:
 
     def get_visible_for_user(self, user_id: str, *, list_id=None, assignee_id=None,
                               statuses=None, parent_task_id=None, tags=None):
-        """Return tasks visible to the current user.
-
-        An assignee can see their assigned task even when they are not an
-        attendee of the related meeting. Meeting ACLs themselves are unchanged.
-        """
         is_admin = permission_service.is_global_admin(user_id)
         query = TaskORM.query
         if list_id is not None:
@@ -53,7 +42,6 @@ class TaskRepository:
             query = query.filter(TaskORM.status.in_(statuses))
         if parent_task_id is not None:
             query = query.filter(TaskORM.parent_task_id == parent_task_id)
-
         result = []
         for row in query.order_by(TaskORM.created_at.asc()).all():
             task = self._to_domain(row)
@@ -81,16 +69,14 @@ class TaskRepository:
                recurrence_template_id=None, tags=None, pinned=False, created_by=None,
                meeting_id=None, occurrence_id=None):
         timestamp = now_iso()
-        row = TaskORM(
-            id=new_id(), list_id=list_id, parent_task_id=parent_task_id,
-            meeting_id=meeting_id, occurrence_id=occurrence_id,
-            recurrence_template_id=recurrence_template_id, title=title,
-            description=description, status=status, priority=priority,
-            assignee_id=assignee_id, created_by=created_by, updated_by=created_by,
-            due_date=due_date, start_date=start_date, pinned=pinned,
-            display_standalone=False, created_at=timestamp, updated_at=timestamp,
-            last_activity_at=timestamp, completed_at=None,
-        )
+        row = TaskORM(id=new_id(), list_id=list_id, parent_task_id=parent_task_id,
+                      meeting_id=meeting_id, occurrence_id=occurrence_id,
+                      recurrence_template_id=recurrence_template_id, title=title,
+                      description=description, status=status, priority=priority,
+                      assignee_id=assignee_id, created_by=created_by, updated_by=created_by,
+                      due_date=due_date, start_date=start_date, pinned=pinned,
+                      display_standalone=False, created_at=timestamp, updated_at=timestamp,
+                      last_activity_at=timestamp, completed_at=None)
         db.session.add(row)
         for tag in (tags or []):
             db.session.add(TaskTagORM(task_id=row.id, tag=tag))
