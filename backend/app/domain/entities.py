@@ -6,14 +6,12 @@ SQLAlchemy/Flask/Pydantic.
 from dataclasses import dataclass, field
 from typing import Optional
 
-
 @dataclass
 class Department:
     id: str
     name: str
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
-
 
 @dataclass
 class User:
@@ -34,7 +32,6 @@ class User:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-
 @dataclass
 class TodoList:
     id: str
@@ -50,7 +47,6 @@ class TodoList:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
-
 @dataclass
 class ListMembership:
     id: str
@@ -58,7 +54,6 @@ class ListMembership:
     user_id: str
     role: str
     added_at: Optional[str] = None
-
 
 @dataclass
 class Task:
@@ -87,7 +82,7 @@ class Task:
     occurrence_id: Optional[str] = None
     meeting_title: Optional[str] = None
     occurrence_date: Optional[str] = None
-
+    occurrence_title: Optional[str] = None
 
 @dataclass
 class Meeting:
@@ -107,7 +102,6 @@ class Meeting:
     occurrences: list = field(default_factory=list)
     unfinished_count: int = 0
 
-
 @dataclass
 class MeetingOccurrence:
     id: str
@@ -116,7 +110,6 @@ class MeetingOccurrence:
     description: str = ""
     link: str = ""
     generated_at: Optional[str] = None
-
 
 @dataclass
 class ChecklistItem:
@@ -127,7 +120,6 @@ class ChecklistItem:
     order: int = 0
     recurrence_scope: str = "instance_only"
 
-
 @dataclass
 class Note:
     id: str
@@ -136,7 +128,6 @@ class Note:
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     updated_by: Optional[str] = None
-
 
 @dataclass
 class Attachment:
@@ -150,20 +141,6 @@ class Attachment:
     uploaded_by: Optional[str] = None
     uploaded_at: Optional[str] = None
 
-
-@dataclass
-class RecurrenceTemplate:
-    id: str
-    list_id: str
-    title_template: str
-    type: str
-    rule: dict = field(default_factory=dict)
-    timezone: str = "Europe/Moscow"
-    generate_ahead_count: int = 1
-    last_generated_instance_date: Optional[str] = None
-    checklist_template: list = field(default_factory=list)
-
-
 @dataclass
 class HistoryEntry:
     id: str
@@ -176,7 +153,6 @@ class HistoryEntry:
     new_value: Optional[str] = None
     comment: Optional[str] = None
 
-
 @dataclass
 class Comment:
     id: str
@@ -187,7 +163,6 @@ class Comment:
     edited_at: Optional[str] = None
     mentions: list = field(default_factory=list)
 
-
 @dataclass
 class SavedView:
     id: str
@@ -197,7 +172,6 @@ class SavedView:
     sort: dict = field(default_factory=lambda: {"field": "score", "dir": "desc"})
     group_by: Optional[str] = None
     pinned: bool = False
-
 
 @dataclass
 class Notification:
@@ -212,7 +186,6 @@ class Notification:
     created_at: Optional[str] = None
     read: bool = False
 
-
 @dataclass
 class ReminderTrigger:
     id: str
@@ -221,7 +194,6 @@ class ReminderTrigger:
     time_offset: Optional[int] = None
     geo: Optional[dict] = None
     is_enabled: bool = True
-
 
 @dataclass
 class CalendarIntegration:
