@@ -1,25 +1,10 @@
 """
-TaskRepository -- слой доступа к данным для ресурса `tasks`. Содержит
-только SQLAlchemy-запросы, возвращает domain-объекты через
-`app.mappers.orm_to_domain`. Фильтрация видимых задач делается на сервере
-(см. get_visible_for_user), а не на фронте -- через
-`permission_service.get_role`/`is_task_visible`/`can_view_task_via_department`, так же
-как уже описано в backend/README.md, раздел "фильтрация GET-ответов".
-
-Роль manager (руководитель отдела/службы) видит дополнительно все задачи, где
-список/исполнитель/создатель относится к одному из его managed_department_ids --
-даже если он сам не состоит в membership списка (см. permission_service.can_view_task_via_department).
-
-Любой обычный пользователь, добавленный участником встречи (MeetingAttendeeORM),
-также видит все задачи этой встречи (task.meeting_id) независимо от membership
-списка задачи -- см. permission_service.can_view_task_via_meeting (инцидент: "обычный
-пользователь должен видеть только свои задачи и задачи в рамках встречи или списка,
-куда он добавлен участником").
+TaskRepository -- слой доступа к данным для ресурса `tasks`.
 """
 
 from app.extensions import db
 from app.mappers import orm_to_domain
-from app.models import TaskORM, TaskTagORM, TaskWatcherORM
+from app.models import MeetingOccurrenceORM, MeetingORM, TaskORM, TaskTagORM, TaskWatcherORM
 from app.repositories.common import new_id, now_iso
 from app.services.permission_service import permission_service
 
@@ -34,7 +19,12 @@ class TaskRepository:
         return [row.tag for row in rows]
 
     def _to_domain(self, row: TaskORM):
-        return orm_to_domain.task(row, watcher_ids=self._watcher_ids(row.id), tags=self._tags(row.id))
+        task = orm_to_domain.task(row, watcher_ids=self._watcher_ids(row.id), tags=self._tags(row.id))
+        meeting = MeetingORM.query.get(row.meeting_id) if row.meeting_id else None
+        occurrence = MeetingOccurrenceORM.query.get(row.occurrence_id) if row.occurrence_id else None
+        task.meeting_title = meeting.title if meeting else None
+        task.occurrence_date = occurrence.date.isoformat() if occurrence and occurrence.date else None
+        return task
 
     def get_by_id(self, task_id: str):
         row = TaskORM.query.get(task_id)
@@ -42,19 +32,7 @@ class TaskRepository:
 
     def get_visible_for_user(self, user_id: str, *, list_id=None, assignee_id=None,
                               statuses=None, parent_task_id=None, tags=None):
-        """Все задачи, видимые текущему пользователю:
-
-        - задачи в списках, где есть membership (owner/editor/viewer видят все задачи
-          списка, assignee -- только свои/watch через permission_service.is_task_visible);
-        - global admin видит всё;
-        - manager видит также задачи, связанные с его managed_department_ids (по списку/
-          исполнителю/создателю), даже без membership -- permission_service.can_view_task_via_department;
-        - любой пользователь, добавленный участником встречи, к которой привязана задача
-          (task.meeting_id) -- permission_service.can_view_task_via_meeting;
-        - свои задачи без списка (list_id is None): создатель или assignee.
-        """
         is_admin = permission_service.is_global_admin(user_id)
-
         query = TaskORM.query
         if list_id is not None:
             query = query.filter(TaskORM.list_id == list_id)
@@ -65,23 +43,19 @@ class TaskRepository:
         if parent_task_id is not None:
             query = query.filter(TaskORM.parent_task_id == parent_task_id)
 
-        rows = query.order_by(TaskORM.created_at.asc()).all()
-
         result = []
-        for row in rows:
+        for row in query.order_by(TaskORM.created_at.asc()).all():
             task = self._to_domain(row)
             if tags and not (set(tags) & set(task.tags)):
                 continue
-            if is_admin:
+            if is_admin or task.assignee_id == user_id:
                 result.append(task)
                 continue
             if permission_service.can_view_task_via_meeting(task, user_id):
                 result.append(task)
                 continue
             if task.list_id is None:
-                if task.created_by == user_id or task.assignee_id == user_id:
-                    result.append(task)
-                elif permission_service.can_view_task_via_department(task, user_id):
+                if task.created_by == user_id or permission_service.can_view_task_via_department(task, user_id):
                     result.append(task)
                 continue
             role = permission_service.get_role(task.list_id, user_id)
@@ -96,29 +70,14 @@ class TaskRepository:
                recurrence_template_id=None, tags=None, pinned=False, created_by=None,
                meeting_id=None, occurrence_id=None):
         timestamp = now_iso()
-        row = TaskORM(
-            id=new_id(),
-            list_id=list_id,
-            parent_task_id=parent_task_id,
-            meeting_id=meeting_id,
-            occurrence_id=occurrence_id,
-            recurrence_template_id=recurrence_template_id,
-            title=title,
-            description=description,
-            status=status,
-            priority=priority,
-            assignee_id=assignee_id,
-            created_by=created_by,
-            updated_by=created_by,
-            due_date=due_date,
-            start_date=start_date,
-            pinned=pinned,
-            display_standalone=False,
-            created_at=timestamp,
-            updated_at=timestamp,
-            last_activity_at=timestamp,
-            completed_at=None,
-        )
+        row = TaskORM(id=new_id(), list_id=list_id, parent_task_id=parent_task_id,
+                      meeting_id=meeting_id, occurrence_id=occurrence_id,
+                      recurrence_template_id=recurrence_template_id, title=title,
+                      description=description, status=status, priority=priority,
+                      assignee_id=assignee_id, created_by=created_by, updated_by=created_by,
+                      due_date=due_date, start_date=start_date, pinned=pinned,
+                      display_standalone=False, created_at=timestamp, updated_at=timestamp,
+                      last_activity_at=timestamp, completed_at=None)
         db.session.add(row)
         for tag in (tags or []):
             db.session.add(TaskTagORM(task_id=row.id, tag=tag))
@@ -128,16 +87,9 @@ class TaskRepository:
         return self._to_domain(row)
 
     def update(self, task_id: str, patch: dict, *, updated_by=None, touch_only=False):
-        """Атомарное частичное обновление -- меняет только переданные ключи.
-
-        touch_only=True -- только обновить last_activity_at (аналог
-        tasksStore.touchActivity: вызывается при изменении чек-листа/заголовки/комментариев
-        без отдельной записи в history).
-        """
         row = TaskORM.query.get(task_id)
         if row is None:
             return None
-
         simple_fields = {
             "title": "title", "description": "description", "status": "status",
             "priority": "priority", "assignee_id": "assignee_id", "due_date": "due_date",
@@ -156,7 +108,6 @@ class TaskRepository:
                 TaskWatcherORM.query.filter_by(task_id=task_id).delete()
                 for watcher_id in patch["watcher_ids"] or []:
                     db.session.add(TaskWatcherORM(task_id=task_id, user_id=watcher_id))
-
         row.updated_by = updated_by
         row.updated_at = now_iso()
         row.last_activity_at = now_iso()
@@ -173,7 +124,7 @@ class TaskRepository:
         row = TaskORM.query.get(task_id)
         if row is None:
             return False
-        db.session.delete(row)  # ON DELETE CASCADE -- подзадачи/checklist/notes/comments/history удаляются в базе
+        db.session.delete(row)
         db.session.commit()
         return True
 
