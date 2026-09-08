@@ -41,6 +41,14 @@ function cancelCommentEdit() { editingCommentId.value = null; commentDraft.value
 async function saveCommentEdit(comment) { if (!commentDraft.value.trim()) return; await tasksStore.editComment(props.task.id, comment.id, commentDraft.value.trim()); cancelCommentEdit() }
 async function deleteComment(comment) { await tasksStore.removeComment(props.task.id, comment.id) }
 
+const PRIORITY_COLOR = { low: '#9aa3b2', medium: '#4f7cff', high: '#e8a13a', urgent: '#e5484d' }
+const STATUS_META = {
+  open: { label: 'Не начато', color: '#6b7280', bg: '#eef1f7' },
+  in_progress: { label: 'В работе', color: '#4f7cff', bg: '#eaf0ff' },
+  done: { label: 'Выполнено', color: '#1e9e4d', bg: '#e4f6ea' },
+  cancelled: { label: 'Отменено', color: '#9aa3b2', bg: '#f1f2f5' },
+}
+
 onMounted(async () => { if (!meetingsStore.loaded) await meetingsStore.load(); await tasksStore.loadChecklist(props.task.id); await tasksStore.loadNotes(props.task.id); await tasksStore.loadComments(props.task.id); await historyStore.loadTaskTimeline(props.task.id); if (notes.value[0]) noteContent.value = notes.value[0].contentJSON?.content?.[0]?.text || '' })
 function updateField(field, value) { tasksStore.updateTaskField(props.task.id, field, value) }
 function resizeTitleInput() { const el = titleInputEl.value; if (!el) return; el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px` }
@@ -55,7 +63,7 @@ async function submitComment() { if (!newCommentTab.value.trim()) return; await 
 async function saveNote() { const existingNoteId = notes.value[0]?.id; await tasksStore.saveNote(props.task.id, existingNoteId, { type: 'doc', content: [{ type: 'paragraph', text: noteContent.value }] }) }
 function updateDescription(html) { updateField('description', html) }
 const HISTORY_LABEL = { created: 'Создана', field_changed: 'Изменено поле', commented: 'Комментарий', assignee_changed: 'Изменён исполнитель', rescheduled: 'Перенесён срок', completed: 'Выполнена', reopened: 'Возвращена в работу' }
-const HISTORY_ICON = { created: 'plus', field_changed: 'edit', commented: 'message', assignee_changed: 'team', rescheduled: 'calendar', completed: 'check', reopened: 'undo' }
+const HISTORY_ICON = { created: 'plus', field_changed: 'edit', commented: 'message', assignee_changed: 'team', rescheduled: 'calendar', completed: 'Выполнена', reopened: 'undo' }
 const HISTORY_FIELD_LABEL = { title: 'название', description: 'описание', status: 'статус', priority: 'приоритет', dueDate: 'срок', startDate: 'дату начала', tags: 'теги', pinned: 'закрепление' }
 const HISTORY_RICH_TEXT_FIELDS = new Set(['description']); function historyFieldValue(value, field) { if (HISTORY_RICH_TEXT_FIELDS.has(field)) { const plain = stripHtml(value); return plain ? truncateText(plain, 80) : '—' }; if (value === null || value === undefined || value === '') return '—'; return String(value) }
 </script>
