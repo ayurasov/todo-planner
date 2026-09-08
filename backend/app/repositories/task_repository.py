@@ -26,8 +26,6 @@ class TaskRepository:
         task.meeting_title = None
         if occurrence and occurrence.date:
             task.occurrence_date = occurrence.date.isoformat()
-            # В occurrenceTitle нельзя передавать ISO-строку: это значение
-            # непосредственно показывается в TaskRow для скрытой встречи.
             task.occurrence_title = f"Подвстреча · {occurrence.date.strftime('%d.%m.%Y %H:%M')}"
         else:
             task.occurrence_date = None
@@ -77,6 +75,19 @@ class TaskRepository:
                priority="medium", assignee_id=None, watcher_ids=None, due_date=None, start_date=None,
                recurrence_template_id=None, tags=None, pinned=False, created_by=None,
                meeting_id=None, occurrence_id=None):
+        # Подзадача наследует контекст встречи и выбранной подвстречи от родителя,
+        # если контекст явно не задан. Благодаря этому она участвует в тех же
+        # правилах видимости и отображается исполнителю как самостоятельная задача.
+        if parent_task_id:
+            parent = TaskORM.query.get(parent_task_id)
+            if parent:
+                if meeting_id is None:
+                    meeting_id = parent.meeting_id
+                if occurrence_id is None:
+                    occurrence_id = parent.occurrence_id
+                if list_id is None:
+                    list_id = parent.list_id
+
         timestamp = now_iso()
         row = TaskORM(id=new_id(), list_id=list_id, parent_task_id=parent_task_id,
                       meeting_id=meeting_id, occurrence_id=occurrence_id,

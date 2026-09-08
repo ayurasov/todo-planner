@@ -10,27 +10,11 @@ import { useNotificationsStore } from './notificationsStore'
 import { withPermissionHandling } from './utils/withPermissionHandling'
 import { router } from '../router'
 
-/**
- * Определяет, должна ли задача (в т.ч. подзадача) отображаться как самостоятельная
- * строка в общих представлениях (Мои задачи / Задачи команды / List View — корневой уровень).
- * По умолчанию подзадачи видны только внутри дерева родителя. Исключение — глобальная
- * настройка showSubtasksStandalone, либо индивидуальный флаг task.displayStandalone.
- */
 function isVisibleStandalone(task, prefs) {
   if (!task.parentTaskId) return true
   return prefs.showSubtasksStandalone || task.displayStandalone
 }
 
-/**
- * Стабильная сортировка по очерёдности создания (createdAt по возрастанию,
- * при равенстве — по id как детерминированному тай-брейкеру). Используется
- * для подзадач (childrenOf) на любом уровне вложенности: дерево задачи
- * (TaskRow -> TaskRow child) не должно применять ранжирование/«пузырьки» —
- * порядок должен всегда соответствовать порядку добавления подзадач, вне
- * зависимости от порядка, в котором элементы лежат в state.tasks (например,
- * после обновления полей через findIndex-замену это не меняет позицию, но
- * на всякий случай сортировка делается явно, а не полагается на порядок массива).
- */
 function byCreationOrder(a, b) {
   const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
   const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
@@ -48,8 +32,6 @@ export const useTasksStore = defineStore('tasks', {
   }),
   getters: {
     byId: (state) => (id) => state.tasks.find((t) => t.id === id) || null,
-    // Подзадачи и более глубокие подзадачи всегда возвращаются в порядке создания —
-    // никакой сортировки/ранжирования/«пузырькового» алгоритма здесь не применяется.
     childrenOf: (state) => (parentId) => state.tasks.filter((t) => t.parentTaskId === parentId).sort(byCreationOrder),
     rootTasksOfList: (state) => (listId) => state.tasks.filter((t) => t.listId === listId && !t.parentTaskId),
 
@@ -80,13 +62,6 @@ export const useTasksStore = defineStore('tasks', {
     },
   },
   actions: {
-    /**
-     * Обёртка над withPermissionHandling с уже привязанными notificationsStore/router --
-     * используется во всех mutating actions ниже, чтобы 403/401 из HttpTaskRepository
-     * (и остальных Http*Repository) единообразно превращались в toast + re-throw,
-     * а не оставляли локальный state в неопределённом виде. В mock-режиме эти ошибки
-     * никогда не бросаются, поэтому поведение mock не меняется.
-     */
     _guarded(action, opts = {}) {
       return withPermissionHandling(action, {
         notificationsStore: useNotificationsStore(),
@@ -255,15 +230,10 @@ export const useTasksStore = defineStore('tasks', {
       })
     },
 
-    /**
-     * Обновляет lastActivityAt задачи без создания отдельной записи в истории —
-     * используется при событиях "внутри" задачи (чек-лист, комментарии, подзадачи),
-     * чтобы ranking score корректно учитывал недавнюю активность ("вываливание вверх").
-     */
     async touchActivity(taskId) {
       const task = this.byId(taskId)
       if (!task) return
-      const updated = await taskRepository.update(taskId, {})
+      const updated = await taskRepository.update(taskId, {}, { touchOnly: true })
       const idx = this.tasks.findIndex((t) => t.id === taskId)
       if (idx !== -1) this.tasks[idx] = updated
     },

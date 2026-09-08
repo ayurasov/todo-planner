@@ -9,7 +9,7 @@ from flask import jsonify, request
 
 from app.auth.security import current_user_id
 from app.mappers import domain_to_dto
-from app.models import ListORM
+from app.models import ListORM, TaskORM
 from app.repositories import ChecklistItemRepository, CommentRepository, NoteRepository, TaskRepository
 from app.repositories.recurrence_repository import RecurrenceRepository
 from app.services.history_service import history_service
@@ -63,6 +63,29 @@ def _list_allows_comments(list_id):
     return settings.get("allowComments", True) is not False
 
 
+def _validate_meeting_assignment(meeting_id, assignee_id):
+    """Return a validation response when a meeting task is assigned outside its attendees."""
+    if not meeting_id or not assignee_id:
+        return None
+    if not permission_service.is_meeting_attendee(meeting_id, assignee_id):
+        return _validation_error([{
+            "loc": ["assigneeId"],
+            "msg": "Исполнитель должен быть участником встречи",
+        }])
+    return None
+
+
+def _comment_can_change(comment, task, user_id):
+    return bool(comment and task and comment.author_id == user_id and task.created_by == user_id)
+
+
+def _comment_can_delete(comment, user_id):
+    return bool(comment and (
+        permission_service.is_global_admin(user_id)
+        or comment.author_id == user_id
+    ))
+
+
 @tasks_bp.route("", methods=["GET"])
 def list_tasks(**kwargs):
     user_id = current_user_id()
@@ -78,10 +101,16 @@ def create_task(**kwargs):
     user_id = current_user_id(); payload = request.get_json(silent=True) or {}; title = payload.get("title")
     if not title:
         return _validation_error([{"loc": ["title"], "msg": "required"}])
-    list_id = payload.get("listId")
+    parent = TaskORM.query.get(payload.get("parentTaskId")) if payload.get("parentTaskId") else None
+    effective_meeting_id = payload.get("meetingId") if payload.get("meetingId") is not None else (parent.meeting_id if parent else None)
+    effective_occurrence_id = payload.get("occurrenceId") if payload.get("occurrenceId") is not None else (parent.occurrence_id if parent else None)
+    list_id = payload.get("listId") if payload.get("listId") is not None else (parent.list_id if parent else None)
     if list_id and not permission_service.can_create_task(list_id, user_id):
         return permission_denied_response("Недостаточно прав для создания задачи в этом списке")
-    task = task_repository.create(list_id=list_id, parent_task_id=payload.get("parentTaskId"), title=title, description=payload.get("description", ""), status=payload.get("status", "open"), priority=payload.get("priority", "medium"), assignee_id=payload.get("assigneeId"), watcher_ids=payload.get("watcherIds", []), due_date=payload.get("dueDate"), start_date=payload.get("startDate"), recurrence_template_id=payload.get("recurrenceTemplateId"), tags=payload.get("tags", []), pinned=payload.get("pinned", False), created_by=user_id, meeting_id=payload.get("meetingId"), occurrence_id=payload.get("occurrenceId"))
+    invalid_assignment = _validate_meeting_assignment(effective_meeting_id, payload.get("assigneeId"))
+    if invalid_assignment:
+        return invalid_assignment
+    task = task_repository.create(list_id=list_id, parent_task_id=payload.get("parentTaskId"), title=title, description=payload.get("description", ""), status=payload.get("status", "open"), priority=payload.get("priority", "medium"), assignee_id=payload.get("assigneeId"), watcher_ids=payload.get("watcherIds", []), due_date=payload.get("dueDate"), start_date=payload.get("startDate"), recurrence_template_id=payload.get("recurrenceTemplateId"), tags=payload.get("tags", []), pinned=payload.get("pinned", False), created_by=user_id, meeting_id=effective_meeting_id, occurrence_id=effective_occurrence_id)
     history_service.record_created(task.id, user_id)
     if task.parent_task_id:
         task_repository.touch_activity(task.parent_task_id)
@@ -107,6 +136,11 @@ def update_task(task_id, **kwargs):
     payload = request.get_json(silent=True) or {}
     field_map = {"title": "title", "description": "description", "status": "status", "priority": "priority", "assigneeId": "assignee_id", "watcherIds": "watcher_ids", "dueDate": "due_date", "startDate": "start_date", "tags": "tags", "pinned": "pinned", "displayStandalone": "display_standalone", "completedAt": "completed_at", "meetingId": "meeting_id", "occurrenceId": "occurrence_id"}
     patch = {snake: payload[camel] for camel, snake in field_map.items() if camel in payload}
+    effective_meeting_id = patch.get("meeting_id", task.meeting_id)
+    effective_assignee_id = patch.get("assignee_id", task.assignee_id)
+    invalid_assignment = _validate_meeting_assignment(effective_meeting_id, effective_assignee_id)
+    if invalid_assignment:
+        return invalid_assignment
     old_values = {snake: getattr(task, snake) for snake in patch}
     updated = task_repository.touch_activity(task_id) if not patch else task_repository.update(task_id, patch, updated_by=user_id)
     if patch.get("status") == "done" and old_values.get("status") != "done":
@@ -208,6 +242,44 @@ def create_task_comment(task_id, **kwargs):
     comment = comment_repository.create(task_id=task_id, author_id=user_id, text=text, mentions=payload.get("mentions", []))
     history_service.record_comment(task_id, user_id, text); task_repository.touch_activity(task_id)
     return jsonify(domain_to_dto.comment(comment).model_dump(by_alias=True)), 201
+
+
+@tasks_bp.route("/comments/<string:comment_id>", methods=["PATCH"])
+def update_comment(comment_id, **kwargs):
+    user_id = current_user_id()
+    comment = comment_repository.get_by_id(comment_id)
+    if comment is None:
+        return _not_found("комментарий")
+    task = task_repository.get_by_id(comment.task_id)
+    if task is None or not _can_view_task(task, user_id):
+        return permission_denied_response("Недостаточно прав для доступа к комментарию")
+    if not _comment_can_change(comment, task, user_id):
+        return permission_denied_response("Изменять комментарий может только автор задачи и комментария")
+    if not _list_allows_comments(task.list_id):
+        return permission_denied_response("Комментарии отключены владельцем списка")
+    payload = request.get_json(silent=True) or {}
+    text = payload.get("text")
+    if not text or not str(text).strip():
+        return _validation_error([{"loc": ["text"], "msg": "required"}])
+    updated = comment_repository.update(comment_id, text=text, mentions=payload.get("mentions") if "mentions" in payload else None)
+    task_repository.touch_activity(task.id)
+    return jsonify(domain_to_dto.comment(updated).model_dump(by_alias=True))
+
+
+@tasks_bp.route("/comments/<string:comment_id>", methods=["DELETE"])
+def delete_comment(comment_id, **kwargs):
+    user_id = current_user_id()
+    comment = comment_repository.get_by_id(comment_id)
+    if comment is None:
+        return _not_found("комментарий")
+    task = task_repository.get_by_id(comment.task_id)
+    if task is None or not _can_view_task(task, user_id):
+        return permission_denied_response("Недостаточно прав для доступа к комментарию")
+    if not _comment_can_delete(comment, user_id):
+        return permission_denied_response("Удалять чужие комментарии может только администратор")
+    comment_repository.delete(comment_id)
+    task_repository.touch_activity(task.id)
+    return "", 204
 
 
 @tasks_bp.route("/<string:task_id>/attachments", methods=["GET"])

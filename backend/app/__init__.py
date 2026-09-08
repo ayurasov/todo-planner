@@ -7,8 +7,10 @@ cookie-сессии + CSRF-заголовок, единый префикс /api,
 import logging
 import sys
 
-from flask import Flask, request
+from flask import Flask, jsonify, request
+from flask_wtf.csrf import CSRFError
 from sqlalchemy import inspect
+from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import get_config
@@ -37,8 +39,7 @@ from app.auth.seed import seed_initial_users
 
 class _RequestContextFilter(logging.Filter):
     """Добавляет метод/путь запроса и id текущего пользователя к каждой
-    log-записи, если она сделана внутри request-контекста (вне
-    контекста -- пустые значения, без исключений).
+    log-записи, если она сделана внутри request-контекста.
     """
 
     def filter(self, record):  # noqa: A003
@@ -58,14 +59,11 @@ class _RequestContextFilter(logging.Filter):
 
 
 class _JsonLogFormatter(logging.Formatter):
-    """Структурированный (JSON-line) вывод вместо print()/текстовых тресбеков,
-    чтобы логи можно было парсить/агрегировать (docker logs -> journald/ELK/Loki
-    и т.п.) без regex-эвристик.
-    """
+    """Структурированный JSON-line вывод для container-логов."""
 
     def format(self, record):
-        import json
         import datetime
+        import json
 
         payload = {
             "timestamp": datetime.datetime.fromtimestamp(
@@ -85,11 +83,7 @@ class _JsonLogFormatter(logging.Formatter):
 
 
 def _configure_logging(app):
-    """Заменяет дефолтное Flask/Werkzeug-логирование (и возможные print())
-    на структурированный JSON-вывод в stdout -- тоесть, как ожидается от
-    container-приложений (docker/nginx logs -> journald/агрегатор), без зависимости
-    от файловой системы внутри контейнера.
-    """
+    """Настраивает структурированные логи и безопасные HTTP-ответы ошибок."""
 
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(_JsonLogFormatter())
@@ -103,15 +97,25 @@ def _configure_logging(app):
     werkzeug_logger.handlers = [handler]
     werkzeug_logger.propagate = False
 
+    @app.errorhandler(CSRFError)
+    def _handle_csrf_error(exc):
+        # CSRF failure is a client error, not an unhandled server exception.
+        db.session.remove()
+        return jsonify({
+            "error": "csrf_error",
+            "message": exc.description,
+        }), 400
+
+    @app.errorhandler(HTTPException)
+    def _handle_http_exception(exc):
+        return jsonify({
+            "error": exc.name.lower().replace(" ", "_"),
+            "message": exc.description,
+        }), exc.code
+
     @app.errorhandler(Exception)
     def _log_unhandled_exception(exc):  # noqa: WPS430
         app.logger.exception("Unhandled exception during request")
-        # Без rollback() сессия SQLAlchemy остаётся «грязной» после любой ошибки
-        # (IntegrityError, CSRFError и т.п.): невыполненные insert/update продолжают
-        # висеть в Session на этом gunicorn-воркере и портят транзакцию следующего,
-        # ни в чём не повинного запроса на том же воркере (например, INSERT списка
-        # после отклонённого CSRF-запроса). db.session.remove() откатывает и
-        # выбрасывает scoped session, гарантируя чистое состояние для следующего запроса.
         db.session.remove()
         raise exc
 
@@ -123,9 +127,6 @@ def create_app(config_name=None, skip_bootstrap=False):
     _configure_logging(app)
 
     if app.config.get("ENV") == "production":
-        # nginx reverse-proxy передаёт X-Forwarded-For/-Proto -- ProxyFix восстанавливает
-        # реальный remote_addr/scheme, иначе rate limiting (Flask-Limiter) и аудит-логи стали
-        # бы видеть только IP nginx-контейнера.
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
     _register_extensions(app)
@@ -171,10 +172,7 @@ def _register_blueprints(app):
 
 
 def _bootstrap_database(app):
-    """Для testing по-прежнему поднимаем схему автоматически в in-memory SQLite.
-    Для development/production схема должна управляться Alembic-миграциями.
-    Начальных пользователей сидим только если таблица users уже существует.
-    """
+    """Инициализирует testing-схему; production использует Alembic."""
 
     with app.app_context():
         if app.config.get("TESTING"):

@@ -1,7 +1,7 @@
 """
 Реализация blueprint 'comments' (/api/comments). Редактировать комментарий
-может только автор; удалять -- автор или любой, кто имеет can_edit_task
-на родительской задаче (owner/editor/assignee-владелец).
+может только его автор; удалять свой комментарий может его автор, чужой — только
+глобальный администратор.
 """
 
 from flask import jsonify, request
@@ -27,8 +27,8 @@ def update_comment(comment_id, **kwargs):
         return _not_found()
 
     user_id = current_user_id()
-    if comment.author_id != user_id and not permission_service.is_global_admin(user_id):
-        return permission_denied_response("Редактировать комментарий может только автор")
+    if comment.author_id != user_id:
+        return permission_denied_response("Редактировать комментарий может только его автор")
 
     payload = request.get_json(silent=True) or {}
     updated = comment_repository.update(
@@ -45,14 +45,8 @@ def delete_comment(comment_id, **kwargs):
         return _not_found()
 
     user_id = current_user_id()
-    task = task_repository.get_by_id(comment.task_id)
-    can_delete = (
-        comment.author_id == user_id
-        or permission_service.is_global_admin(user_id)
-        or (task is not None and permission_service.can_edit_task(task, user_id))
-    )
-    if not can_delete:
-        return permission_denied_response("Недостаточно прав для удаления комментария")
+    if comment.author_id != user_id and not permission_service.is_global_admin(user_id):
+        return permission_denied_response("Чужие комментарии может удалять только администратор")
 
     comment_repository.delete(comment_id)
     task_repository.touch_activity(comment.task_id)

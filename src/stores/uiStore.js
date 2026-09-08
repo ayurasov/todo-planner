@@ -6,6 +6,7 @@ const sidebarStorage = new LocalStorageAdapter('sidebar-collapsed')
 export const useUiStore = defineStore('ui', {
   state: () => ({
     openTaskId: null,
+    openTaskSnapshot: null,
     quickCreateContext: null,
     sidebarCollapsed: sidebarStorage.load(false),
     // Модалка собственного профиля (см. ProfileModal.vue) -- открывается кликом
@@ -14,8 +15,14 @@ export const useUiStore = defineStore('ui', {
     profileModalOpen: false,
   }),
   actions: {
-    openTask(id) { this.openTaskId = id },
-    closeTask() { this.openTaskId = null },
+    openTask(id, task = null) {
+      this.openTaskId = id
+      this.openTaskSnapshot = task
+    },
+    closeTask() {
+      this.openTaskId = null
+      this.openTaskSnapshot = null
+    },
     openQuickCreate(context = {}) { this.quickCreateContext = context },
     closeQuickCreate() { this.quickCreateContext = null },
     toggleSidebar() {

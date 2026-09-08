@@ -6,6 +6,7 @@ const DEFAULT_FILTERS = {
   status: 'all', assigneeIds: [], searchText: '',
   dateRange: { from: null, to: null }, dueDatePreset: null,
   createdDateRange: { from: null, to: null }, createdDatePreset: null,
+  recentDonePreset: null,
 }
 const MS_DAY = 24 * 60 * 60 * 1000
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
@@ -28,11 +29,12 @@ function computeCreatedRange(preset) {
 export const useFiltersStore = defineStore('quickFilters', {
   state: () => ({ ...structuredClone(DEFAULT_FILTERS), ...filtersStorage.load(DEFAULT_FILTERS) }),
   getters: {
-    isActive: (state) => state.status !== 'all' || state.assigneeIds.length > 0 || !!state.searchText || !!state.dueDatePreset || !!state.dateRange.from || !!state.dateRange.to || !!state.createdDatePreset || !!state.createdDateRange.from || !!state.createdDateRange.to,
-    activeCount: (state) => (state.status !== 'all' ? 1 : 0) + (state.assigneeIds.length ? 1 : 0) + (state.searchText ? 1 : 0) + (state.dueDatePreset || state.dateRange.from || state.dateRange.to ? 1 : 0) + (state.createdDatePreset || state.createdDateRange.from || state.createdDateRange.to ? 1 : 0),
+    isActive: (state) => state.status !== 'all' || !!state.recentDonePreset || state.assigneeIds.length > 0 || !!state.searchText || !!state.dueDatePreset || !!state.dateRange.from || !!state.dateRange.to || !!state.createdDatePreset || !!state.createdDateRange.from || !!state.createdDateRange.to,
+    activeCount: (state) => (state.status !== 'all' ? 1 : 0) + (state.recentDonePreset ? 1 : 0) + (state.assigneeIds.length ? 1 : 0) + (state.searchText ? 1 : 0) + (state.dueDatePreset || state.dateRange.from || state.dateRange.to ? 1 : 0) + (state.createdDatePreset || state.createdDateRange.from || state.createdDateRange.to ? 1 : 0),
   },
   actions: {
-    setStatus(status) { this.status = status; this._persist() },
+    setStatus(status) { this.status = status; this.recentDonePreset = null; this._persist() },
+    setRecentDonePreset(preset) { this.recentDonePreset = this.recentDonePreset === preset ? null : preset; this.status = 'all'; this._persist() },
     toggleAssignee(id) { const i = this.assigneeIds.indexOf(id); if (i === -1) this.assigneeIds.push(id); else this.assigneeIds.splice(i, 1); this._persist() },
     setSearchText(value) { this.searchText = value; this._persist() },
     setDueDatePreset(preset) { this.dueDatePreset = preset; this.dateRange = computeDueRange(preset); this._persist() },
@@ -41,8 +43,17 @@ export const useFiltersStore = defineStore('quickFilters', {
     resetCreatedDate() { this.createdDatePreset = null; this.createdDateRange = { from: null, to: null }; this._persist() },
     resetAll() { Object.assign(this, structuredClone(DEFAULT_FILTERS)); this._persist() },
     matches(task) {
-      if (this.status === 'not_done' && (task.status === 'done' || task.status === 'cancelled')) return false
-      if (this.status === 'done' && task.status !== 'done' && task.status !== 'cancelled') return false
+      if (this.recentDonePreset) {
+        if (task.status !== 'done' && task.status !== 'cancelled') {
+          // open tasks are included regardless of completion date
+        } else {
+          const completedAt = task.completedAt || task.updatedAt
+          if (!completedAt || new Date(completedAt) < new Date(Date.now() - Number(this.recentDonePreset) * MS_DAY)) return false
+        }
+      } else {
+        if (this.status === 'not_done' && (task.status === 'done' || task.status === 'cancelled')) return false
+        if (this.status === 'done' && task.status !== 'done' && task.status !== 'cancelled') return false
+      }
       if (this.assigneeIds.length && !this.assigneeIds.includes(task.assigneeId)) return false
       if (this.searchText && ![task.title, task.occurrenceTitle, task.meetingTitle].filter(Boolean).join(' ').toLocaleLowerCase().includes(this.searchText.toLocaleLowerCase())) return false
       if (this.dueDatePreset === 'overdue' && (!task.dueDate || new Date(task.dueDate) >= new Date())) return false
