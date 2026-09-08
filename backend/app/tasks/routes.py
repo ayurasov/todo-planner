@@ -9,7 +9,7 @@ from flask import jsonify, request
 
 from app.auth.security import current_user_id
 from app.mappers import domain_to_dto
-from app.models import ListORM
+from app.models import ListORM, TaskORM
 from app.repositories import ChecklistItemRepository, CommentRepository, NoteRepository, TaskRepository
 from app.repositories.recurrence_repository import RecurrenceRepository
 from app.services.history_service import history_service
@@ -76,14 +76,14 @@ def _validate_meeting_assignment(meeting_id, assignee_id):
 
 
 def _comment_can_change(comment, user_id):
+    return bool(comment and comment.author_id == user_id)
+
+
+def _comment_can_delete(comment, user_id):
     return bool(comment and (
         permission_service.is_global_admin(user_id)
         or comment.author_id == user_id
     ))
-
-
-def _comment_can_delete(comment, user_id):
-    return _comment_can_change(comment, user_id)
 
 
 @tasks_bp.route("", methods=["GET"])
@@ -101,13 +101,16 @@ def create_task(**kwargs):
     user_id = current_user_id(); payload = request.get_json(silent=True) or {}; title = payload.get("title")
     if not title:
         return _validation_error([{"loc": ["title"], "msg": "required"}])
-    list_id = payload.get("listId")
+    parent = TaskORM.query.get(payload.get("parentTaskId")) if payload.get("parentTaskId") else None
+    effective_meeting_id = payload.get("meetingId") if payload.get("meetingId") is not None else (parent.meeting_id if parent else None)
+    effective_occurrence_id = payload.get("occurrenceId") if payload.get("occurrenceId") is not None else (parent.occurrence_id if parent else None)
+    list_id = payload.get("listId") if payload.get("listId") is not None else (parent.list_id if parent else None)
     if list_id and not permission_service.can_create_task(list_id, user_id):
         return permission_denied_response("Недостаточно прав для создания задачи в этом списке")
-    invalid_assignment = _validate_meeting_assignment(payload.get("meetingId"), payload.get("assigneeId"))
+    invalid_assignment = _validate_meeting_assignment(effective_meeting_id, payload.get("assigneeId"))
     if invalid_assignment:
         return invalid_assignment
-    task = task_repository.create(list_id=list_id, parent_task_id=payload.get("parentTaskId"), title=title, description=payload.get("description", ""), status=payload.get("status", "open"), priority=payload.get("priority", "medium"), assignee_id=payload.get("assigneeId"), watcher_ids=payload.get("watcherIds", []), due_date=payload.get("dueDate"), start_date=payload.get("startDate"), recurrence_template_id=payload.get("recurrenceTemplateId"), tags=payload.get("tags", []), pinned=payload.get("pinned", False), created_by=user_id, meeting_id=payload.get("meetingId"), occurrence_id=payload.get("occurrenceId"))
+    task = task_repository.create(list_id=list_id, parent_task_id=payload.get("parentTaskId"), title=title, description=payload.get("description", ""), status=payload.get("status", "open"), priority=payload.get("priority", "medium"), assignee_id=payload.get("assigneeId"), watcher_ids=payload.get("watcherIds", []), due_date=payload.get("dueDate"), start_date=payload.get("startDate"), recurrence_template_id=payload.get("recurrenceTemplateId"), tags=payload.get("tags", []), pinned=payload.get("pinned", False), created_by=user_id, meeting_id=effective_meeting_id, occurrence_id=effective_occurrence_id)
     history_service.record_created(task.id, user_id)
     if task.parent_task_id:
         task_repository.touch_activity(task.parent_task_id)
@@ -166,7 +169,7 @@ def delete_task(task_id, **kwargs):
     return "", 204
 
 
-@tasks_bp.route("/<string:task_id>/checklist-items", methods=["GET"])
+@tasks_bp.route("/<string/task_id>/checklist-items", methods=["GET"])
 def list_task_checklist_items(task_id, **kwargs):
     task = task_repository.get_by_id(task_id)
     if task is None:
@@ -176,7 +179,7 @@ def list_task_checklist_items(task_id, **kwargs):
     return jsonify([domain_to_dto.checklist_item(i).model_dump(by_alias=True) for i in checklist_repository.get_by_task_id(task_id)])
 
 
-@tasks_bp.route("/<string:task_id>/checklist-items", methods=["POST"])
+@tasks_bp.route("/<string/task_id>/checklist-items", methods=["POST"])
 def create_task_checklist_item(task_id, **kwargs):
     user_id = current_user_id(); task = task_repository.get_by_id(task_id)
     if task is None:
@@ -191,7 +194,7 @@ def create_task_checklist_item(task_id, **kwargs):
     return jsonify(domain_to_dto.checklist_item(item).model_dump(by_alias=True)), 201
 
 
-@tasks_bp.route("/<string:task_id>/notes", methods=["GET"])
+@tasks_bp.route("/<string/task_id>/notes", methods=["GET"])
 def get_task_note(task_id, **kwargs):
     task = task_repository.get_by_id(task_id)
     if task is None:
@@ -201,7 +204,7 @@ def get_task_note(task_id, **kwargs):
     return jsonify([domain_to_dto.note(n).model_dump(by_alias=True) for n in note_repository.get_by_task_id(task_id)])
 
 
-@tasks_bp.route("/<string:task_id>/notes", methods=["POST"])
+@tasks_bp.route("/<string/task_id>/notes", methods=["POST"])
 def create_task_note(task_id, **kwargs):
     user_id = current_user_id(); task = task_repository.get_by_id(task_id)
     if task is None:
@@ -214,7 +217,7 @@ def create_task_note(task_id, **kwargs):
     return jsonify(domain_to_dto.note(note).model_dump(by_alias=True)), 201
 
 
-@tasks_bp.route("/<string:task_id>/comments", methods=["GET"])
+@tasks_bp.route("/<string/task_id>/comments", methods=["GET"])
 def list_task_comments(task_id, **kwargs):
     task = task_repository.get_by_id(task_id)
     if task is None:
@@ -224,7 +227,7 @@ def list_task_comments(task_id, **kwargs):
     return jsonify([domain_to_dto.comment(c).model_dump(by_alias=True) for c in comment_repository.get_by_task_id(task_id)])
 
 
-@tasks_bp.route("/<string:task_id>/comments", methods=["POST"])
+@tasks_bp.route("/<string/task_id>/comments", methods=["POST"])
 def create_task_comment(task_id, **kwargs):
     user_id = current_user_id(); task = task_repository.get_by_id(task_id)
     if task is None:
