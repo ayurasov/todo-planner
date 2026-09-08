@@ -4,7 +4,7 @@ TaskRepository -- слой доступа к данным для ресурса 
 
 from app.extensions import db
 from app.mappers import orm_to_domain
-from app.models import MeetingOccurrenceORM, MeetingORM, TaskORM, TaskTagORM, TaskWatcherORM
+from app.models import MeetingOccurrenceORM, TaskORM, TaskTagORM, TaskWatcherORM
 from app.repositories.common import new_id, now_iso
 from app.services.permission_service import permission_service
 
@@ -21,11 +21,17 @@ class TaskRepository:
     def _to_domain(self, row: TaskORM):
         task = orm_to_domain.task(row, watcher_ids=self._watcher_ids(row.id), tags=self._tags(row.id))
         occurrence = MeetingOccurrenceORM.query.get(row.occurrence_id) if row.occurrence_id else None
-        # Meeting title is intentionally not included in task metadata. A user may
-        # see an assigned task without having access to the parent meeting.
+        # Не раскрываем название родительской встречи: исполнитель может видеть
+        # назначенную задачу, не имея доступа к самой встрече.
         task.meeting_title = None
-        task.occurrence_date = occurrence.date.isoformat() if occurrence and occurrence.date else None
-        task.occurrence_title = f"Подвстреча · {occurrence.date.isoformat()}" if occurrence and occurrence.date else None
+        if occurrence and occurrence.date:
+            task.occurrence_date = occurrence.date.isoformat()
+            # В occurrenceTitle нельзя передавать ISO-строку: это значение
+            # непосредственно показывается в TaskRow для скрытой встречи.
+            task.occurrence_title = f"Подвстреча · {occurrence.date.strftime('%d.%m.%Y %H:%M')}"
+        else:
+            task.occurrence_date = None
+            task.occurrence_title = None
         return task
 
     def get_by_id(self, task_id: str):
