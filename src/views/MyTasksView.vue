@@ -22,9 +22,7 @@ onMounted(async () => {
     <h2>Мои задачи</h2>
     <span class="view-subtitle">Сортировка по актуальности: срочность, срок, недавняя активность</span>
   </div>
-  <QuickFiltersBar :task-count="myTasks.length" />
-  <!-- Список не подставляется автоматически — задача без списка допустима.
-       Автоподстановка listId происходит только внутри конкретного списка (ListView). -->
+  <QuickFiltersBar :task-count="myTasks.length" :show-assignee-filter="false" />
   <QuickAddTaskRow placeholder="Добавить задачу без привязки к списку..." />
   <label class="meeting-split-toggle">
     <input type="checkbox" :checked="prefs.myTasksGroupByMeeting" @change="prefs.toggle('myTasksGroupByMeeting')" />

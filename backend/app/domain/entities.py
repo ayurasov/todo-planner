@@ -87,6 +87,7 @@ class Task:
     occurrence_id: Optional[str] = None
     meeting_title: Optional[str] = None
     occurrence_date: Optional[str] = None
+    occurrence_title: Optional[str] = None
 
 
 @dataclass
