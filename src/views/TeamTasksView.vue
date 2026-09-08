@@ -2,16 +2,19 @@
 import { computed } from 'vue'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
+import { useFiltersStore } from '../stores/filtersStore'
 import TaskListPanel from '../components/task/TaskListPanel.vue'
 import QuickFiltersBar from '../components/common/QuickFiltersBar.vue'
 import WorkloadChart from '../components/charts/WorkloadChart.vue'
 
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
+const filtersStore = useFiltersStore()
 
 const filteredTasks = computed(() => tasksStore.teamTasksRanked)
+const visibleTasks = computed(() => filtersStore.apply(filteredTasks.value))
 const visibleAssigneeUsers = computed(() => {
-  const ids = new Set(filteredTasks.value.map((task) => task.assigneeId).filter(Boolean))
+  const ids = new Set(visibleTasks.value.map((task) => task.assigneeId).filter(Boolean))
   return usersStore.users.filter((user) => ids.has(user.id))
 })
 </script>
@@ -21,7 +24,7 @@ const visibleAssigneeUsers = computed(() => {
     <h2>Задачи команды</h2>
   </div>
   <QuickFiltersBar
-    :task-count="filteredTasks.length"
+    :task-count="visibleTasks.length"
     :show-search="true"
     :show-recent-done-filters="true"
     :assignee-users="visibleAssigneeUsers"
