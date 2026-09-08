@@ -14,7 +14,7 @@ import { formatDateTime } from '../../utils/formatters'
 
 const props = defineProps({ tasks: { type: Array, required: true }, emptyText: { type: String, default: 'Нет задач, соответствующих текущему фильтру' }, showToolbar: { type: Boolean, default: true }, groupByMeeting: { type: Boolean, default: false }, meetingMode: { type: Boolean, default: false }, flat: { type: Boolean, default: false } })
 const prefs = usePreferencesStore(); const usersStore = useUsersStore(); const listsStore = useListsStore(); const meetingsStore = useMeetingsStore(); const filtersStore = useFiltersStore(); const uiStore = useUiStore(); const router = useRouter()
-function openTask(task) { uiStore.openTask(task.id) }
+function openTask(task) { uiStore.openTask(task.id, task) }
 function openMeetingOccurrence(meetingId, occurrenceId = null) { const anchor = occurrenceId ? `occurrence-${occurrenceId}` : ''; if (router.currentRoute.value.path === `/meetings/${meetingId}`) { if (anchor) document.getElementById(anchor)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return }; router.push(anchor ? { path: `/meetings/${meetingId}`, hash: `#${anchor}` } : `/meetings/${meetingId}`) }
 const visibleTasks = computed(() => { let list = filtersStore.apply(props.tasks); const usingBubble = prefs.groupBy === 'bubble' && !props.flat; if (!prefs.showCompleted && !usingBubble) list = list.filter((t) => t.status !== 'done' && t.status !== 'cancelled'); return list })
 const PRIORITY_ORDER = { urgent: 0, high: 1, medium: 2, low: 3 }
