@@ -21,12 +21,11 @@ const uiStore = useUiStore()
 const notificationsStore = useNotificationsStore()
 const authStore = useAuthStore()
 
-const openTask = computed(() => uiStore.openTaskId ? tasksStore.byId(uiStore.openTaskId) : null)
-// /login -- публичный экран, без sidebar/topbar authenticated-оболочки.
+const openTask = computed(() => {
+  if (!uiStore.openTaskId) return null
+  return tasksStore.byId(uiStore.openTaskId) || uiStore.openTaskSnapshot
+})
 const isPublicScreen = computed(() => route.meta?.public === true)
-
-// Промпт 24: сетевая недоступность backend (fetch reject / TypeError, не 401/403) --
-// показываем понятный полноэкранный экран вместо белого экрана/бесконечного спиннера.
 const loadFailed = ref(false)
 
 async function retryLoad() {
@@ -41,19 +40,11 @@ async function loadAuthenticatedData() {
     await notificationsStore.load()
     await tasksStore.load()
   } catch (err) {
-    // AuthRequiredError уже обрабатывается через withPermissionHandling/router в stores,
-    // сюда долетают только сетевые сбои (fetch reject, 5xx, backend недоступен).
     if (err instanceof AuthRequiredError) return
     loadFailed.value = true
   }
 }
 
-/**
- * в http-режиме authStore.bootstrap() уже вызывался в main.js до mount. Если сессия
- * невалидна (401), router уже перекинул на /login -- в этом случае не нужно тянуть
- * authenticated-только данные (tasks/lists/notifications), иначе получим лишние 401 в консоли.
- * В mock-режиме authenticated всегда true, поведение не меняется.
- */
 onMounted(async () => {
   if (apiMode === 'http' && !authStore.authenticated) return
   await loadAuthenticatedData()
