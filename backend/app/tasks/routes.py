@@ -75,8 +75,8 @@ def _validate_meeting_assignment(meeting_id, assignee_id):
     return None
 
 
-def _comment_can_change(comment, user_id):
-    return bool(comment and comment.author_id == user_id)
+def _comment_can_change(comment, task, user_id):
+    return bool(comment and task and comment.author_id == user_id and task.created_by == user_id)
 
 
 def _comment_can_delete(comment, user_id):
@@ -169,7 +169,7 @@ def delete_task(task_id, **kwargs):
     return "", 204
 
 
-@tasks_bp.route("/<string/task_id>/checklist-items", methods=["GET"])
+@tasks_bp.route("/<string:task_id>/checklist-items", methods=["GET"])
 def list_task_checklist_items(task_id, **kwargs):
     task = task_repository.get_by_id(task_id)
     if task is None:
@@ -179,7 +179,7 @@ def list_task_checklist_items(task_id, **kwargs):
     return jsonify([domain_to_dto.checklist_item(i).model_dump(by_alias=True) for i in checklist_repository.get_by_task_id(task_id)])
 
 
-@tasks_bp.route("/<string/task_id>/checklist-items", methods=["POST"])
+@tasks_bp.route("/<string:task_id>/checklist-items", methods=["POST"])
 def create_task_checklist_item(task_id, **kwargs):
     user_id = current_user_id(); task = task_repository.get_by_id(task_id)
     if task is None:
@@ -194,7 +194,7 @@ def create_task_checklist_item(task_id, **kwargs):
     return jsonify(domain_to_dto.checklist_item(item).model_dump(by_alias=True)), 201
 
 
-@tasks_bp.route("/<string/task_id>/notes", methods=["GET"])
+@tasks_bp.route("/<string:task_id>/notes", methods=["GET"])
 def get_task_note(task_id, **kwargs):
     task = task_repository.get_by_id(task_id)
     if task is None:
@@ -204,7 +204,7 @@ def get_task_note(task_id, **kwargs):
     return jsonify([domain_to_dto.note(n).model_dump(by_alias=True) for n in note_repository.get_by_task_id(task_id)])
 
 
-@tasks_bp.route("/<string/task_id>/notes", methods=["POST"])
+@tasks_bp.route("/<string:task_id>/notes", methods=["POST"])
 def create_task_note(task_id, **kwargs):
     user_id = current_user_id(); task = task_repository.get_by_id(task_id)
     if task is None:
@@ -217,7 +217,7 @@ def create_task_note(task_id, **kwargs):
     return jsonify(domain_to_dto.note(note).model_dump(by_alias=True)), 201
 
 
-@tasks_bp.route("/<string/task_id>/comments", methods=["GET"])
+@tasks_bp.route("/<string:task_id>/comments", methods=["GET"])
 def list_task_comments(task_id, **kwargs):
     task = task_repository.get_by_id(task_id)
     if task is None:
@@ -227,7 +227,7 @@ def list_task_comments(task_id, **kwargs):
     return jsonify([domain_to_dto.comment(c).model_dump(by_alias=True) for c in comment_repository.get_by_task_id(task_id)])
 
 
-@tasks_bp.route("/<string/task_id>/comments", methods=["POST"])
+@tasks_bp.route("/<string:task_id>/comments", methods=["POST"])
 def create_task_comment(task_id, **kwargs):
     user_id = current_user_id(); task = task_repository.get_by_id(task_id)
     if task is None:
@@ -253,8 +253,8 @@ def update_comment(comment_id, **kwargs):
     task = task_repository.get_by_id(comment.task_id)
     if task is None or not _can_view_task(task, user_id):
         return permission_denied_response("Недостаточно прав для доступа к комментарию")
-    if not _comment_can_change(comment, user_id):
-        return permission_denied_response("Изменять комментарий может только его автор")
+    if not _comment_can_change(comment, task, user_id):
+        return permission_denied_response("Изменять комментарий может только автор задачи и комментария")
     if not _list_allows_comments(task.list_id):
         return permission_denied_response("Комментарии отключены владельцем списка")
     payload = request.get_json(silent=True) or {}
