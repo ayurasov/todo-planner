@@ -51,8 +51,14 @@ const isDone = computed(() => props.task.status === 'done')
 
 const occurrenceInfo = computed(() => (props.task.occurrenceId ? meetingsStore.occurrenceById(props.task.occurrenceId) : null))
 const occurrenceBadgeLabel = computed(() => {
+  // Если встреча доступна пользователю, сохраняем исходный формат:
+  // «Название встречи · дата подвстречи».
+  if (occurrenceInfo.value) {
+    return `${occurrenceInfo.value.meeting.title} · ${formatDateTime(occurrenceInfo.value.occurrence.date)}`
+  }
+  // Для назначенной задачи из скрытой встречи используем только безопасную
+  // backend-метку подвстречи; UUID и название родительской встречи не показываем.
   if (props.task.occurrenceTitle) return props.task.occurrenceTitle
-  if (occurrenceInfo.value) return `${occurrenceInfo.value.meeting.title} · ${formatDateTime(occurrenceInfo.value.occurrence.date)}`
   if (props.task.occurrenceDate) return formatDateTime(props.task.occurrenceDate)
   return null
 })
