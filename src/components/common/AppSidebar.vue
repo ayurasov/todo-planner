@@ -8,6 +8,7 @@ import { useMeetingsStore } from '../../stores/meetingsStore'
 import { useIsAdmin } from '../../composables/usePermissions'
 import { useDragReorder } from '../../composables/useDragReorder'
 import AppIcon from './AppIcon.vue'
+import packageJson from '../../../package.json'
 
 const viewStore = useViewStore()
 const uiStore = useUiStore()
@@ -15,6 +16,7 @@ const listsStore = useListsStore()
 const meetingsStore = useMeetingsStore()
 const isAdmin = useIsAdmin()
 const route = useRoute()
+const appVersion = packageJson.version
 
 // Подменю со списками/встречами открыто по умолчанию, если пользователь уже находится
 // на странице конкретного списка/встречи (прямой переход по URL / обновление страницы) —
@@ -192,7 +194,10 @@ const meetingsDrag = useDragReorder(
       <router-link to="/settings" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Настройки' : ''">
         <AppIcon name="settings" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Настройки</span>
       </router-link>
-      <div v-if="!uiStore.sidebarCollapsed" class="sidebar-copyright">© Alexander Yurasov</div>
+      <div v-if="!uiStore.sidebarCollapsed" class="sidebar-copyright">
+        <div>© Alexander Yurasov</div>
+        <div class="sidebar-version">По Делу - Версия {{ appVersion }}</div>
+      </div>
     </div>
   </aside>
 </template>
@@ -249,4 +254,5 @@ const meetingsDrag = useDragReorder(
   display: flex; flex-direction: column; gap: 2px;
 }
 .sidebar-copyright { font-size: 10.5px; color: var(--color-text-muted); text-align: left; padding: 8px 6px 0; opacity: 0.75; align-self: flex-start; }
+.sidebar-version { margin-top: 2px; }
 </style>
