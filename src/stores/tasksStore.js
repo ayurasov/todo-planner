@@ -10,27 +10,11 @@ import { useNotificationsStore } from './notificationsStore'
 import { withPermissionHandling } from './utils/withPermissionHandling'
 import { router } from '../router'
 
-/**
- * Определяет, должна ли задача (в т.ч. подзадача) отображаться как самостоятельная
- * строка в общих представлениях (Мои задачи / Задачи команды / List View — корневой уровень).
- * По умолчанию подзадачи видны только внутри дерева родителя. Исключение — глобальная
- * настройка showSubtasksStandalone, либо индивидуальный флаг task.displayStandalone.
- */
 function isVisibleStandalone(task, prefs) {
   if (!task.parentTaskId) return true
   return prefs.showSubtasksStandalone || task.displayStandalone
 }
 
-/**
- * Стабильная сортировка по очерёдности создания (createdAt по возрастанию,
- * при равенстве — по id как детерминированному тай-брейкеру). Используется
- * для подзадач (childrenOf) на любом уровне вложенности: дерево задачи
- * (TaskRow -> TaskRow child) не должно применять ранжирование/«пузырьки» —
- * порядок должен всегда соответствовать порядку добавления подзадач, вне
- * зависимости от порядка, в котором элементы лежат в state.tasks (например,
- * после обновления полей через findIndex-замену это не меняет позицию, но
- * на всякий случай сортировка делается явно, а не полагается на порядок массива).
- */
 function byCreationOrder(a, b) {
   const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
   const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
@@ -48,27 +32,16 @@ export const useTasksStore = defineStore('tasks', {
   }),
   getters: {
     byId: (state) => (id) => state.tasks.find((t) => t.id === id) || null,
-    // Подзадачи и более глубокие подзадачи всегда возвращаются в порядке создания —
-    // никакой сортировки/ранжирования/«пузырькового» алгоритма здесь не применяется.
     childrenOf: (state) => (parentId) => state.tasks.filter((t) => t.parentTaskId === parentId).sort(byCreationOrder),
     rootTasksOfList: (state) => (listId) => state.tasks.filter((t) => t.listId === listId && !t.parentTaskId),
-
     myTasksRanked: (state) => {
-      const usersStore = useUsersStore()
-      const prefs = usePreferencesStore()
-      const currentUserId = usersStore.currentUser?.id
-      const mine = state.tasks.filter((t) => t.assigneeId === currentUserId && isVisibleStandalone(t, prefs))
-      return sortTasksByRanking(mine, { currentUserId })
+      const usersStore = useUsersStore(); const prefs = usePreferencesStore(); const currentUserId = usersStore.currentUser?.id
+      return sortTasksByRanking(state.tasks.filter((t) => t.assigneeId === currentUserId && isVisibleStandalone(t, prefs)), { currentUserId })
     },
-
     teamTasksRanked: (state) => {
-      const usersStore = useUsersStore()
-      const prefs = usePreferencesStore()
-      const currentUserId = usersStore.currentUser?.id
-      const visible = state.tasks.filter((t) => isVisibleStandalone(t, prefs))
-      return sortTasksByRanking(visible, { currentUserId })
+      const usersStore = useUsersStore(); const prefs = usePreferencesStore(); const currentUserId = usersStore.currentUser?.id
+      return sortTasksByRanking(state.tasks.filter((t) => isVisibleStandalone(t, prefs)), { currentUserId })
     },
-
     tasksByAssignee: (state) => {
       const map = {}
       for (const t of state.tasks) {
@@ -80,296 +53,78 @@ export const useTasksStore = defineStore('tasks', {
     },
   },
   actions: {
-    /**
-     * Обёртка над withPermissionHandling с уже привязанными notificationsStore/router --
-     * используется во всех mutating actions ниже, чтобы 403/401 из HttpTaskRepository
-     * (и остальных Http*Repository) единообразно превращались в toast + re-throw,
-     * а не оставляли локальный state в неопределённом виде. В mock-режиме эти ошибки
-     * никогда не бросаются, поэтому поведение mock не меняется.
-     */
     _guarded(action, opts = {}) {
-      return withPermissionHandling(action, {
-        notificationsStore: useNotificationsStore(),
-        router,
-        ...opts,
-      })
+      return withPermissionHandling(action, { notificationsStore: useNotificationsStore(), router, ...opts })
     },
-
-    async load() {
-      this.tasks = await taskRepository.getAll()
-      this.loaded = true
-      await this.scanDueNotifications()
-    },
-
+    async load() { this.tasks = await taskRepository.getAll(); this.loaded = true; await this.scanDueNotifications() },
     async scanDueNotifications() {
-      const usersStore = useUsersStore()
-      const notificationsStore = useNotificationsStore()
-      const currentUserId = usersStore.currentUser?.id
+      const usersStore = useUsersStore(); const notificationsStore = useNotificationsStore(); const currentUserId = usersStore.currentUser?.id
       if (!currentUserId) return
-      const now = new Date()
-      const thresholdMs = notificationsStore.settings.dueSoonThresholdHours * 60 * 60 * 1000
-
+      const now = new Date(); const thresholdMs = notificationsStore.settings.dueSoonThresholdHours * 60 * 60 * 1000
       for (const task of this.tasks) {
-        if (task.assigneeId !== currentUserId || !task.dueDate) continue
-        if (task.status === 'done' || task.status === 'cancelled') continue
+        if (task.assigneeId !== currentUserId || !task.dueDate || task.status === 'done' || task.status === 'cancelled') continue
         const due = new Date(task.dueDate)
-        const alreadyNotified = notificationsStore.items.some(
-          (n) => n.taskId === task.id && (n.type === 'due_soon' || n.type === 'overdue')
-        )
-        if (alreadyNotified) continue
-
-        if (due < now) {
-          await notificationsStore.notify({
-            userId: currentUserId, type: 'overdue', taskId: task.id, listId: task.listId,
-            title: `Просрочена задача «${task.title}»`,
-          })
-        } else if (due - now <= thresholdMs) {
-          await notificationsStore.notify({
-            userId: currentUserId, type: 'due_soon', taskId: task.id, listId: task.listId,
-            title: `Срок задачи «${task.title}» приближается`,
-          })
-        }
+        if (notificationsStore.items.some((n) => n.taskId === task.id && (n.type === 'due_soon' || n.type === 'overdue'))) continue
+        if (due < now) await notificationsStore.notify({ userId: currentUserId, type: 'overdue', taskId: task.id, listId: task.listId, title: `Просрочена задача «${task.title}»` })
+        else if (due - now <= thresholdMs) await notificationsStore.notify({ userId: currentUserId, type: 'due_soon', taskId: currentUserId, listId: task.listId, title: `Срок задачи «${task.title}» приближается` })
       }
     },
-
     rankedTasksForList(listId) {
-      const usersStore = useUsersStore()
-      const prefs = usePreferencesStore()
-      const currentUserId = usersStore.currentUser?.id
-      const listTasks = this.tasks.filter((t) => t.listId === listId && isVisibleStandalone(t, prefs))
-      return sortTasksByRanking(listTasks, { currentUserId })
+      const usersStore = useUsersStore(); const prefs = usePreferencesStore(); const currentUserId = usersStore.currentUser?.id
+      return sortTasksByRanking(this.tasks.filter((t) => t.listId === listId && isVisibleStandalone(t, prefs)), { currentUserId })
     },
-
     async createTask(payload) {
       return this._guarded(async () => {
-        const usersStore = useUsersStore()
-        const task = await taskRepository.create(payload)
-        this.tasks.push(task)
-        await historyService.recordCreated(task.id, usersStore.currentUser.id)
-        if (payload.parentTaskId) {
-          await this.touchActivity(payload.parentTaskId)
-        }
+        const usersStore = useUsersStore(); const task = await taskRepository.create(payload); this.tasks.push(task); await historyService.recordCreated(task.id, usersStore.currentUser.id)
+        if (payload.parentTaskId) await this.touchActivity(payload.parentTaskId)
         return task
       })
     },
-
     async updateTaskField(id, field, value) {
       return this._guarded(async () => {
-        const usersStore = useUsersStore()
-        const task = this.byId(id)
-        const oldValue = task[field]
-        const updated = await taskRepository.update(id, { [field]: value })
-        const idx = this.tasks.findIndex((t) => t.id === id)
-        this.tasks[idx] = updated
-
-        if (field === 'assigneeId') {
-          await historyService.recordAssigneeChanged(id, usersStore.currentUser.id, oldValue, value)
-        } else if (field === 'dueDate') {
-          await historyService.recordRescheduled(id, usersStore.currentUser.id, oldValue, value)
-        } else {
-          await historyService.recordFieldChanged(id, usersStore.currentUser.id, field, oldValue, value)
-        }
+        const usersStore = useUsersStore(); const task = this.byId(id); const oldValue = task[field]; const updated = await taskRepository.update(id, { [field]: value }); const idx = this.tasks.findIndex((t) => t.id === id); this.tasks[idx] = updated
+        if (field === 'assigneeId') await historyService.recordAssigneeChanged(id, usersStore.currentUser.id, oldValue, value)
+        else if (field === 'dueDate') await historyService.recordRescheduled(id, usersStore.currentUser.id, oldValue, value)
+        else await historyService.recordFieldChanged(id, usersStore.currentUser.id, field, oldValue, value)
         return updated
       })
     },
-
     async completeTask(id) {
       return this._guarded(async () => {
-        const usersStore = useUsersStore()
-        const notificationsStore = useNotificationsStore()
-        const updated = await taskRepository.complete(id)
-        const idx = this.tasks.findIndex((t) => t.id === id)
-        this.tasks[idx] = updated
-        await historyService.recordCompleted(id, usersStore.currentUser.id)
-        const nextInstance = await recurrenceService.onTaskCompleted(updated)
-        if (nextInstance) this.tasks.push(nextInstance)
-
-        if (updated.parentTaskId) {
-          const parent = this.byId(updated.parentTaskId)
-          if (parent?.assigneeId && parent.assigneeId !== usersStore.currentUser.id) {
-            await notificationsStore.notify({
-              userId: parent.assigneeId, type: 'subtask_completed', taskId: parent.id, listId: parent.listId,
-              title: `Подзадача «${updated.title}» выполнена`, actorId: usersStore.currentUser.id,
-            })
-          }
-        }
+        const usersStore = useUsersStore(); const notificationsStore = useNotificationsStore(); const updated = await taskRepository.complete(id); const idx = this.tasks.findIndex((t) => t.id === id); this.tasks[idx] = updated; await historyService.recordCompleted(id, usersStore.currentUser.id); const nextInstance = await recurrenceService.onTaskCompleted(updated); if (nextInstance) this.tasks.push(nextInstance)
+        if (updated.parentTaskId) { const parent = this.byId(updated.parentTaskId); if (parent?.assigneeId && parent.assigneeId !== usersStore.currentUser.id) await notificationsStore.notify({ userId: parent.assigneeId, type: 'subtask_completed', taskId: parent.id, listId: parent.listId, title: `Подзадача «${updated.title}» выполнена`, actorId: usersStore.currentUser.id }) }
         return updated
       })
     },
-
-    async reopenTask(id) {
-      return this._guarded(async () => {
-        const usersStore = useUsersStore()
-        const updated = await taskRepository.reopen(id)
-        const idx = this.tasks.findIndex((t) => t.id === id)
-        this.tasks[idx] = updated
-        await historyService.recordReopened(id, usersStore.currentUser.id)
-        return updated
-      })
-    },
-
+    async reopenTask(id) { return this._guarded(async () => { const usersStore = useUsersStore(); const updated = await taskRepository.reopen(id); const idx = this.tasks.findIndex((t) => t.id === id); this.tasks[idx] = updated; await historyService.recordReopened(id, usersStore.currentUser.id); return updated }) },
     async rescheduleTask(id, newDueDate) {
-      const usersStore = useUsersStore()
-      const notificationsStore = useNotificationsStore()
-      const task = this.byId(id)
-      const result = await this.updateTaskField(id, 'dueDate', newDueDate)
-      if (task?.assigneeId && task.assigneeId !== usersStore.currentUser?.id) {
-        await notificationsStore.notify({
-          userId: task.assigneeId, type: 'rescheduled', taskId: id, listId: task.listId,
-          title: `Срок задачи «${task.title}» перенесён`, actorId: usersStore.currentUser?.id,
-        })
-      }
+      const usersStore = useUsersStore(); const notificationsStore = useNotificationsStore(); const task = this.byId(id); const result = await this.updateTaskField(id, 'dueDate', newDueDate)
+      if (task?.assigneeId && task.assigneeId !== usersStore.currentUser?.id) await notificationsStore.notify({ userId: task.assigneeId, type: 'rescheduled', taskId: id, listId: task.listId, title: `Срок задачи «${task.title}» перенесён`, actorId: usersStore.currentUser?.id })
       return result
     },
-
     async assignTask(id, assigneeId) {
-      const usersStore = useUsersStore()
-      const notificationsStore = useNotificationsStore()
-      const task = this.byId(id)
-      const previousAssignee = task?.assigneeId
-      const result = await this.updateTaskField(id, 'assigneeId', assigneeId)
-      if (assigneeId && assigneeId !== previousAssignee) {
-        await notificationsStore.notify({
-          userId: assigneeId, type: 'assigned', taskId: id, listId: task?.listId,
-          title: `Вам назначена задача «${task?.title}»`, actorId: usersStore.currentUser?.id,
-        })
-      }
+      const usersStore = useUsersStore(); const notificationsStore = useNotificationsStore(); const task = this.byId(id); const previousAssignee = task?.assigneeId; const result = await this.updateTaskField(id, 'assigneeId', assigneeId)
+      if (assigneeId && assigneeId !== previousAssignee) await notificationsStore.notify({ userId: assigneeId, type: 'assigned', taskId: id, listId: task?.listId, title: `Вам назначена задача «${task?.title}»`, actorId: usersStore.currentUser?.id })
       return result
     },
-
-    async togglePin(id) {
-      const task = this.byId(id)
-      return this.updateTaskField(id, 'pinned', !task.pinned)
-    },
-
+    async togglePin(id) { const task = this.byId(id); return this.updateTaskField(id, 'pinned', !task.pinned) },
     async removeTask(id) {
-      return this._guarded(async () => {
-        await taskRepository.remove(id)
-        const removedIds = new Set()
-        const collect = (taskId) => {
-          removedIds.add(taskId)
-          this.tasks.filter((t) => t.parentTaskId === taskId).forEach((c) => collect(c.id))
-        }
-        collect(id)
-        this.tasks = this.tasks.filter((t) => !removedIds.has(t.id))
-      })
+      return this._guarded(async () => { await taskRepository.remove(id); const removedIds = new Set(); const collect = (taskId) => { removedIds.add(taskId); this.tasks.filter((t) => t.parentTaskId === taskId).forEach((c) => collect(c.id)) }; collect(id); this.tasks = this.tasks.filter((t) => !removedIds.has(t.id)) })
     },
-
-    /**
-     * Обновляет lastActivityAt задачи без создания отдельной записи в истории —
-     * используется при событиях "внутри" задачи (чек-лист, комментарии, подзадачи),
-     * чтобы ranking score корректно учитывал недавнюю активность ("вываливание вверх").
-     */
-    async touchActivity(taskId) {
-      const task = this.byId(taskId)
-      if (!task) return
-      const updated = await taskRepository.update(taskId, {})
-      const idx = this.tasks.findIndex((t) => t.id === taskId)
-      if (idx !== -1) this.tasks[idx] = updated
-    },
-
-    async loadChecklist(taskId) {
-      this.checklistByTask[taskId] = await checklistRepository.getByTaskId(taskId)
-    },
-
-    async addChecklistItem(taskId, title) {
-      return this._guarded(async () => {
-        const item = await checklistRepository.create({ taskId, title, order: (this.checklistByTask[taskId]?.length || 0) })
-        if (!this.checklistByTask[taskId]) this.checklistByTask[taskId] = []
-        this.checklistByTask[taskId].push(item)
-        await this.touchActivity(taskId)
-        return item
-      })
-    },
-
-    async toggleChecklistItem(taskId, itemId) {
-      return this._guarded(async () => {
-        const list = this.checklistByTask[taskId] || []
-        const item = list.find((i) => i.id === itemId)
-        const updated = await checklistRepository.update(itemId, { done: !item.done })
-        const idx = list.findIndex((i) => i.id === itemId)
-        list[idx] = updated
-        await this.touchActivity(taskId)
-        return updated
-      })
-    },
-
-    async removeChecklistItem(taskId, itemId) {
-      return this._guarded(async () => {
-        await checklistRepository.remove(itemId)
-        this.checklistByTask[taskId] = (this.checklistByTask[taskId] || []).filter((i) => i.id !== itemId)
-        await this.touchActivity(taskId)
-      })
-    },
-
-    async loadNotes(taskId) {
-      this.notesByTask[taskId] = await noteRepository.getByTaskId(taskId)
-    },
-
+    async touchActivity(taskId) { const task = this.byId(taskId); if (!task) return; const updated = await taskRepository.update(taskId, {}); const idx = this.tasks.findIndex((t) => t.id === taskId); if (idx !== -1) this.tasks[idx] = updated },
+    async loadChecklist(taskId) { this.checklistByTask[taskId] = await checklistRepository.getByTaskId(taskId) },
+    async addChecklistItem(taskId, title) { return this._guarded(async () => { const item = await checklistRepository.create({ taskId, title, order: (this.checklistByTask[taskId]?.length || 0) }); if (!this.checklistByTask[taskId]) this.checklistByTask[taskId] = []; this.checklistByTask[taskId].push(item); await this.touchActivity(taskId); return item }) },
+    async toggleChecklistItem(taskId, itemId) { return this._guarded(async () => { const list = this.checklistByTask[taskId] || []; const item = list.find((i) => i.id === itemId); const updated = await checklistRepository.update(itemId, { done: !item.done }); list[list.findIndex((i) => i.id === itemId)] = updated; await this.touchActivity(taskId); return updated }) },
+    async removeChecklistItem(taskId, itemId) { return this._guarded(async () => { await checklistRepository.remove(itemId); this.checklistByTask[taskId] = (this.checklistByTask[taskId] || []).filter((i) => i.id !== itemId); await this.touchActivity(taskId) }) },
+    async loadNotes(taskId) { this.notesByTask[taskId] = await noteRepository.getByTaskId(taskId) },
     async saveNote(taskId, noteId, contentJSON) {
-      return this._guarded(async () => {
-        const usersStore = useUsersStore()
-        let note
-        if (noteId) {
-          note = await noteRepository.update(noteId, { contentJSON, updatedBy: usersStore.currentUser.id })
-          const list = this.notesByTask[taskId] || []
-          const idx = list.findIndex((n) => n.id === noteId)
-          if (idx !== -1) list[idx] = note
-        } else {
-          note = await noteRepository.create({ taskId, contentJSON, updatedBy: usersStore.currentUser.id })
-          if (!this.notesByTask[taskId]) this.notesByTask[taskId] = []
-          this.notesByTask[taskId].push(note)
-        }
-        return note
-      })
+      return this._guarded(async () => { const usersStore = useUsersStore(); let note; if (noteId) { note = await noteRepository.update(noteId, { contentJSON, updatedBy: usersStore.currentUser.id }); const list = this.notesByTask[taskId] || []; const idx = list.findIndex((n) => n.id === noteId); if (idx !== -1) list[idx] = note } else { note = await noteRepository.create({ taskId, contentJSON, updatedBy: usersStore.currentUser.id }); if (!this.notesByTask[taskId]) this.notesByTask[taskId] = []; this.notesByTask[taskId].push(note) } return note })
     },
-
-    async loadComments(taskId) {
-      this.commentsByTask[taskId] = await commentRepository.getByTaskId(taskId)
-    },
-
+    async loadComments(taskId) { this.commentsByTask[taskId] = await commentRepository.getByTaskId(taskId) },
     async addComment(taskId, text) {
-      return this._guarded(async () => {
-        const usersStore = useUsersStore()
-        const listsStore = useListsStore()
-        const task = this.byId(taskId)
-        const list = task ? listsStore.byId(task.listId) : null
-        if (list && list.settings?.allowComments === false) {
-          throw new Error('Комментарии отключены владельцем списка')
-        }
-        const comment = await commentRepository.create({ taskId, authorId: usersStore.currentUser.id, text })
-        if (!this.commentsByTask[taskId]) this.commentsByTask[taskId] = []
-        this.commentsByTask[taskId].push(comment)
-        await historyService.recordComment(taskId, usersStore.currentUser.id, text)
-        await this.touchActivity(taskId)
-
-        const notificationsStore = useNotificationsStore()
-        const notifyTargets = new Set([task?.assigneeId, ...(task?.watcherIds || [])].filter((u) => u && u !== usersStore.currentUser.id))
-        for (const uid of notifyTargets) {
-          await notificationsStore.notify({
-            userId: uid, type: 'comment', taskId, listId: task?.listId,
-            title: `Новый комментарий к «${task?.title}»`, body: text, actorId: usersStore.currentUser.id,
-          })
-        }
-        return comment
-      })
+      return this._guarded(async () => { const usersStore = useUsersStore(); const listsStore = useListsStore(); const task = this.byId(taskId); const list = task ? listsStore.byId(task.listId) : null; if (list && list.settings?.allowComments === false) throw new Error('Комментарии отключены владельцем списка'); const comment = await commentRepository.create({ taskId, authorId: usersStore.currentUser.id, text }); if (!this.commentsByTask[taskId]) this.commentsByTask[taskId] = []; this.commentsByTask[taskId].push(comment); await historyService.recordComment(taskId, usersStore.currentUser.id, text); await this.touchActivity(taskId); const notificationsStore = useNotificationsStore(); const notifyTargets = new Set([task?.assigneeId, ...(task?.watcherIds || [])].filter((u) => u && u !== usersStore.currentUser.id)); for (const uid of notifyTargets) await notificationsStore.notify({ userId: uid, type: 'comment', taskId, listId: task?.listId, title: `Новый комментарий к «${task?.title}»`, body: text, actorId: usersStore.currentUser.id }); return comment })
     },
-
-    async editComment(taskId, commentId, text) {
-      return this._guarded(async () => {
-        const updated = await commentRepository.update(commentId, { text })
-        const list = this.commentsByTask[taskId] || []
-        const idx = list.findIndex((c) => c.id === commentId)
-        if (idx !== -1) list[idx] = updated
-        return updated
-      })
-    },
-
-    async removeComment(taskId, commentId) {
-      return this._guarded(async () => {
-        await commentRepository.remove(commentId)
-        this.commentsByTask[taskId] = (this.commentsByTask[taskId] || []).filter((c) => c.id !== commentId)
-      })
-    },
+    async editComment(taskId, commentId, text) { return this._guarded(async () => { const updated = await commentRepository.update(commentId, { text }); const list = this.commentsByTask[taskId] || []; const idx = list.findIndex((c) => c.id === commentId); if (idx !== -1) list[idx] = updated; return updated }) },
+    async removeComment(taskId, commentId) { return this._guarded(async () => { await commentRepository.remove(commentId); this.commentsByTask[taskId] = (this.commentsByTask[taskId] || []).filter((c) => c.id !== commentId) }) },
   },
 })
