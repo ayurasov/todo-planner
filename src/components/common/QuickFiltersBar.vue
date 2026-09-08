@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import QuickToolbar from './QuickToolbar.vue'
 import AppIcon from './AppIcon.vue'
 import { useFiltersStore } from '../../stores/filtersStore'
@@ -12,6 +12,7 @@ const props = defineProps({
   showAssigneeFilter: { type: Boolean, default: true },
   showSearch: { type: Boolean, default: false },
   assigneeUsers: { type: Array, default: null },
+  showRecentDoneFilters: { type: Boolean, default: false },
 })
 
 const filtersStore = useFiltersStore()
@@ -22,6 +23,10 @@ const STATUS_OPTIONS = [
   { value: 'all', label: 'Все' },
   { value: 'not_done', label: 'Не выполнено' },
   { value: 'done', label: 'Выполнено' },
+]
+const RECENT_DONE_OPTIONS = [
+  { value: '7', label: '7д', title: 'Не выполнено + выполнено за последнюю неделю' },
+  { value: '14', label: '14д', title: 'Не выполнено + выполнено за последние 2 недели' },
 ]
 const DUE_DATE_PRESETS = [
   { value: 'overdue', label: 'Просрочено' },
@@ -39,6 +44,7 @@ const CREATED_DATE_PRESETS = [
 ]
 
 const assigneePickerOpen = ref(false)
+const assigneePicker = ref(null)
 const assigneeSummary = computed(() => {
   if (!filtersStore.assigneeIds.length) return 'Исполнители'
   if (filtersStore.assigneeIds.length === 1) return usersStore.byId(filtersStore.assigneeIds[0])?.name || 'Исполнитель'
@@ -50,6 +56,7 @@ function forceBubbleMode() {
   if (prefs.groupBy !== 'bubble') prefs.set('groupBy', 'bubble')
 }
 function setStatus(status) { filtersStore.setStatus(status); if (status !== 'all') forceBubbleMode() }
+function setRecentDone(preset) { filtersStore.setRecentDonePreset(preset); if (filtersStore.recentDonePreset) forceBubbleMode() }
 function toggleAssignee(userId) { filtersStore.toggleAssignee(userId); if (filtersStore.assigneeIds.length) forceBubbleMode() }
 function toggleDueDatePreset(preset) {
   if (filtersStore.dueDatePreset === preset) filtersStore.setCustomDateRange(null, null)
@@ -61,6 +68,11 @@ function toggleCreatedDatePreset(preset) {
   else filtersStore.setCreatedDatePreset(preset)
   if (filtersStore.createdDatePreset) forceBubbleMode()
 }
+function closeAssigneeOnOutsideClick(event) {
+  if (assigneePickerOpen.value && assigneePicker.value && !assigneePicker.value.contains(event.target)) assigneePickerOpen.value = false
+}
+onMounted(() => document.addEventListener('click', closeAssigneeOnOutsideClick, true))
+onBeforeUnmount(() => document.removeEventListener('click', closeAssigneeOnOutsideClick, true))
 </script>
 
 <template>
@@ -69,10 +81,13 @@ function toggleCreatedDatePreset(preset) {
       <QuickToolbar class="embedded-toolbar" :task-count="taskCount" :meeting-mode="meetingMode" compact>
         <template #after-view-mode>
           <div class="filter-group" role="group" aria-label="Статус">
-            <button v-for="opt in STATUS_OPTIONS" :key="opt.value" class="filter-btn" :class="{ active: filtersStore.status === opt.value }" @click="setStatus(opt.value)">{{ opt.label }}</button>
+            <button v-for="opt in STATUS_OPTIONS" :key="opt.value" class="filter-btn" :class="{ active: filtersStore.status === opt.value && !filtersStore.recentDonePreset }" @click="setStatus(opt.value)">{{ opt.label }}</button>
           </div>
-          <div v-if="showAssigneeFilter" class="assignee-picker">
-            <button class="filter-btn dropdown-trigger" :class="{ active: filtersStore.assigneeIds.length }" @click="assigneePickerOpen = !assigneePickerOpen">
+          <div v-if="showRecentDoneFilters" class="filter-group recent-done-group" role="group" aria-label="Статус и недавнее выполнение">
+            <button v-for="opt in RECENT_DONE_OPTIONS" :key="opt.value" class="filter-btn compact-filter" :class="{ active: filtersStore.recentDonePreset === opt.value }" :title="opt.title" :aria-label="opt.title" @click="setRecentDone(opt.value)">{{ opt.label }}</button>
+          </div>
+          <div v-if="showAssigneeFilter" ref="assigneePicker" class="assignee-picker">
+            <button class="filter-btn dropdown-trigger" :class="{ active: filtersStore.assigneeIds.length }" @click.stop="assigneePickerOpen = !assigneePickerOpen">
               <AppIcon name="users" :size="13" /> {{ assigneeSummary }} <AppIcon name="chevronDown" :size="11" class="caret" />
             </button>
             <div v-if="assigneePickerOpen" class="assignee-dropdown card">
@@ -116,6 +131,7 @@ function toggleCreatedDatePreset(preset) {
 .filter-group { display: flex; gap: 2px; background: #eef1f7; border-radius: 8px; padding: 2px; }
 .filter-btn { border: none; background: transparent; padding: 5px 10px; border-radius: 6px; font-size: 12.5px; color: var(--color-text-muted); cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 3px; }
 .filter-btn.active { background: var(--color-surface); color: var(--color-text); font-weight: 600; box-shadow: var(--shadow-1); }
+.compact-filter { min-width: 32px; padding-inline: 7px; font-weight: 700; }
 .assignee-picker { position: relative; }
 .dropdown-trigger { border: 1px solid var(--color-border); border-radius: 6px; background: var(--color-surface); padding: 5px 10px; font-size: 12.5px; color: var(--color-text-muted); cursor: pointer; display: flex; align-items: center; gap: 5px; }
 .dropdown-trigger.active { color: var(--color-text); font-weight: 600; border-color: var(--color-primary); }
