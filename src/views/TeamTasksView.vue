@@ -23,6 +23,7 @@ const visibleAssigneeUsers = computed(() => {
   <QuickFiltersBar
     :task-count="filteredTasks.length"
     :show-search="true"
+    :show-recent-done-filters="true"
     :assignee-users="visibleAssigneeUsers"
   />
   <WorkloadChart />
