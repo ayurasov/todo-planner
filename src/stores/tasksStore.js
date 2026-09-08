@@ -10,24 +10,11 @@ import { useNotificationsStore } from './notificationsStore'
 import { withPermissionHandling } from './utils/withPermissionHandling'
 import { router } from '../router'
 
-/**
- * Определяет, должна ли задача (в т.ч. подзадача) отображаться как самостоятельная
- * строка в общих представлениях (Мои задачи / Задачи команды / List View — корневой уровень).
- * По умолчанию подзадачи видны только внутри дерева родителя. Исключение — глобальная
- * настройка showSubtasksStandalone, либо индивидуальный флаг task.displayStandalone.
- */
 function isVisibleStandalone(task, prefs) {
   if (!task.parentTaskId) return true
   return prefs.showSubtasksStandalone || task.displayStandalone
 }
 
-/**
- * Стабильная сортировка по очерёдности создания (createdAt по возрастанию,
- * при равенстве — по id как детерминированному тай-брейкеру). Используется
- * для подзадач (childrenOf) на любом уровне вложенности: дерево задачи
- * (TaskRow -> TaskRow child) не должно применять ранжирование/«пузырьковый»
- * алгоритм — порядок должен всегда соответствовать порядку добавления подзадач.
- */
 function byCreationOrder(a, b) {
   const da = a.createdAt ? new Date(a.createdAt).getTime() : 0
   const db = b.createdAt ? new Date(b.createdAt).getTime() : 0
@@ -75,9 +62,6 @@ export const useTasksStore = defineStore('tasks', {
     },
   },
   actions: {
-    /**
-     * Обёртка над withPermissionHandling с уже привязанными notificationsStore/router.
-     */
     _guarded(action, opts = {}) {
       return withPermissionHandling(action, {
         notificationsStore: useNotificationsStore(),
@@ -116,7 +100,7 @@ export const useTasksStore = defineStore('tasks', {
           })
         } else if (due - now <= thresholdMs) {
           await notificationsStore.notify({
-            userId: currentUserId, type: 'due_soon', taskId: currentUserId, listId: task.listId,
+            userId: currentUserId, type: 'due_soon', taskId: task.id, listId: task.listId,
             title: `Срок задачи «${task.title}» приближается`,
           })
         }
