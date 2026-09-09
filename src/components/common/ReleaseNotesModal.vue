@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import versionsMarkdown from '../../../docs/versions.md?raw'
 
 const emit = defineEmits(['close'])
@@ -142,14 +142,14 @@ onMounted(expandLatest)
 .release-item { border: 1px solid var(--color-border); border-radius: 12px; margin-bottom: 9px; overflow: hidden; background: var(--color-surface); transition: border-color .16s ease, box-shadow .16s ease; }
 .release-item.latest { border-color: rgba(79, 124, 255, .32); }
 .release-item.expanded { box-shadow: 0 8px 22px rgba(42, 57, 96, .07); }
-.release-toggle { width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px 15px; border: 0; background: transparent; color: var(--color-text); cursor: pointer; text-align: left; }
+.release-toggle { width: 100%; display: flex; align-items: flex-start; gap: 12px; padding: 14px 15px; border: 0; background: transparent; color: var(--color-text); cursor: pointer; text-align: left; }
 .release-toggle:hover { background: #f7f8fc; }
 .release-version-mark { width: 34px; height: 24px; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; border-radius: 7px; background: #eef2ff; color: var(--color-primary); font-size: 9px; font-weight: 800; letter-spacing: .04em; }
 .release-item.latest .release-version-mark { background: var(--color-primary); color: #fff; }
-.release-toggle-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.release-toggle-copy strong { font-size: 14px; }
-.release-toggle-copy small { color: var(--color-text-muted); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.release-chevron { margin-left: auto; color: var(--color-primary); font-size: 18px; line-height: 1; }
+.release-toggle-copy { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; gap: 3px; }
+.release-toggle-copy strong { font-size: 14px; line-height: 1.35; white-space: normal; overflow-wrap: anywhere; }
+.release-toggle-copy small { color: var(--color-text-muted); font-size: 11.5px; line-height: 1.45; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+.release-chevron { margin-left: auto; padding-top: 2px; color: var(--color-primary); font-size: 18px; line-height: 1; flex: 0 0 auto; }
 .release-content { padding: 0 18px 17px 61px; border-top: 1px solid #eef0f5; }
 .release-section { padding-top: 14px; }
 .release-section h3 { margin: 0 0 6px; font-size: 13px; color: var(--color-text); }
