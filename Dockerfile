@@ -6,12 +6,12 @@ FROM node:22.18-bookworm-slim AS builder
 
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 
 # The committed package-lock.json is currently incomplete and causes npm's
 # Arborist to crash with "Cannot read properties of null (reading edgesOut)".
 # Install from package.json until a complete lockfile is generated and committed.
-RUN npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 
