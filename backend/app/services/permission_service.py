@@ -24,8 +24,9 @@ UX-слоем предварительной блокировки кнопок/�
 
 Назначенный редактор встречи (meeting_editors): может делать все правки
 встречи, кроме удаления (входит в can_edit_meeting, но НЕ в can_delete_meeting),
-и отмечать выполнение (галочку) задач этой встречи, назначенных другим
-исполнителям (can_toggle_task_status) -- остальные поля задачи ему недоступны.
+и редактировать ВСЕ поля задач этой встречи (can_edit_task), включая задачи
+других исполнителей -- переименование, исполнитель, сроки, приоритет и т.д.
+Удаление задач ему по-прежнему недоступно (can_delete_task его не включает).
 
 Обычный пользователь по встречам видит только:
 - свои встречи (created_by == user_id),
@@ -174,10 +175,9 @@ class PermissionService:
 
     def can_toggle_task_status(self, task: d.Task, user_id: str) -> bool:
         """Право на галочку выполнения (PATCH только status/completedAt).
-        Расширяет can_edit_task: назначенный редактор встречи может
-        отмечать выполнение/переоткрывать задачи своей встречи (task.meeting_id),
-        даже если они назначены другим исполнителям. На остальные поля задачи
-        это право не распространяется -- см. tasks/routes.update_task."""
+        После расширения прав редактора встречи на все поля задач его встречи
+        совпадает с can_edit_task; метод сохранён для зеркальности с frontend
+        PermissionService.canToggleTaskStatus."""
         if self.is_global_admin(user_id):
             return True
         if self.can_edit_task(task, user_id):
@@ -186,6 +186,11 @@ class PermissionService:
 
     def can_edit_task(self, task: d.Task, user_id: str) -> bool:
         if self.is_global_admin(user_id):
+            return True
+        # Назначенный редактор встречи может редактировать ВСЕ поля задач
+        # своей встречи (task.meeting_id), включая задачи других исполнителей.
+        # Удаление задач при этом остаётся недоступным -- can_delete_task.
+        if task.meeting_id and self.is_meeting_editor(task.meeting_id, user_id):
             return True
         if not task.list_id:
             if task.created_by == user_id or task.assignee_id == user_id:

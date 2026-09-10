@@ -65,8 +65,9 @@ export function useTaskPermissions(taskRef) {
     }
     const allowed = await permissionService.canEditTask(task, userId)
     canEditThisTask.value = allowed
-    // Галочка выполнения — отдельное право: его имеет и назначенный редактор
-    // встречи (task.meetingId), даже если остальные поля задачи ему недоступны.
+    // Галочка выполнения идёт вместе с правом редактирования задачи:
+    // назначенный редактор встречи (task.meetingId) может и ставить галочки,
+    // и править остальные поля задач своей встречи.
     canToggleStatus.value = await permissionService.canToggleTaskStatus(task, userId)
     canDeleteThisTask.value = await permissionService.canDeleteTask(task, userId)
     reason.value = allowed ? '' : 'У вас нет прав редактировать эту задачу (роль в списке не позволяет)'

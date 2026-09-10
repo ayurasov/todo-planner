@@ -173,32 +173,37 @@ describe('PermissionService role matrix', () => {
     })
   })
 
-  describe('canToggleTaskStatus', () => {
+  describe('meeting editor task rights (canEditTask/canToggleTaskStatus)', () => {
     const meetingTaskOfAnotherAssignee = {
       listId: LIST_ID, createdBy: OWNER_ID, assigneeId: VIEWER_ID, meetingId: MEETING_ID,
     }
 
-    it('allows the designated meeting editor to toggle tasks of other assignees in that meeting', async () => {
+    it('allows the designated meeting editor to edit ALL fields of other assignees\' tasks in that meeting', async () => {
+      expect(await service.canEditTask(meetingTaskOfAnotherAssignee, MEETING_EDITOR_ID)).toBe(true)
+    })
+
+    it('allows the meeting editor to toggle status of other assignees\' tasks (rename, assignee, due date included)', async () => {
       expect(await service.canToggleTaskStatus(meetingTaskOfAnotherAssignee, MEETING_EDITOR_ID)).toBe(true)
     })
 
-    it('still allows regular edit rights (owner/editor/admin/assignee of the task)', async () => {
-      expect(await service.canToggleTaskStatus(meetingTaskOfAnotherAssignee, OWNER_ID)).toBe(true)
-      expect(await service.canToggleTaskStatus(meetingTaskOfAnotherAssignee, EDITOR_ID)).toBe(true)
-      expect(await service.canToggleTaskStatus(meetingTaskOfAnotherAssignee, ADMIN_ID)).toBe(true)
+    it('still allows regular edit rights (owner/editor/admin)', async () => {
+      expect(await service.canEditTask(meetingTaskOfAnotherAssignee, OWNER_ID)).toBe(true)
+      expect(await service.canEditTask(meetingTaskOfAnotherAssignee, EDITOR_ID)).toBe(true)
+      expect(await service.canEditTask(meetingTaskOfAnotherAssignee, ADMIN_ID)).toBe(true)
     })
 
-    it('does not give the meeting editor rights beyond the toggle (canEditTask stays false)', async () => {
-      expect(await service.canEditTask(meetingTaskOfAnotherAssignee, MEETING_EDITOR_ID)).toBe(false)
+    it('does not give the meeting editor the right to delete tasks', async () => {
       expect(await service.canDeleteTask(meetingTaskOfAnotherAssignee, MEETING_EDITOR_ID)).toBe(false)
     })
 
     it('denies a non-editor who has no other rights', async () => {
+      expect(await service.canEditTask(meetingTaskOfAnotherAssignee, OUTSIDER_ID)).toBe(false)
       expect(await service.canToggleTaskStatus(meetingTaskOfAnotherAssignee, OUTSIDER_ID)).toBe(false)
     })
 
     it('does not extend to tasks outside the meeting', async () => {
       const foreignTask = { listId: LIST_ID, createdBy: OWNER_ID, assigneeId: VIEWER_ID, meetingId: 'meeting-other' }
+      expect(await service.canEditTask(foreignTask, MEETING_EDITOR_ID)).toBe(false)
       expect(await service.canToggleTaskStatus(foreignTask, MEETING_EDITOR_ID)).toBe(false)
     })
   })

@@ -128,6 +128,7 @@ def get_task(task_id, **kwargs):
 
 
 @tasks_bp.route("/<string:task_id>", methods=["PATCH"])
+@require_task_permission("can_edit_task")
 def update_task(task_id, **kwargs):
     user_id = current_user_id(); task = task_repository.get_by_id(task_id)
     if task is None:
@@ -135,17 +136,6 @@ def update_task(task_id, **kwargs):
     payload = request.get_json(silent=True) or {}
     field_map = {"title": "title", "description": "description", "status": "status", "priority": "priority", "assigneeId": "assignee_id", "watcherIds": "watcher_ids", "dueDate": "due_date", "startDate": "start_date", "tags": "tags", "pinned": "pinned", "displayStandalone": "display_standalone", "completedAt": "completed_at", "meetingId": "meeting_id", "occurrenceId": "occurrence_id"}
     patch = {snake: payload[camel] for camel, snake in field_map.items() if camel in payload}
-    # Назначенный редактор встречи имеет право ставить/снимать галочку выполнения
-    # на задачах своей встречи, включая задачи других исполнителей. Такой PATCH
-    # содержит только status/completedAt (см. taskRepository.complete/reopen);
-    # на остальные поля задач это право не распространяется.
-    status_only_patch = set(patch).issubset({"status", "completed_at"})
-    if status_only_patch:
-        allowed = permission_service.can_toggle_task_status(task, user_id)
-    else:
-        allowed = permission_service.can_edit_task(task, user_id)
-    if not allowed:
-        return permission_denied_response("Недостаточно прав для редактирования задачи")
     effective_meeting_id = patch.get("meeting_id", task.meeting_id)
     effective_assignee_id = patch.get("assignee_id", task.assignee_id)
     invalid_assignment = _validate_meeting_assignment(effective_meeting_id, effective_assignee_id)

@@ -3,10 +3,11 @@
 
 - редактор может делать ВСЕ правки встречи (PATCH /api/meetings/:id), кроме
   удаления (DELETE возвращает 403);
-- редактор может ставить/снимать галочку выполнения на задачах этой встречи,
-  назначенных другим исполнителям (PATCH /api/tasks/:id только status/completedAt);
-- на остальные поля задач это право не распространяется (PATCH с title -> 403);
-- рядовой участник встречи без роли редактора правок встречи не имеет.
+- редактор может редактировать ВСЕ поля задач этой встречи, назначенных
+  другим исполнителям (переименование, исполнитель, сроки, приоритет, статус);
+- удаление задач встречи редактору недоступно (DELETE /api/tasks/:id -> 403);
+- рядовой участник встречи без роли редактора правок встречи и чужих задач
+  не имеет.
 """
 import uuid
 from datetime import datetime, timezone
@@ -98,11 +99,44 @@ def test_editor_can_toggle_status_of_other_assignees_tasks(client, app):
     assert reopened.get_json()["status"] == "open"
 
 
-def test_editor_cannot_change_other_task_fields(client, app):
+def test_editor_can_edit_all_fields_of_other_assignees_tasks(client, app):
     world = make_meeting_editor_world(app)
     login(client, world["editor"])
-    resp = client.patch(f"/api/tasks/{world['task_id']}", json={"title": "Hijacked"})
-    assert resp.status_code == 403
+
+    # Переименование
+    renamed = client.patch(f"/api/tasks/{world['task_id']}", json={"title": "Renamed by editor"})
+    assert renamed.status_code == 200, renamed.get_json()
+    assert renamed.get_json()["title"] == "Renamed by editor"
+
+    # Смена срока и приоритета
+    rescheduled = client.patch(
+        f"/api/tasks/{world['task_id']}",
+        json={"dueDate": "2026-09-20T09:00:00.000Z", "priority": "high"},
+    )
+    assert rescheduled.status_code == 200
+    assert rescheduled.get_json()["priority"] == "high"
+
+    # Смена исполнителя на участника встречи (сам редактор -- тоже участник)
+    reassigned = client.patch(f"/api/tasks/{world['task_id']}", json={"assigneeId": world["editor"].id})
+    assert reassigned.status_code == 200, reassigned.get_json()
+    assert reassigned.get_json()["assigneeId"] == world["editor"].id
+
+    # Назначение вне круга участников встречи по-прежнему блокируется валидацией
+    with app.app_context():
+        outsider = make_user(login="mtg-outsider")
+        outsider_id = outsider.id
+    rejected = client.patch(f"/api/tasks/{world['task_id']}", json={"assigneeId": outsider_id})
+    assert rejected.status_code == 400
+
+
+def test_editor_cannot_delete_meeting_tasks(client, app):
+    world = make_meeting_editor_world(app)
+    login(client, world["editor"])
+    assert client.delete(f"/api/tasks/{world['task_id']}").status_code == 403
+
+    # Автор задачи удалять может
+    login(client, world["creator"])
+    assert client.delete(f"/api/tasks/{world['task_id']}").status_code == 204
 
 
 def test_attendee_without_rights_cannot_toggle_foreign_task(client, app):

@@ -42,6 +42,11 @@ export class PermissionService {
 
   async canEditTask(task, userId) {
     if (await this._isGlobalAdmin(userId)) return true
+    // Назначенный редактор встречи может редактировать ВСЕ поля задач своей
+    // встречи (task.meetingId), включая задачи других исполнителей —
+    // переименование, исполнитель, сроки, приоритет и т.д. Удаление задач при
+    // этом остаётся недоступным (canDeleteTask его не включает).
+    if (task.meetingId && (await this.isMeetingEditor(task.meetingId, userId))) return true
     // Задача без списка (listId = null) — приватный/личный объект без
     // ролевой модели списка: править её может создатель или назначенный
     // исполнитель. Это осознанное упрощение: полноценные ACL для задач-сирот вне scope MVP.
@@ -66,17 +71,13 @@ export class PermissionService {
   }
 
   /**
-   * Отдельное право на галочку выполнения задачи: помимо обычных правил
-   * canEditTask, статус задачи может менять назначенный редактор встречи
-   * (task.meetingId) — в том числе чужих задач. На остальные поля задачи
-   * (название, исполнитель, сроки и т.д.) это право не распространяется.
-   * Зеркалит backend permission_service.can_toggle_task_status.
+   * Право на галочку выполнения задачи. После расширения прав редактора
+   * встречи на все поля задач его встречи совпадает с canEditTask; метод
+   * сохранён как отдельная точка прав для UI (TaskRow/OccurrenceTaskGlance)
+   * и зеркалит backend permission_service.can_toggle_task_status.
    */
   async canToggleTaskStatus(task, userId) {
-    if (await this._isGlobalAdmin(userId)) return true
-    if (await this.canEditTask(task, userId)) return true
-    if (task.meetingId) return this.isMeetingEditor(task.meetingId, userId)
-    return false
+    return this.canEditTask(task, userId)
   }
 
   async canAssign(listId, userId) {
