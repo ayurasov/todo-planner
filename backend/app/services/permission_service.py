@@ -23,10 +23,10 @@ UX-слоем предварительной блокировки кнопок/�
 "расширенная видимость + редактирование задач", а не владелец списка.
 
 Назначенный редактор встречи (meeting_editors): может делать все правки
-встречи, кроме удаления (входит в can_edit_meeting, но НЕ в can_delete_meeting),
-и редактировать ВСЕ поля задач этой встречи (can_edit_task), включая задачи
-других исполнителей -- переименование, исполнитель, сроки, приоритет и т.д.
-Удаление задач ему по-прежнему недоступно (can_delete_task его не включает).
+встречи, кроме удаления самой встречи (входит в can_edit_meeting, но НЕ в
+can_delete_meeting), и имеет полные права на задачи своей встречи
+(can_edit_task + can_delete_task), включая задачи других исполнителей:
+переименование, исполнитель, сроки, приоритет, удаление и т.д.
 
 Обычный пользователь по встречам видит только:
 - свои встречи (created_by == user_id),
@@ -229,6 +229,10 @@ class PermissionService:
         if self.is_global_admin(user_id):
             return True
         if task.created_by == user_id:
+            return True
+        # Назначенный редактор встречи может удалять задачи своей встречи
+        # (саму встречу при этом удалить не может -- can_delete_meeting).
+        if task.meeting_id and self.is_meeting_editor(task.meeting_id, user_id):
             return True
         if not task.list_id:
             return self.manages_department(user_id, self._user_department_id(task.assignee_id))

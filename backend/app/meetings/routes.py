@@ -71,6 +71,13 @@ def create_meeting(**kwargs):
     if not title or not date:
         return _validation_error([{"loc": ["title/date"], "msg": "required"}])
 
+    # Автор автоматически попадает в участники встречи, чтобы случайно
+    # себя не забыть (не участник -> не видит встречи/не может быть исполнителем).
+    creator_id = payload.get("createdBy", user_id)
+    attendee_ids = list(payload.get("attendeeIds", []) or [])
+    if creator_id and creator_id not in attendee_ids:
+        attendee_ids.append(creator_id)
+
     meeting = meeting_repository.create(
         title=title,
         date=date,
@@ -78,9 +85,9 @@ def create_meeting(**kwargs):
         link=payload.get("link", ""),
         color=payload.get("color", "#4f7cff"),
         recurrence=payload.get("recurrence"),
-        attendee_ids=payload.get("attendeeIds", []),
+        attendee_ids=attendee_ids,
         editor_ids=payload.get("editorIds", []),
-        created_by=payload.get("createdBy", user_id),
+        created_by=creator_id,
         order=payload.get("order", 0),
     )
     return jsonify(domain_to_dto.meeting(meeting).model_dump(by_alias=True)), 201

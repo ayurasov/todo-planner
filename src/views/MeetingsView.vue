@@ -133,7 +133,9 @@ function openCreateForm() {
     time: now.toTimeString().slice(0, 5),
     description: '',
     link: '',
-    attendeeIds: [],
+    // Автор сразу показан в списке участников (и добавляется автоматически
+    // при сохранении), чтобы случайно себя не забыть.
+    attendeeIds: usersStore.currentUser?.id ? [usersStore.currentUser.id] : [],
     editorIds: [],
     color: '#4f7cff',
     recurrenceEnabled: false,

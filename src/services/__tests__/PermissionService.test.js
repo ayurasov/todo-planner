@@ -192,8 +192,10 @@ describe('PermissionService role matrix', () => {
       expect(await service.canEditTask(meetingTaskOfAnotherAssignee, ADMIN_ID)).toBe(true)
     })
 
-    it('does not give the meeting editor the right to delete tasks', async () => {
-      expect(await service.canDeleteTask(meetingTaskOfAnotherAssignee, MEETING_EDITOR_ID)).toBe(false)
+    it('allows the meeting editor to delete tasks of the meeting (but not of other meetings)', async () => {
+      expect(await service.canDeleteTask(meetingTaskOfAnotherAssignee, MEETING_EDITOR_ID)).toBe(true)
+      const foreignTask = { listId: LIST_ID, createdBy: OWNER_ID, assigneeId: VIEWER_ID, meetingId: 'meeting-other' }
+      expect(await service.canDeleteTask(foreignTask, MEETING_EDITOR_ID)).toBe(false)
     })
 
     it('denies a non-editor who has no other rights', async () => {

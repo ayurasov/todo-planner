@@ -48,12 +48,19 @@ export const useMeetingsStore = defineStore('meetings', {
     async createMeeting(payload) {
       const usersStore = useUsersStore()
       const maxOrder = this.meetings.reduce((max, m) => Math.max(max, m.order ?? 0), -1)
+      // Автор автоматически попадает в участники встречи, чтобы случайно
+      // себя не забыть (не участник -> не видит встречи/не может быть исполнителем).
+      // Зеркалит backend app/meetings/routes.create_meeting (важно и для mock-режима).
+      const attendeeIds = [...(payload.attendeeIds || [])]
+      const creatorId = payload.createdBy || usersStore.currentUser?.id
+      if (creatorId && !attendeeIds.includes(creatorId)) attendeeIds.push(creatorId)
       // Регулярная встреча при создании больше не порождает автоматически ни одной
       // подвстречи — только сама "встреча-серия". Первую и все следующие подвстречи
       // пользователь добавляет вручную кнопкой "Добавить подвстречу серии" (см.
       // MeetingDetailView.addOccurrenceForm/meetingsStore.addOccurrence).
       const meeting = await meetingRepository.create({
-        createdBy: usersStore.currentUser?.id, order: maxOrder + 1, occurrences: [], ...payload,
+        createdBy: creatorId, order: maxOrder + 1, occurrences: [], ...payload,
+        attendeeIds,
       })
       this.meetings.push(meeting)
       return meeting

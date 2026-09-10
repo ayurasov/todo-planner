@@ -5,7 +5,8 @@
   удаления (DELETE возвращает 403);
 - редактор может редактировать ВСЕ поля задач этой встречи, назначенных
   другим исполнителям (переименование, исполнитель, сроки, приоритет, статус);
-- удаление задач встречи редактору недоступно (DELETE /api/tasks/:id -> 403);
+- редактор может и удалять задачи своей встречи (can_delete_task);
+  удаление самой встречи ему по-прежнему запрещено (DELETE -> 403);
 - рядовой участник встречи без роли редактора правок встречи и чужих задач
   не имеет.
 """
@@ -129,14 +130,44 @@ def test_editor_can_edit_all_fields_of_other_assignees_tasks(client, app):
     assert rejected.status_code == 400
 
 
-def test_editor_cannot_delete_meeting_tasks(client, app):
+def test_editor_can_delete_meeting_tasks(client, app):
     world = make_meeting_editor_world(app)
     login(client, world["editor"])
-    assert client.delete(f"/api/tasks/{world['task_id']}").status_code == 403
-
-    # Автор задачи удалять может
-    login(client, world["creator"])
     assert client.delete(f"/api/tasks/{world['task_id']}").status_code == 204
+
+    # Задачи другой встречи редактору удалять нельзя
+    with app.app_context():
+        creator = make_user(login="mtg-creator-3")
+        meeting = _make_meeting(created_by=creator.id, title="Third")
+        foreign = make_task(title="Foreign task", created_by=creator.id, assignee_id=creator.id)
+        foreign.meeting_id = meeting.id
+        db.session.commit()
+        foreign_id = foreign.id
+    assert client.delete(f"/api/tasks/{foreign_id}").status_code == 403
+
+
+def test_create_meeting_auto_adds_author_to_attendees(client, app):
+    with app.app_context():
+        author_row = make_user(login="mtg-author")
+        other_row = make_user(login="mtg-other-participant")
+        author = SimpleNamespace(id=author_row.id, login=author_row.login)
+        other_id = other_row.id
+
+    login(client, author)
+
+    # Без явно указанных участников автор добавляется сам
+    created = client.post("/api/meetings", json={"title": "Auto-add", "date": "2026-09-11T10:00:00.000Z"})
+    assert created.status_code == 201, created.get_json()
+    assert author.id in created.get_json()["attendeeIds"]
+
+    # Автор уже в списке -- дубликата нет; чужие участники сохраняются
+    created2 = client.post(
+        "/api/meetings",
+        json={"title": "No duplicates", "date": "2026-09-11T11:00:00.000Z", "attendeeIds": [author.id, other_id]},
+    )
+    assert created2.status_code == 201
+    assert created2.get_json()["attendeeIds"].count(author.id) == 1
+    assert other_id in created2.get_json()["attendeeIds"]
 
 
 def test_attendee_without_rights_cannot_toggle_foreign_task(client, app):
