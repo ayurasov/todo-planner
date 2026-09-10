@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import { useMeetingsStore } from '../stores/meetingsStore'
 import { useTasksStore } from '../stores/tasksStore'
 import { useUsersStore } from '../stores/usersStore'
+import { useListsStore } from '../stores/listsStore'
+import { useMeetingPermissions } from '../composables/usePermissions'
 import { useDragReorder } from '../composables/useDragReorder'
 import { formatDateTime, formatTime, formatMeetingRecurrence, stripHtml } from '../utils/formatters'
 import AppIcon from '../components/common/AppIcon.vue'
@@ -15,6 +17,11 @@ const router = useRouter()
 const meetingsStore = useMeetingsStore()
 const tasksStore = useTasksStore()
 const usersStore = useUsersStore()
+const listsStore = useListsStore()
+
+// Права на карточках встреч: назначенный редактор встречи (editorIds) может
+// делать все правки, кроме удаления (checkMeeting(m).delete его исключает).
+const { checkMeeting } = useMeetingPermissions(() => null)
 
 const searchQuery = ref('')
 const dateFrom = ref('')
@@ -56,6 +63,7 @@ onMounted(async () => {
   if (!meetingsStore.loaded) await meetingsStore.load()
   if (!tasksStore.loaded) await tasksStore.load()
   if (!usersStore.loaded) await usersStore.load()
+  if (!listsStore.loaded) await listsStore.load()
 })
 
 
@@ -307,12 +315,13 @@ function isRecurringMeeting(meeting) {
             <a v-if="m.link" :href="m.link" target="_blank" class="tag link-tag" @click.stop><AppIcon name="link" :size="11" /> Звонок</a>
             <span v-if="m.attendeeIds?.length" class="tag attendees-tag"><AppIcon name="users" :size="11" /> {{ m.attendeeIds.length }}</span>
             <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag"><AppIcon name="check" :size="11" /> {{ taskCountByMeeting[m.id] }} задач</span>
-            <button class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
+            <button v-if="checkMeeting(m).edit" class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
             <button
+              v-if="checkMeeting(m).edit"
               class="btn btn-ghost btn-icon btn-sm" :title="m.archived ? 'Вернуть из архива' : 'Архивировать'"
               @click.stop="m.archived ? meetingsStore.unarchiveMeeting(m.id) : meetingsStore.archiveMeeting(m.id)"
             ><AppIcon :name="m.archived ? 'undo' : 'copy'" :size="12" /></button>
-            <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click.stop="requestRemoveMeeting(m)"><AppIcon name="trash" :size="12" /></button>
+            <button v-if="checkMeeting(m).delete" class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click.stop="requestRemoveMeeting(m)"><AppIcon name="trash" :size="12" /></button>
           </div>
         </div>
       </div>
@@ -348,12 +357,13 @@ function isRecurringMeeting(meeting) {
         <a v-if="m.link" :href="m.link" target="_blank" class="tag link-tag" @click.stop><AppIcon name="link" :size="11" /> Звонок</a>
         <span v-if="m.attendeeIds?.length" class="tag attendees-tag"><AppIcon name="users" :size="11" /> {{ m.attendeeIds.length }}</span>
         <span v-if="taskCountByMeeting[m.id]" class="tag task-count-tag"><AppIcon name="check" :size="11" /> {{ taskCountByMeeting[m.id] }} задач</span>
-        <button class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
+        <button v-if="checkMeeting(m).edit" class="btn btn-ghost btn-icon btn-sm" title="Редактировать встречу" @click.stop="startEdit(m)"><AppIcon name="edit" :size="12" /></button>
         <button
+          v-if="checkMeeting(m).edit"
           class="btn btn-ghost btn-icon btn-sm" :title="m.archived ? 'Вернуть из архива' : 'Архивировать'"
           @click.stop="m.archived ? meetingsStore.unarchiveMeeting(m.id) : meetingsStore.archiveMeeting(m.id)"
         ><AppIcon :name="m.archived ? 'undo' : 'copy'" :size="12" /></button>
-        <button class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click.stop="requestRemoveMeeting(m)"><AppIcon name="trash" :size="12" /></button>
+        <button v-if="checkMeeting(m).delete" class="btn btn-ghost btn-icon btn-sm btn-danger-ghost" title="Удалить встречу" @click.stop="requestRemoveMeeting(m)"><AppIcon name="trash" :size="12" /></button>
       </div>
     </div>
   </TransitionGroup>

@@ -1,4 +1,4 @@
-import { listRepository, userRepository } from '../repositories'
+import { listRepository, meetingRepository, userRepository } from '../repositories'
 import { ListRole } from '../domain/entities/enums'
 
 const CAN_EDIT_ANY_TASK = [ListRole.OWNER, ListRole.EDITOR]
@@ -51,6 +51,31 @@ export class PermissionService {
     const role = await this.getRole(task.listId, userId)
     if (CAN_EDIT_ANY_TASK.includes(role)) return true
     if (role === ListRole.ASSIGNEE && task.assigneeId === userId) return true
+    return false
+  }
+
+  /**
+   * Назначенный редактор встречи (meeting.editorIds): может делать все правки
+   * встречи, кроме удаления, и ставить/снимать галочку выполнения на задачах
+   * этой встречи — в том числе назначенных другим исполнителям.
+   */
+  async isMeetingEditor(meetingId, userId) {
+    if (!meetingId || !userId) return false
+    const meeting = await meetingRepository.getById(meetingId)
+    return (meeting?.editorIds || []).includes(userId)
+  }
+
+  /**
+   * Отдельное право на галочку выполнения задачи: помимо обычных правил
+   * canEditTask, статус задачи может менять назначенный редактор встречи
+   * (task.meetingId) — в том числе чужих задач. На остальные поля задачи
+   * (название, исполнитель, сроки и т.д.) это право не распространяется.
+   * Зеркалит backend permission_service.can_toggle_task_status.
+   */
+  async canToggleTaskStatus(task, userId) {
+    if (await this._isGlobalAdmin(userId)) return true
+    if (await this.canEditTask(task, userId)) return true
+    if (task.meetingId) return this.isMeetingEditor(task.meetingId, userId)
     return false
   }
 

@@ -5,7 +5,13 @@
 - GET /meetings и GET /meetings/:id показывают только те встречи, которые доступны
   текущему пользователю: свои, встречи где он attendee, либо все встречи отделов,
   которыми он руководит.
-- PATCH/DELETE пока не меняют существующую модель прав и работают как раньше.
+- PATCH /meetings/:id -- все правки встречи: доступны автору, глобальному admin,
+  назначенному редактору встречи (meeting_editors) и owner/editor связанного
+  списка задач. Единственное исключение -- патч только с полем order
+  (drag-n-drop сортировка на странице встреч): он разрешён любому, кто видит
+  встречу, так как порядок -- UI-настройка, а не контент встречи.
+- DELETE /meetings/:id -- только автор, глобальный admin или owner/editor
+  связанного списка задач. Назначенный редактор встречи удалять её НЕ может.
 
 unfinishedCount в MeetingResponseDTO -- агрегация "не выполнено в серии",
 посчитана backend'ом (MeetingRepository.unfinished_total_count) -- см. комментарий
@@ -39,6 +45,14 @@ def _can_view_meeting(meeting, user_id):
     if user_id in (meeting.attendee_ids or []):
         return True
     return permission_service.can_view_meeting_via_department(meeting, user_id)
+
+
+def _can_edit_meeting(meeting, user_id):
+    return permission_service.can_edit_meeting(meeting, user_id)
+
+
+def _can_delete_meeting(meeting, user_id):
+    return permission_service.can_delete_meeting(meeting, user_id)
 
 
 @meetings_bp.route("", methods=["GET"])
@@ -84,6 +98,10 @@ def get_meeting(meeting_id, **kwargs):
 
 @meetings_bp.route("/<string:meeting_id>", methods=["PATCH"])
 def update_meeting(meeting_id, **kwargs):
+    meeting = meeting_repository.get_by_id(meeting_id)
+    if meeting is None:
+        return _not_found()
+    user_id = current_user_id()
     payload = request.get_json(silent=True) or {}
     field_map = {
         "title": "title", "date": "date", "description": "description", "link": "link",
@@ -91,15 +109,28 @@ def update_meeting(meeting_id, **kwargs):
         "attendeeIds": "attendee_ids", "editorIds": "editor_ids", "occurrences": "occurrences",
     }
     patch = {snake: payload[camel] for camel, snake in field_map.items() if camel in payload}
+    # Патч только порядка (drag-n-drop сортировка) не считается правкой контента
+    # встречи -- он разрешён любому, кто видит встречу (см. docstring модуля).
+    reorder_only = set(patch) <= {"order"}
+    if reorder_only:
+        if not _can_view_meeting(meeting, user_id):
+            return permission_denied_response("Недостаточно прав для доступа к встрече")
+    elif not _can_edit_meeting(meeting, user_id):
+        return permission_denied_response("Недостаточно прав для редактирования встречи")
 
-    meeting = meeting_repository.update(meeting_id, patch)
-    if meeting is None:
+    updated = meeting_repository.update(meeting_id, patch)
+    if updated is None:
         return _not_found()
-    return jsonify(domain_to_dto.meeting(meeting).model_dump(by_alias=True))
+    return jsonify(domain_to_dto.meeting(updated).model_dump(by_alias=True))
 
 
 @meetings_bp.route("/<string:meeting_id>", methods=["DELETE"])
 def delete_meeting(meeting_id, **kwargs):
+    meeting = meeting_repository.get_by_id(meeting_id)
+    if meeting is None:
+        return _not_found()
+    if not _can_delete_meeting(meeting, current_user_id()):
+        return permission_denied_response("Недостаточно прав для удаления встречи")
     deleted = meeting_repository.delete(meeting_id)
     if not deleted:
         return _not_found()

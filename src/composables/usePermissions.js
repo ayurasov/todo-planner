@@ -1,5 +1,7 @@
 import { computed, ref, watch } from 'vue'
 import { useUsersStore } from '../stores/usersStore'
+import { useListsStore } from '../stores/listsStore'
+import { useTasksStore } from '../stores/tasksStore'
 import { permissionService } from '../services/PermissionService'
 
 /**
@@ -63,7 +65,9 @@ export function useTaskPermissions(taskRef) {
     }
     const allowed = await permissionService.canEditTask(task, userId)
     canEditThisTask.value = allowed
-    canToggleStatus.value = allowed
+    // Галочка выполнения — отдельное право: его имеет и назначенный редактор
+    // встречи (task.meetingId), даже если остальные поля задачи ему недоступны.
+    canToggleStatus.value = await permissionService.canToggleTaskStatus(task, userId)
     canDeleteThisTask.value = await permissionService.canDeleteTask(task, userId)
     reason.value = allowed ? '' : 'У вас нет прав редактировать эту задачу (роль в списке не позволяет)'
     loaded.value = true
@@ -84,6 +88,48 @@ export function useTaskPermissions(taskRef) {
 export function useCurrentUserRole() {
   const usersStore = useUsersStore()
   return computed(() => usersStore.currentUser?.globalRole || 'user')
+}
+
+/**
+ * Права на действия над встречей. Назначенный редактор встречи
+ * (meeting.editorIds) может делать все правки встречи, кроме удаления:
+ * canEditMeeting включает редактора, canDeleteMeeting — нет.
+ * Владельцы/редакторы связанных списков задач сохраняют оба права (как раньше
+ * в MeetingDetailView.canManageMeeting), глобальный admin — тоже.
+ *
+ * Принимает ref/getter встречи. checkMeeting(meeting) — синхронная проверка
+ * для отдельных встреч (например, карточек на странице встреч).
+ */
+export function useMeetingPermissions(meetingRef) {
+  const usersStore = useUsersStore()
+  const listsStore = useListsStore()
+  const tasksStore = useTasksStore()
+  const isAdmin = useIsAdmin()
+
+  const resolve = () => (typeof meetingRef === 'function' ? meetingRef() : meetingRef?.value)
+
+  function checkMeeting(meeting) {
+    const userId = usersStore.currentUser?.id
+    if (!meeting || !userId) return { edit: false, delete: false }
+    const isCreator = meeting.createdBy === userId
+    const isEditor = (meeting.editorIds || []).includes(userId)
+    const relatedListIds = new Set(
+      tasksStore.tasks.filter((t) => t.meetingId === meeting.id).map((t) => t.listId).filter(Boolean),
+    )
+    const isRelatedListManager = [...relatedListIds].some((listId) =>
+      ['owner', 'editor'].includes(listsStore.memberships[listId]?.find((m) => m.userId === userId)?.role))
+    return {
+      edit: isAdmin.value || isCreator || isEditor || isRelatedListManager,
+      // Удаление встречи редактору недоступно — «все правки, кроме удаления»
+      delete: isAdmin.value || isCreator || isRelatedListManager,
+    }
+  }
+
+  const canEditMeeting = computed(() => checkMeeting(resolve()).edit)
+  const canDeleteMeeting = computed(() => checkMeeting(resolve()).delete)
+  const isMeetingEditor = computed(() => (resolve()?.editorIds || []).includes(usersStore.currentUser?.id))
+
+  return { canEditMeeting, canDeleteMeeting, isMeetingEditor, checkMeeting }
 }
 
 export function useIsAdmin() {
