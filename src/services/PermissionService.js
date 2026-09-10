@@ -1,4 +1,4 @@
-import { listRepository, userRepository } from '../repositories'
+import { listRepository, meetingRepository, userRepository } from '../repositories'
 import { ListRole } from '../domain/entities/enums'
 
 const CAN_EDIT_ANY_TASK = [ListRole.OWNER, ListRole.EDITOR]
@@ -42,6 +42,11 @@ export class PermissionService {
 
   async canEditTask(task, userId) {
     if (await this._isGlobalAdmin(userId)) return true
+    // Назначенный редактор встречи имеет полные права на задачи своей
+    // встречи (task.meetingId), включая задачи других исполнителей:
+    // все поля и удаление. Саму встречу редактор удалить не может
+    // (canDeleteMeeting в useMeetingPermissions).
+    if (task.meetingId && (await this.isMeetingEditor(task.meetingId, userId))) return true
     // Задача без списка (listId = null) — приватный/личный объект без
     // ролевой модели списка: править её может создатель или назначенный
     // исполнитель. Это осознанное упрощение: полноценные ACL для задач-сирот вне scope MVP.
@@ -52,6 +57,27 @@ export class PermissionService {
     if (CAN_EDIT_ANY_TASK.includes(role)) return true
     if (role === ListRole.ASSIGNEE && task.assigneeId === userId) return true
     return false
+  }
+
+  /**
+   * Назначенный редактор встречи (meeting.editorIds): может делать все правки
+   * встречи, кроме удаления, и ставить/снимать галочку выполнения на задачах
+   * этой встречи — в том числе назначенных другим исполнителям.
+   */
+  async isMeetingEditor(meetingId, userId) {
+    if (!meetingId || !userId) return false
+    const meeting = await meetingRepository.getById(meetingId)
+    return (meeting?.editorIds || []).includes(userId)
+  }
+
+  /**
+   * Право на галочку выполнения задачи. После расширения прав редактора
+   * встречи на все поля задач его встречи совпадает с canEditTask; метод
+   * сохранён как отдельная точка прав для UI (TaskRow/OccurrenceTaskGlance)
+   * и зеркалит backend permission_service.can_toggle_task_status.
+   */
+  async canToggleTaskStatus(task, userId) {
+    return this.canEditTask(task, userId)
   }
 
   async canAssign(listId, userId) {
@@ -75,11 +101,15 @@ export class PermissionService {
   /**
    * Создатель задачи может удалить её всегда, независимо от текущей роли
    * в списке; Owner/Editor списка также могут удалять любую задачу списка.
+   * Назначенный редактор встречи может удалять задачи своей встречи.
    * Глобальный admin может удалить любую задачу.
    */
   async canDeleteTask(task, userId) {
     if (await this._isGlobalAdmin(userId)) return true
     if (task.createdBy === userId) return true
+    // Назначенный редактор встречи может удалять задачи своей встречи
+    // (саму встречу при этом удалить не может).
+    if (task.meetingId && (await this.isMeetingEditor(task.meetingId, userId))) return true
     if (!task.listId) return false
     const role = await this.getRole(task.listId, userId)
     return CAN_EDIT_ANY_TASK.includes(role)

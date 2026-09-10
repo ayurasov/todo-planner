@@ -1,13 +1,17 @@
 # syntax=docker/dockerfile:1
 
 # ---- Builder: npm run build ----
-FROM node:20-slim AS builder
+# Vite 8 and the current dependency tree require a modern Node runtime.
+FROM node:22.18-bookworm-slim AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-# Regenerate lock file so all transitive deps are resolved, then do clean install
-RUN npm install --package-lock-only --ignore-scripts && npm ci
+COPY package.json package-lock.json ./
+
+# The committed package-lock.json is currently incomplete and causes npm's
+# Arborist to crash with "Cannot read properties of null (reading edgesOut)".
+# Install from package.json until a complete lockfile is generated and committed.
+RUN npm ci --no-audit --no-fund
 
 COPY . .
 

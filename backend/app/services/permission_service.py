@@ -22,6 +22,12 @@ UX-слоем предварительной блокировки кнопок/�
 участниками (CAN_MANAGE_MEMBERS/CAN_DELETE_LIST остаются только для owner/admin) -- это чисто
 "расширенная видимость + редактирование задач", а не владелец списка.
 
+Назначенный редактор встречи (meeting_editors): может делать все правки
+встречи, кроме удаления самой встречи (входит в can_edit_meeting, но НЕ в
+can_delete_meeting), и имеет полные права на задачи своей встречи
+(can_edit_task + can_delete_task), включая задачи других исполнителей:
+переименование, исполнитель, сроки, приоритет, удаление и т.д.
+
 Обычный пользователь по встречам видит только:
 - свои встречи (created_by == user_id),
 - встречи, где он явно добавлен участником (MeetingAttendeeORM),
@@ -57,6 +63,7 @@ from app.models import (
     ListORM,
     ManagerDepartmentORM,
     MeetingAttendeeORM,
+    MeetingEditorORM,
     MeetingORM,
     TaskORM,
     TaskTagORM,
@@ -127,6 +134,17 @@ class PermissionService:
             is not None
         )
 
+    def is_meeting_editor(self, meeting_id: str, user_id: str) -> bool:
+        """Назначенный редактор встречи (meeting_editors): может делать все
+        правки встречи, кроме удаления, и отмечать выполнение задач этой
+        встречи (в том числе назначенных другим исполнителям)."""
+        if not meeting_id or not user_id:
+            return False
+        return (
+            MeetingEditorORM.query.filter_by(meeting_id=meeting_id, user_id=user_id).first()
+            is not None
+        )
+
     def can_view_task_via_meeting(self, task: d.Task, user_id: str) -> bool:
         return self.is_meeting_attendee(task.meeting_id, user_id)
 
@@ -155,8 +173,24 @@ class PermissionService:
             return True
         return self.manages_department(user_id, self._list_department_id(list_id))
 
+    def can_toggle_task_status(self, task: d.Task, user_id: str) -> bool:
+        """Право на галочку выполнения (PATCH только status/completedAt).
+        После расширения прав редактора встречи на все поля задач его встречи
+        совпадает с can_edit_task; метод сохранён для зеркальности с frontend
+        PermissionService.canToggleTaskStatus."""
+        if self.is_global_admin(user_id):
+            return True
+        if self.can_edit_task(task, user_id):
+            return True
+        return self.is_meeting_editor(task.meeting_id, user_id)
+
     def can_edit_task(self, task: d.Task, user_id: str) -> bool:
         if self.is_global_admin(user_id):
+            return True
+        # Назначенный редактор встречи может редактировать ВСЕ поля задач
+        # своей встречи (task.meeting_id), включая задачи других исполнителей.
+        # Удаление задач при этом остаётся недоступным -- can_delete_task.
+        if task.meeting_id and self.is_meeting_editor(task.meeting_id, user_id):
             return True
         if not task.list_id:
             if task.created_by == user_id or task.assignee_id == user_id:
@@ -196,6 +230,10 @@ class PermissionService:
             return True
         if task.created_by == user_id:
             return True
+        # Назначенный редактор встречи может удалять задачи своей встречи
+        # (саму встречу при этом удалить не может -- can_delete_meeting).
+        if task.meeting_id and self.is_meeting_editor(task.meeting_id, user_id):
+            return True
         if not task.list_id:
             return self.manages_department(user_id, self._user_department_id(task.assignee_id))
         role = self.get_role(task.list_id, user_id)
@@ -224,6 +262,42 @@ class PermissionService:
         if role == LIST_ROLE_ASSIGNEE:
             return task.assignee_id == user_id or user_id in (task.watcher_ids or [])
         return True
+
+    def _meeting_related_list_ids(self, meeting_id):
+        """Списки задач, связанных со встречей (task.meeting_id)."""
+        if not meeting_id:
+            return set()
+        rows = TaskORM.query.filter_by(meeting_id=meeting_id).all()
+        return {row.list_id for row in rows if row.list_id}
+
+    def _is_related_list_manager(self, meeting: d.Meeting, user_id: str) -> bool:
+        """Owner/Editor какого-либо списка, в котором есть задачи этой встречи.
+        Зеркалит frontend-правило canManageMeeting в MeetingDetailView."""
+        for list_id in self._meeting_related_list_ids(meeting.id):
+            if self.get_role(list_id, user_id) in CAN_EDIT_ANY_TASK:
+                return True
+        return False
+
+    def can_edit_meeting(self, meeting: d.Meeting, user_id: str) -> bool:
+        """Все правки встречи: глобальный admin, автор встречи, назначенный
+        редактор (meeting_editors) или owner/editor связанного списка задач."""
+        if self.is_global_admin(user_id):
+            return True
+        if meeting.created_by == user_id:
+            return True
+        if self.is_meeting_editor(meeting.id, user_id):
+            return True
+        return self._is_related_list_manager(meeting, user_id)
+
+    def can_delete_meeting(self, meeting: d.Meeting, user_id: str) -> bool:
+        """Удаление встречи: назначенному редактору запрещено (в отличие от
+        can_edit_meeting), удалять могут только admin, автор и owner/editor
+        связанного списка задач."""
+        if self.is_global_admin(user_id):
+            return True
+        if meeting.created_by == user_id:
+            return True
+        return self._is_related_list_manager(meeting, user_id)
 
     def can_view_task_via_department(self, task: d.Task, user_id: str) -> bool:
         managed_department_ids = self.get_managed_department_ids(user_id)

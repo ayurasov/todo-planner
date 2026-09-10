@@ -8,6 +8,8 @@ import { useMeetingsStore } from '../../stores/meetingsStore'
 import { useIsAdmin } from '../../composables/usePermissions'
 import { useDragReorder } from '../../composables/useDragReorder'
 import AppIcon from './AppIcon.vue'
+import ReleaseNotesModal from './ReleaseNotesModal.vue'
+import packageJson from '../../../package.json'
 
 const viewStore = useViewStore()
 const uiStore = useUiStore()
@@ -15,10 +17,9 @@ const listsStore = useListsStore()
 const meetingsStore = useMeetingsStore()
 const isAdmin = useIsAdmin()
 const route = useRoute()
+const appVersion = packageJson.version
+const releaseNotesOpen = ref(false)
 
-// Подменю со списками/встречами открыто по умолчанию, если пользователь уже находится
-// на странице конкретного списка/встречи (прямой переход по URL / обновление страницы) —
-// иначе после захода внутрь сайдбар выглядел бы так, будто раздел «потерялся».
 const listsExpanded = ref(route.name === 'list-view')
 const meetingsExpanded = ref(route.name === 'meeting-detail')
 
@@ -28,8 +29,6 @@ onMounted(async () => {
 })
 
 function toggleLists() {
-  // В свёрнутом сайдбаре подменю не показываем — просто
-  // уходим в раздел управления списками, иначе иконки без текста было бы невозможно читать.
   if (uiStore.sidebarCollapsed) return
   listsExpanded.value = !listsExpanded.value
 }
@@ -39,11 +38,6 @@ function toggleMeetings() {
   meetingsExpanded.value = !meetingsExpanded.value
 }
 
-// Используется общая логика drag-n-drop с живым предпросмотром (useDragReorder) — та же,
-// что и на страницах управления списками/встречами, чтобы сортировка в меню
-// была синхронизирована с порядком на страницах. Важно: useDragReorder внутри делает
-// sourceItemsRef.value, поэтому сюда надо передавать игенно computed(), а не простую стрелочную
-// функцию — иначе обращение к `.value` упадёт с ошибкой.
 const listsDrag = useDragReorder(
   computed(() => listsStore.activeLists),
   (orderedIds) => listsStore.reorderLists(orderedIds),
@@ -86,12 +80,7 @@ const meetingsDrag = useDragReorder(
         >
           <router-link to="/meetings" class="nav-item-icon-link" @click.stop><AppIcon name="calendar" :size="15" /></router-link>
           <span v-if="!uiStore.sidebarCollapsed" class="nav-item-label">Встречи</span>
-          <AppIcon
-            v-if="!uiStore.sidebarCollapsed"
-            :name="meetingsExpanded ? 'chevronDown' : 'chevronRight'"
-            :size="12"
-            class="expand-caret"
-          />
+          <AppIcon v-if="!uiStore.sidebarCollapsed" :name="meetingsExpanded ? 'chevronDown' : 'chevronRight'" :size="12" class="expand-caret" />
         </button>
 
         <TransitionGroup
@@ -129,12 +118,7 @@ const meetingsDrag = useDragReorder(
         >
           <AppIcon name="folder" :size="15" />
           <span v-if="!uiStore.sidebarCollapsed" class="nav-item-label">Списки</span>
-          <AppIcon
-            v-if="!uiStore.sidebarCollapsed"
-            :name="listsExpanded ? 'chevronDown' : 'chevronRight'"
-            :size="12"
-            class="expand-caret"
-          />
+          <AppIcon v-if="!uiStore.sidebarCollapsed" :name="listsExpanded ? 'chevronDown' : 'chevronRight'" :size="12" class="expand-caret" />
         </button>
 
         <TransitionGroup
@@ -192,9 +176,16 @@ const meetingsDrag = useDragReorder(
       <router-link to="/settings" class="nav-item" :title="uiStore.sidebarCollapsed ? 'Настройки' : ''">
         <AppIcon name="settings" :size="15" /><span v-if="!uiStore.sidebarCollapsed">Настройки</span>
       </router-link>
-      <div v-if="!uiStore.sidebarCollapsed" class="sidebar-copyright">© Alexander Yurasov</div>
+      <div v-if="!uiStore.sidebarCollapsed" class="sidebar-copyright">
+        <div>© Alexander Yurasov</div>
+        <button class="sidebar-version" type="button" @click="releaseNotesOpen = true">
+          По Делу - Версия {{ appVersion }}
+        </button>
+      </div>
     </div>
   </aside>
+
+  <ReleaseNotesModal v-if="releaseNotesOpen" @close="releaseNotesOpen = false" />
 </template>
 
 <style scoped>
@@ -211,29 +202,20 @@ const meetingsDrag = useDragReorder(
 .brand-text { display: flex; flex-direction: column; overflow: hidden; padding-top: 3px; }
 .brand-name { font-weight: 700; font-size: 15px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
 .brand-tagline { font-size: 10.5px; color: var(--color-text-muted); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
-.collapse-btn {
-  border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 7px; width: 24px; height: 24px;
-  display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-muted); flex-shrink: 0;
-}
+.collapse-btn { border: 1px solid var(--color-border); background: var(--color-surface); border-radius: 7px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--color-text-muted); flex-shrink: 0; }
 .collapse-btn:hover { background: #eef1f7; color: var(--color-text); }
 .sidebar-nav { display: flex; flex-direction: column; gap: 2px; margin-bottom: 12px; }
 .sidebar-section { margin-top: 10px; }
 .sidebar-section-title { font-size: 11px; color: var(--color-text-muted); padding: 4px 10px; text-transform: uppercase; letter-spacing: 0.04em; display: flex; align-items: center; justify-content: space-between; white-space: nowrap; }
 .manage-link { text-decoration: none; opacity: 0.7; display: flex; align-items: center; }
 .manage-link:hover { opacity: 1; }
-.nav-item {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 10px; border-radius: var(--radius-sm); font-size: 13px;
-  color: var(--color-text); text-decoration: none; border: none; background: none;
-  text-align: left; width: 100%; white-space: nowrap; overflow: hidden;
-}
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--radius-sm); font-size: 13px; color: var(--color-text); text-decoration: none; border: none; background: none; text-align: left; width: 100%; white-space: nowrap; overflow: hidden; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 8px; }
 .nav-item:hover { background: #eef1f7; }
 .nav-item.router-link-active { background: #e6ecff; color: var(--color-primary-dark); font-weight: 600; }
 .nav-item-icon-link { display: flex; color: inherit; }
 .list-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .nav-item-btn { cursor: pointer; }
-
 .nav-item-group { display: flex; flex-direction: column; }
 .nav-item-expandable { justify-content: flex-start; }
 .nav-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; }
@@ -243,10 +225,8 @@ const meetingsDrag = useDragReorder(
 .nav-subitem.dragging { opacity: 0.35; }
 .nav-submenu-empty { font-size: 11.5px; color: var(--color-text-muted); padding: 5px 10px 5px 24px; }
 .nav-manage-item { color: var(--color-text-muted); border-top: 1px solid var(--color-border); margin-top: 3px; padding-top: 7px; cursor: pointer; }
-
-.sidebar-bottom {
-  margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border);
-  display: flex; flex-direction: column; gap: 2px;
-}
+.sidebar-bottom { margin-top: auto; padding-top: 10px; border-top: 1px solid var(--color-border); display: flex; flex-direction: column; gap: 2px; }
 .sidebar-copyright { font-size: 10.5px; color: var(--color-text-muted); text-align: left; padding: 8px 6px 0; opacity: 0.75; align-self: flex-start; }
+.sidebar-version { display: block; margin-top: 8px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.sidebar-version:hover { color: var(--color-primary); text-decoration: underline; }
 </style>
